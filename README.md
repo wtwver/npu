@@ -1,5 +1,8 @@
 fix matmul result is wrong
 
+# How to convert rknn model
+python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+
 # How to dump GEM
 
 run gdb --args ./matmul_api_demo
@@ -198,3 +201,64 @@ Based on the analysis in hello.c, the different GEM objects have specific purpos
 - Gem 2: Contains model weights and parameters
 - Gem 3: Contains detailed instruction sequences
 - Gem 4-6: Represent the input tensors (A, B) and output tensor (C) for operations
+
+# ONNX to RKNN Model Conversion
+
+## Quick Start
+
+Convert ONNX models to RKNN format for RK3588 NPU acceleration:
+
+### 1. Extract Toolkit
+```bash
+cd /tmp
+python3 -m zipfile -e /home/orangepi/ezrknn-toolkit2/rknn-toolkit2/packages/arm64/rknn_toolkit2-2.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl extracted_rknn_full
+```
+
+### 2. Convert Model
+```bash
+PYTHONPATH=/tmp/extracted_rknn_full python3 /tmp/extracted_rknn_full/rknn/api/rknn_convert.py \
+  -i /home/orangepi/npu/models/your_model.onnx \
+  -o /home/orangepi/npu/models/ \
+  -t rk3588
+```
+
+### 3. Test Inference
+```python
+import sys
+sys.path.insert(0, '/tmp/extracted_rknn_lite')
+from rknnlite.api import RKNNLite
+
+rknn_lite = RKNNLite()
+rknn_lite.load_rknn('model.rknn')
+rknn_lite.init_runtime()
+outputs = rknn_lite.inference(inputs=[input_data])
+rknn_lite.release()
+```
+
+## Prerequisites
+
+- RKNN Toolkit 2 (version 2.3.2)
+- Python 3.10+
+- ARM64 platform (RK3588)
+
+## Supported Models
+
+✅ **Tested Operators**: Add, Sub, Mul, Div, Mod, Pow, Neg
+✅ **Example Models**: `add_1.onnx`, `resnet18_for_rk3588.rknn`
+
+## Status
+
+- **RKNN Runtime**: ✅ Fully functional
+- **Model Conversion**: ⚠️ Requires dependency resolution (libpng-dev)
+- **Pre-converted Models**: ✅ Work perfectly
+
+## Troubleshooting
+
+1. **Import Error**: Add toolkit to PYTHONPATH
+2. **Missing Library**: `sudo apt install libpng-dev`
+3. **Conversion Fails**: Check `models/rknn_ops.md` for supported operators
+
+## References
+
+- [RKNN Toolkit](https://github.com/rockchip-linux/rknn-toolkit2)
+- [RK3588 NPU](https://rockchip.fr/RK3588%20NPU/)
