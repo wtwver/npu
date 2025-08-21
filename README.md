@@ -134,8 +134,8 @@ EMIT(REG_DPU_LUT_LO_SLOPE_SHIFT, 0x0);
 
 # Capure benmark rknn
 
-/home/orangepi/ezrknn-toolkit2/rknpu2/examples/rknn_benchmark/install/rknn_benchmark_Linux/rknn_benchmark /home/orangepi/ezrknn-toolkit2/rknpu2/examples/rknn_benchmark/resnet18_for_rk3588.rknn 
-
+./rknn_benchmark /home/orangepi/ezrknn-toolkit2/rknpu2/examples/rknn_benchmark/resnet18_for_rk3588.rknn 
+./rknn_benchmark models/add_1.rknn 
 
 
 
