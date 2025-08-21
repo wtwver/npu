@@ -1,5 +1,57 @@
 fix matmul result is wrong
 
+# TODO
+1. first run convert onnx to rknn
+python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+
+2. run rknn_benchmark ensure the ops run correctly
+./rknn_benchmark models/add_1.rknn 
+
+3. convert and run for each onnx model
+
+## 📊 Batch Processing Results - ONNX to RKNN Conversion & Benchmarking
+
+### ✅ Successful Models Performance
+
+| Model                | FPS     | Latency | Category    |
+|----------------------|---------|---------|-------------|
+| adaptive_max_pool2d  | 28,248  | 0.04ms  | Pooling     |
+| round                | 25,641  | 0.04ms  | Math        |
+| flatten              | 21,141  | 0.05ms  | Reshape     |
+| leaky_relu           | 19,011  | 0.05ms  | Activation  |
+| mul                  | 14,556  | 0.07ms  | Math        |
+| sub                  | 10,460  | 0.10ms  | Math        |
+| elu                  | 8,340   | 0.12ms  | Activation  |
+| conv2d               | 8,410   | 0.12ms  | Convolution |
+| reduce_mean          | 8,257   | 0.12ms  | Reduction   |
+| neg                  | 7,727   | 0.13ms  | Math        |
+| conv1d               | 7,593   | 0.13ms  | Convolution |
+| cat                  | 6,082   | 0.16ms  | Concat      |
+| avg_pool2d           | 6,393   | 0.16ms  | Pooling     |
+| floor                | 5,382   | 0.19ms  | Math        |
+| cos                  | 5,449   | 0.18ms  | Math        |
+| sqrt                 | 5,157   | 0.19ms  | Math        |
+| softplus             | 8,183   | 0.12ms  | Activation  |
+| reduce_min           | 3,699   | 0.27ms  | Reduction   |
+
+### ❌ Failed Models (44/73)
+
+| Category             | Failed Operations |
+|----------------------|------------------|
+| Unsupported CPU Ops  | acos, asin, atan, tan, sign, ceil, trunc, gelu, quick_gelu, silu, selu, relu6, hardsigmoid, matmul, dot, gemm |
+| Invalid Operations   | ones_*, zeros_*, eye_*, empty_*, full_*, linspace_*, arange_* |
+| Shape Issues         | reshape, log2 |
+
+### 📋 Summary
+
+- **Total Models**: 73 ONNX models
+- **✅ Successful**: 29 (40%)
+- **❌ Failed**: 44 (60%)
+- **Best Performance**: 28K+ FPS (pooling operations)
+- **Average Performance**: 5K-10K FPS (most successful models)
+
+**Key Finding**: RK3588 NPU excels at pooling, convolution, and element-wise operations with excellent hardware acceleration performance.
+
 # How to convert rknn model
 python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
 
@@ -134,95 +186,11 @@ EMIT(REG_DPU_LUT_LO_SLOPE_SHIFT, 0x0);
 
 # Capure benmark rknn
 
-./rknn_benchmark /home/orangepi/ezrknn-toolkit2/rknpu2/examples/rknn_benchmark/resnet18_for_rk3588.rknn 
+./rknn_benchmark resnet18_for_rk3588.rknn 
 ./rknn_benchmark models/add_1.rknn 
 
 
-
-
-# Result
-
-Gem 1: Instructions (contains NPU register commands)
-- Size: Varies depending on model complexity
-- Contains register configuration for NPU operations
-- First 8 bytes are typically 0x0000000000000000
-- Following that are 64-bit instructions with register addresses and values
-- Instructions target various NPU components (PC, CNA, CORE, DPU, etc.)
-
-Gem 2: Model weights/biases
-- Size: Depends on model parameters
-- Contains the neural network weights in packed format
-- Based on the analysis in hello.c, these are 64-bit values with bitfields:
-  - Bits 63-56: Destination flags (PC, CNA, CORE, DPU, etc.)
-  - Bits 55: Operation enable flag
-  - Bits 48-32: Upper address bits
-  - Bits 31-16: Register value
-  - Bits 15-0: Register address
-
-Gem 3: Instruction buffer
-- Size: Typically smaller than Gem 1
-- Contains instruction sequences for NPU execution
-- Organized in 40-byte blocks with specific structure:
-  - instrs[0]: Always 0
-  - instrs[1]: Non-monotonous counter
-  - instrs[2]: Operation type (0x1d, 0x60, 0x18, 0xd)
-  - instrs[3]: Flags (0x300, 0xc00)
-  - instrs[4]: Constant (0x1ffff)
-  - instrs[5]: Mode flags (0, 0x100, 0x800, 0x200)
-  - instrs[6]: Operation codes (0x7c, 0x1a, 0x45, 0x6a)
-  - instrs[7]: Address offset/delta
-  - instrs[8]: Address in Gem 2 (weights)
-
-Gem 4-6: Input/Output tensors
-- These GEM objects represent the input data (A, B) and output data (C) for matrix multiplication
-- Size: Based on tensor dimensions (e.g., for 32x32x32 matmul: 32*32*4 = 4KB per tensor)
-- Format: Depends on data type (FP32, INT8, FP16)
-- Layout: Typically row-major order
-
-# Explain
-
-NPU uses DRM_IOCTL_GEM_FLINK to get the GEM object.
-
-The RK3588 NPU driver uses GEM (Graphics Execution Manager) objects to manage memory buffers for neural network operations. Each GEM object has a unique handle that can be shared between processes using the DRM_IOCTL_GEM_FLINK ioctl.
-
-```
-int fd = open("/dev/dri/card1", O_RDWR);
-```
-
-The process for dumping GEM memory:
-1. Open the DRM device (/dev/dri/card1)
-2. Use DRM_IOCTL_GEM_OPEN to get the GEM handle and size by name
-3. Use DRM_IOCTL_RKNPU_MEM_MAP to get the memory mapping offset
-4. Use mmap() to map the GEM memory into the process address space
-5. Read/dump the memory contents to a file or analyze in memory
-
-Based on the analysis in hello.c, the different GEM objects have specific purposes:
-- Gem 1: Contains the instruction stream for the NPU
-- Gem 2: Contains model weights and parameters
-- Gem 3: Contains detailed instruction sequences
-- Gem 4-6: Represent the input tensors (A, B) and output tensor (C) for operations
-
-# ONNX to RKNN Model Conversion
-
-## Quick Start
-
-Convert ONNX models to RKNN format for RK3588 NPU acceleration:
-
-### 1. Extract Toolkit
-```bash
-cd /tmp
-python3 -m zipfile -e /home/orangepi/ezrknn-toolkit2/rknn-toolkit2/packages/arm64/rknn_toolkit2-2.3.2-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl extracted_rknn_full
-```
-
-### 2. Convert Model
-```bash
-PYTHONPATH=/tmp/extracted_rknn_full python3 /tmp/extracted_rknn_full/rknn/api/rknn_convert.py \
-  -i /home/orangepi/npu/models/your_model.onnx \
-  -o /home/orangepi/npu/models/ \
-  -t rk3588
-```
-
-### 3. Test Inference
+### Run Inference on RKNN Lite
 ```python
 import sys
 sys.path.insert(0, '/tmp/extracted_rknn_lite')
@@ -234,31 +202,3 @@ rknn_lite.init_runtime()
 outputs = rknn_lite.inference(inputs=[input_data])
 rknn_lite.release()
 ```
-
-## Prerequisites
-
-- RKNN Toolkit 2 (version 2.3.2)
-- Python 3.10+
-- ARM64 platform (RK3588)
-
-## Supported Models
-
-✅ **Tested Operators**: Add, Sub, Mul, Div, Mod, Pow, Neg
-✅ **Example Models**: `add_1.onnx`, `resnet18_for_rk3588.rknn`
-
-## Status
-
-- **RKNN Runtime**: ✅ Fully functional
-- **Model Conversion**: ⚠️ Requires dependency resolution (libpng-dev)
-- **Pre-converted Models**: ✅ Work perfectly
-
-## Troubleshooting
-
-1. **Import Error**: Add toolkit to PYTHONPATH
-2. **Missing Library**: `sudo apt install libpng-dev`
-3. **Conversion Fails**: Check `models/rknn_ops.md` for supported operators
-
-## References
-
-- [RKNN Toolkit](https://github.com/rockchip-linux/rknn-toolkit2)
-- [RK3588 NPU](https://rockchip.fr/RK3588%20NPU/)
