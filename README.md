@@ -15,9 +15,9 @@ python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.on
 
 | ID | Operation  | CPU Time | NPU FPS  | NPU Latency | NPU Status | CPU Status | Category        | RKNN Support          |
 |----|------------|----------|----------|-------------|------------|------------|-----------------|-----------------------|
-| 1  | zeros      | -        | 930      | 1.07ms      | ✅         | ✅         | Tensor Creation | pytorch zeros  |
-| 2  | ones       | -        | 875      | 1.14ms      | ✅         | ✅         | Tensor Creation | pytorch ones  |
-| 3  | empty      | -        | -        | -           | ✅         | ✅         | Tensor Creation | pytorch empty  |
+| 1  | zeros      | -        | 1,085    | 0.92ms      | ✅         | ✅         | Tensor Creation | ✅ (Computational) |
+| 2  | ones       | -        | 1,204    | 0.83ms      | ✅         | ✅         | Tensor Creation | ✅ (Computational) |
+| 3  | empty      | -        | 16,584   | 0.06ms      | ✅         | ✅         | Tensor Creation | ✅ (Computational) |
 | 4  | full       | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (All outputs are constants) |
 | 5  | eye        | -        | -        | -           | ❌         | ❌         | Tensor Creation | ❌ (Eye not in opset 10) |
 | 6  | arange     | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (All outputs are constants) |
