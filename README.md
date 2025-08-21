@@ -18,10 +18,10 @@ python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.on
 | 1  | zeros      | -        | 930      | 1.07ms      | ✅         | ✅         | Tensor Creation | pytorch zeros  |
 | 2  | ones       | -        | 875      | 1.14ms      | ✅         | ✅         | Tensor Creation | pytorch ones  |
 | 3  | empty      | -        | -        | -           | ✅         | ✅         | Tensor Creation | pytorch empty  |
-| 4  | full       | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (No Full op)       |
-| 5  | eye        | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (EyeLike limited)  |
-| 6  | arange     | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (aten::arange)     |
-| 7  | linspace   | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (No Linspace)      |
+| 4  | full       | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (All outputs are constants) |
+| 5  | eye        | -        | -        | -           | ❌         | ❌         | Tensor Creation | ❌ (Eye not in opset 10) |
+| 6  | arange     | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (All outputs are constants) |
+| 7  | linspace   | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (All outputs are constants) |
 | 8  | add        | -        | 8,703    | 0.11ms      | ✅         | ✅         | Arithmetic      | ✅ (Add)              |
 | 9  | sub        | -        | 5,155    | 0.19ms      | ✅         | ✅         | Arithmetic      | ✅ (Sub)              |
 | 10 | mul        | -        | 14,970   | 0.07ms      | ✅         | ✅         | Arithmetic      | ✅ (Mul)              |
@@ -30,7 +30,7 @@ python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.on
 | 13 | pow        | -        | -        | -           | ✅         | ✅         | Arithmetic      | ✅ (Pow)              |
 | 14 | neg        | -        | 18,051   | 0.06ms      | ✅         | ✅         | Arithmetic      | ❌ (Neg)              |
 | 15 | eq         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 only)       |
-| 16 | ne         | -        | -        | -           | ❌         | ✅         | Comparison      | ❌ (NotEqual)         |
+| 16 | ne         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
 | 17 | lt         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
 | 18 | le         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
 | 19 | gt         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
