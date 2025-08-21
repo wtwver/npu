@@ -9,51 +9,46 @@ python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.on
 
 3. convert and run for each onnx model
 
-## 📊 Batch Processing Results - ONNX to RKNN Conversion & Benchmarking
+## 📊 ONNX & RKNN Model Testing Results
 
-### ✅ Successful Models Performance
+### tinygrad ops table
 
-| Model                | FPS     | Latency | Category    |
-|----------------------|---------|---------|-------------|
-| adaptive_max_pool2d  | 28,248  | 0.04ms  | Pooling     |
-| round                | 25,641  | 0.04ms  | Math        |
-| flatten              | 21,141  | 0.05ms  | Reshape     |
-| leaky_relu           | 19,011  | 0.05ms  | Activation  |
-| mul                  | 14,556  | 0.07ms  | Math        |
-| sub                  | 10,460  | 0.10ms  | Math        |
-| elu                  | 8,340   | 0.12ms  | Activation  |
-| conv2d               | 8,410   | 0.12ms  | Convolution |
-| reduce_mean          | 8,257   | 0.12ms  | Reduction   |
-| neg                  | 7,727   | 0.13ms  | Math        |
-| conv1d               | 7,593   | 0.13ms  | Convolution |
-| cat                  | 6,082   | 0.16ms  | Concat      |
-| avg_pool2d           | 6,393   | 0.16ms  | Pooling     |
-| floor                | 5,382   | 0.19ms  | Math        |
-| cos                  | 5,449   | 0.18ms  | Math        |
-| sqrt                 | 5,157   | 0.19ms  | Math        |
-| softplus             | 8,183   | 0.12ms  | Activation  |
-| reduce_min           | 3,699   | 0.27ms  | Reduction   |
+| ID | Operation  | CPU Time | NPU FPS  | NPU Latency | NPU Status | CPU Status | Category        | RKNN Support          |
+|----|------------|----------|----------|-------------|------------|------------|-----------------|-----------------------|
+| 1  | zeros      | -        | 930      | 1.07ms      | ✅         | ✅         | Tensor Creation | pytorch zeros  |
+| 2  | ones       | -        | 875      | 1.14ms      | ✅         | ✅         | Tensor Creation | pytorch ones  |
+| 3  | empty      | -        | -        | -           | ✅         | ✅         | Tensor Creation | pytorch empty  |
+| 4  | full       | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (No Full op)       |
+| 5  | eye        | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (EyeLike limited)  |
+| 6  | arange     | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (aten::arange)     |
+| 7  | linspace   | -        | -        | -           | ❌         | ✅         | Tensor Creation | ❌ (No Linspace)      |
+| 8  | add        | -        | 8,703    | 0.11ms      | ✅         | ✅         | Arithmetic      | ✅ (Add)              |
+| 9  | sub        | -        | 5,155    | 0.19ms      | ✅         | ✅         | Arithmetic      | ✅ (Sub)              |
+| 10 | mul        | -        | 14,970   | 0.07ms      | ✅         | ✅         | Arithmetic      | ✅ (Mul)              |
+| 11 | div        | -        | 16,502   | 0.06ms      | ✅         | ✅         | Arithmetic      | ✅ (Div)              |
+| 12 | mod        | -        | -        | -           | ❌         | ✅         | Arithmetic      | ⚠️ (Scalar divisor only)   |
+| 13 | pow        | -        | -        | -           | ✅         | ✅         | Arithmetic      | ✅ (Pow)              |
+| 14 | neg        | -        | 18,051   | 0.06ms      | ✅         | ✅         | Arithmetic      | ❌ (Neg)              |
+| 15 | eq         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 only)       |
+| 16 | ne         | -        | -        | -           | ❌         | ✅         | Comparison      | ❌ (NotEqual)         |
+| 17 | lt         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
+| 18 | le         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
+| 19 | gt         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
+| 20 | ge         | -        | -        | -           | ⚠️         | ✅         | Comparison      | ⚠️ (INT32 not supported) |
+| 21 | sin        | -        | 4,717    | 0.21ms      | ✅         | ✅         | Math            | ✅ (Sin)              |
+| 22 | cos        | -        | 4,755    | 0.21ms      | ✅         | ✅         | Math            | ✅ (Cos)              |
+| 23 | exp        | -        | 1,320    | 0.76ms      | ✅         | ✅         | Math            | ✅ (Exp)              |
+| 24 | log        | -        | 4,292    | 0.23ms      | ✅         | ✅         | Math            | ✅ (Log)              |
+| 25 | sqrt       | -        | 4,857    | 0.21ms      | ✅         | ✅         | Math            | ✅ (Sqrt)             |
+| 26 | abs        | -        | 3,702    | 0.27ms      | ✅         | ✅         | Math            | ✅ (Auto-converted to LeakyRelu)         |
+| 27 | relu       | -        | 18,868   | 0.05ms      | ✅         | ✅         | Activation      | ✅ (Relu)             |
+| 28 | sigmoid    | -        | 3,269    | 0.31ms      | ✅         | ✅         | Activation      | ✅ (Sigmoid)          |
 
-### ❌ Failed Models (44/73)
 
-| Category             | Failed Operations |
-|----------------------|------------------|
-| Unsupported CPU Ops  | acos, asin, atan, tan, sign, ceil, trunc, gelu, quick_gelu, silu, selu, relu6, hardsigmoid, matmul, dot, gemm |
-| Invalid Operations   | ones_*, zeros_*, eye_*, empty_*, full_*, linspace_*, arange_* |
-| Shape Issues         | reshape, log2 |
-
-### 📋 Summary
-
-- **Total Models**: 73 ONNX models
-- **✅ Successful**: 29 (40%)
-- **❌ Failed**: 44 (60%)
-- **Best Performance**: 28K+ FPS (pooling operations)
-- **Average Performance**: 5K-10K FPS (most successful models)
-
-**Key Finding**: RK3588 NPU excels at pooling, convolution, and element-wise operations with excellent hardware acceleration performance.
 
 # How to convert rknn model
 python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+
 
 # How to dump GEM
 
