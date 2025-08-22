@@ -12,11 +12,11 @@ from pathlib import Path
 
 def check_dependencies():
     """Check if required programs exist"""
-    hello_path = "/home/orangepi/rk3588/rknpu-reverse-engineering/hello"
+    # Use local hello program instead of hardcoded path
+    hello_path = "./hello"
     if not os.path.exists(hello_path):
         print("Error: hello program not found!")
         print("Please compile it first:")
-        print("cd /home/orangepi/rk3588/rknpu-reverse-engineering")
         print("gcc -o hello hello.c -I.")
         return False
 
@@ -28,21 +28,34 @@ def check_dependencies():
 
     return True
 
-def dump_gem_memory(output_dir="dump"):
+def dump_gem_memory(gem_numbers, output_dir="dump"):
     """Dump GEM memory using the hello program"""
     print("=== Dumping GEM Memory for RK3588 NPU ===")
 
-    hello_path = "/home/orangepi/rk3588/rknpu-reverse-engineering/hello"
+    # Use absolute path to hello program
+    hello_path = os.path.abspath("./hello")
 
     try:
         # Create output directory
         Path(output_dir).mkdir(exist_ok=True)
 
-        # Run the hello program from the output directory
-        result = subprocess.run([hello_path],
+        # Clean up any existing dump files for the requested GEM numbers
+        for gem_num in gem_numbers:
+            for pattern in [f"gem{gem_num}-dump", f"gem{gem_num}_regdump.bin"]:
+                existing_file = Path(".") / pattern
+                if existing_file.exists():
+                    existing_file.unlink()
+                    print(f"Cleaned up existing {pattern}")
+
+        # Build command with GEM numbers
+        cmd = [hello_path] + [str(gem) for gem in gem_numbers]
+        print(f"Running command: {' '.join(cmd)}")
+
+        # Run the hello program from the current directory (not output_dir)
+        result = subprocess.run(cmd,
                               capture_output=True,
                               text=True,
-                              cwd=output_dir)
+                              cwd=".")  # Run from current directory
 
         print("=== GEM Memory Dump Output ===")
         print(result.stdout)
@@ -51,26 +64,61 @@ def dump_gem_memory(output_dir="dump"):
             print("=== Errors ===")
             print(result.stderr)
 
-        # Check for generated dump files
+        # Move created dump files to output directory
         dump_files = []
-        for file in os.listdir(output_dir):
-            if file.endswith('.bin') or 'dump' in file.lower():
-                dump_files.append(file)
-
+        # Only look for dump files for the requested GEM numbers
+        for gem_num in gem_numbers:
+            for pattern in [f"gem{gem_num}-dump", f"gem{gem_num}_regdump.bin"]:
+                dump_file = Path(".") / pattern
+                if dump_file.exists():
+                    dump_files.append(dump_file)
+        
+        # Remove duplicates and sort
+        dump_files = sorted(set(dump_files), key=lambda x: x.name)
+        
         if dump_files:
-            print(f"\n=== Generated Dump Files in {output_dir}/ ===")
-            for file in dump_files:
-                file_path = Path(output_dir) / file
-                size = file_path.stat().st_size
-                print(f"  {file}: {size} bytes")
+            print(f"\n=== Moving dump files to {output_dir}/ ===")
+            moved_count = 0
+            for dump_file in dump_files:
+                if dump_file.exists():
+                    target_path = Path(output_dir) / dump_file.name
+                    try:
+                        dump_file.rename(target_path)
+                        print(f"Moved: {dump_file.name} -> {output_dir}/")
+                        moved_count += 1
+                    except Exception as e:
+                        print(f"Error moving {dump_file.name}: {e}")
+            
+            print(f"Successfully moved {moved_count} file(s)")
+            
+            # Show which GEM objects were successfully dumped
+            dumped_gems = set()
+            for dump_file in dump_files:
+                if dump_file.name.startswith("gem") and "_" in dump_file.name:
+                    gem_num = dump_file.name.split("_")[0][3:]  # Extract number from "gem1_regdump.bin"
+                    dumped_gems.add(gem_num)
+            
+            if dumped_gems:
+                print(f"Successfully dumped GEM objects: {sorted(dumped_gems)}")
         else:
-            print("\nNo dump files were generated")
+            print("No dump files found to move")
+            print("This may indicate that the requested GEM objects are not currently active")
+            print("Make sure to run an RKNN model first to create GEM objects")
+
+        # Check what files are now in the output directory
+        output_files = list(Path(output_dir).glob("*"))
+        if output_files:
+            print(f"\n=== Files in {output_dir}/ ===")
+            for f in output_files:
+                print(f"  {f.name}")
+        else:
+            print(f"\nNo files found in {output_dir}/")
+
+        return result.returncode == 0
 
     except Exception as e:
         print(f"Error running hello program: {e}")
         return False
-
-    return True
 
 def main():
     parser = argparse.ArgumentParser(description="Dump GEM objects from RK3588 NPU")
@@ -104,7 +152,16 @@ def main():
 
     print(f"\nDumping GEM objects to {args.output_dir}/...")
 
-    if dump_gem_memory(args.output_dir):
+    # Determine which GEMs to dump
+    gems_to_dump = []
+    if args.gems:
+        gems_to_dump = args.gems
+    elif args.all:
+        gems_to_dump = [1, 2, 3]  # Default GEM objects
+    
+    print(f"Will dump GEM objects: {gems_to_dump}")
+
+    if dump_gem_memory(gems_to_dump, args.output_dir):
         print(f"\n=== GEM Memory Dump Complete ===")
         print(f"Dump files saved to: {args.output_dir}/")
     else:

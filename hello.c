@@ -12,8 +12,6 @@
 
 #include "rknpu-ioctl.h"
 
-
-
 void register3_stuff(int fd) {
     int ret;
     struct drm_gem_open gopen = { .name = 3 };
@@ -28,7 +26,7 @@ void register3_stuff(int fd) {
     if(ret < 0) exit(2);
     printf("mmap returned %p\n", mmap);
 
-    int fdo = open("/data/local/tmp/gem3-dump", O_WRONLY | O_CREAT, 0640);
+    int fdo = open("gem3-dump", O_WRONLY | O_CREAT, 0640);
     write(fdo, instr_map, gopen.size);
     close(fdo);
 
@@ -82,71 +80,40 @@ void dump_gem_flink(int fd, int flink_name) {
     munmap(instr_map, gopen.size);
 }
 
-int main(int argc, char **argv) {
-    char buf1[256], buf2[256], buf3[256];
-    memset(buf1, 0, sizeof(buf1));
-    memset(buf2, 0, sizeof(buf2));
-    memset(buf3, 0, sizeof(buf3));
-
+void dump_gem_for_decode(int fd, int flink_name) {
     int ret;
-    // Open DRI called "rknpu"
-    int fd = open("/dev/dri/card1", O_RDWR);
-    if(fd<0) exit(1);
-
-    struct drm_version dv;
-    memset(&dv, 0, sizeof(dv));
-    dv.name = buf1;
-    dv.name_len = sizeof(buf1);
-    dv.date = buf2;
-    dv.date_len = sizeof(buf2);
-    dv.desc = buf3;
-    dv.desc_len = sizeof(buf3);
-
-    ret = ioctl(fd, DRM_IOCTL_VERSION, &dv);
-    printf("drm name is %s - %s - %s\n", dv.name, dv.date, dv.desc);
-    if(ret < 0) exit(2);
-
-    struct drm_unique du;
-    du.unique = buf1;
-    du.unique_len = sizeof(buf1);;
-    ret = ioctl(fd, DRM_IOCTL_GET_UNIQUE, &du);
-    printf("du is %s\n", du.unique);
-    if(ret < 0) exit(2);
-
-#if 1
-    // Only try GEM 1 and 2 since those are the ones that exist
-    dump_gem_flink(fd, 1);
-    dump_gem_flink(fd, 2);
-#endif
-
-    register3_stuff(fd);
-
-    printf("Attempting to open GEM via flink name 1 for decode.py dump...\n");
-    struct drm_gem_open gopen = { .name = 1 };  // Use flink name 1 (regcmd from matmul)
+    printf("Attempting to open GEM via flink name %d for decode.py dump...\n", flink_name);
+    struct drm_gem_open gopen = { .name = flink_name };
     ret = ioctl(fd, DRM_IOCTL_GEM_OPEN, &gopen);
-    printf("gem flink 1: ret=%d handle=%d size=%lld\n", ret, gopen.handle, gopen.size);
+    printf("gem flink %d: ret=%d handle=%d size=%lld\n", flink_name, ret, gopen.handle, gopen.size);
     if(ret < 0) {
-        fprintf(stderr, "Failed to open GEM via flink 1 for decode-compatible dump: %s\n", strerror(errno));
+        fprintf(stderr, "Failed to open GEM via flink %d for decode-compatible dump: %s\n", flink_name, strerror(errno));
         fprintf(stderr, "The GEM objects may not be available. Try running a matmul program first.\n");
-        return 1;
+        return;
     }
-    printf("Successfully opened GEM via flink 1\n");
+    printf("Successfully opened GEM via flink %d\n", flink_name);
 
     struct rknpu_mem_map mem_map = { .handle = gopen.handle };
     ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, &mem_map);
     printf("memmap returned %d %llx\n", ret, mem_map.offset);
     if(ret < 0) {
         fprintf(stderr, "mem_map ioctl failed: %s\n", strerror(errno));
-        return 1;
+        return;
     }
     void *instr_map = mmap(NULL, gopen.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mem_map.offset);
     if(instr_map == MAP_FAILED) {
         fprintf(stderr, "mmap failed: %s\n", strerror(errno));
-        return 1;
+        return;
     }
     printf("mmap returned %p\n", instr_map);
 
-    int fdo = open("/data/local/tmp/gem1-dump", O_WRONLY | O_CREAT, 0640);
+    // Create dump filename based on GEM number
+    char dump_filename[256];
+    char regdump_filename[256];
+    snprintf(dump_filename, sizeof(dump_filename), "gem%d-dump", flink_name);
+    snprintf(regdump_filename, sizeof(regdump_filename), "gem%d_regdump.bin", flink_name);
+
+    int fdo = open(dump_filename, O_WRONLY | O_CREAT, 0640);
     write(fdo, instr_map, gopen.size);
     close(fdo);
 
@@ -154,14 +121,14 @@ int main(int argc, char **argv) {
     uint64_t *instrs = (uint64_t*)instr_map;
 
     // Create binary dump file compatible with decode.py
-    int dump_fd = open("gem1_regdump.bin", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int dump_fd = open(regdump_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if(dump_fd < 0) {
         perror("Failed to create dump file");
-        fprintf(stderr, "Error opening gem1_regdump.bin: %s\n", strerror(errno));
+        fprintf(stderr, "Error opening %s: %s\n", regdump_filename, strerror(errno));
         fprintf(stderr, "Trying to create in current directory...\n");
-        exit(1);
+        return;
     }
-    printf("Successfully created gem1_regdump.bin for decode.py\n");
+    printf("Successfully created %s for decode.py\n", regdump_filename);
 
     for(int i=0; i < (gopen.size / 8); i++) {
         uint64_t instr = instrs[i];
@@ -232,7 +199,60 @@ int main(int argc, char **argv) {
     }
 
     close(dump_fd);
-    printf("Dumped %d register commands to gem1_regdump.bin\n", (int)(gopen.size / 8));
+    printf("Dumped %d register commands to %s\n", (int)(gopen.size / 8), regdump_filename);
+}
+
+int main(int argc, char **argv) {
+    char buf1[256], buf2[256], buf3[256];
+    memset(buf1, 0, sizeof(buf1));
+    memset(buf2, 0, sizeof(buf2));
+    memset(buf3, 0, sizeof(buf3));
+
+    int ret;
+    // Open DRI called "rknpu"
+    int fd = open("/dev/dri/card1", O_RDWR);
+    if(fd<0) exit(1);
+
+    struct drm_version dv;
+    memset(&dv, 0, sizeof(dv));
+    dv.name = buf1;
+    dv.name_len = sizeof(buf1);
+    dv.date = buf2;
+    dv.date_len = sizeof(buf2);
+    dv.desc = buf3;
+    dv.desc_len = sizeof(buf3);
+
+    ret = ioctl(fd, DRM_IOCTL_VERSION, &dv);
+    printf("drm name is %s - %s - %s\n", dv.name, dv.date, dv.desc);
+    if(ret < 0) exit(2);
+
+    struct drm_unique du;
+    du.unique = buf1;
+    du.unique_len = sizeof(buf1);;
+    ret = ioctl(fd, DRM_IOCTL_GET_UNIQUE, &du);
+    printf("du is %s\n", du.unique);
+    if(ret < 0) exit(2);
+
+    // Check if GEM numbers were passed as command line arguments
+    if (argc > 1) {
+        printf("Dumping specified GEM objects...\n");
+        for (int i = 1; i < argc; i++) {
+            int gem_num = atoi(argv[i]);
+            if (gem_num > 0) {
+                printf("\n=== Processing GEM %d ===\n", gem_num);
+                dump_gem_flink(fd, gem_num);
+                dump_gem_for_decode(fd, gem_num);
+            } else {
+                fprintf(stderr, "Invalid GEM number: %s\n", argv[i]);
+            }
+        }
+    } else {
+        // Default behavior: dump GEM 1 and 2 if no arguments provided
+        printf("No GEM numbers specified, using default behavior...\n");
+        dump_gem_flink(fd, 1);
+        dump_gem_flink(fd, 2);
+        dump_gem_for_decode(fd, 1);
+    }
 
     return 0;
 }
