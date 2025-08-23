@@ -1,0 +1,678 @@
+#include <stdio.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <math.h>
+#include <time.h>
+#include <sys/mman.h>
+#include <stddef.h>
+#include <string.h>
+#include <stdio.h>
+
+#include <sys/ioctl.h>
+#include <libdrm/drm.h>
+#include "rknpu-ioctl.h"
+#include "npu_interface.h"
+#include "npu_matmul.h"
+#include "npu_hw.h"
+#include "npu_cna.h"
+#include "npu_dpu.h"
+#include "npu_matmul.h"
+#include "rkt_registers.h"
+
+#define MAX_M 384 
+#define MAX_K 4096 
+#define MAX_N 4096 
+
+int create_flink_name(int fd, uint32_t handle, uint32_t *flink_name) {
+    struct drm_gem_flink flink_req = {
+        .handle = handle,
+        .name = 0
+    };
+
+    int ret = ioctl(fd, DRM_IOCTL_GEM_FLINK, &flink_req);
+    if (ret < 0) {
+        printf("ERROR: DRM_IOCTL_GEM_FLINK failed: %s (%d)\n", strerror(errno), errno);
+        return ret;
+    }
+
+    *flink_name = flink_req.name;
+    printf("SUCCESS: Created flink name %u for handle %u\n", *flink_name, handle);
+    return 0;
+}
+
+int open_gem_by_flink(int fd, uint32_t flink_name, uint32_t *handle, uint64_t *size) {
+    struct drm_gem_open gopen = {
+        .name = flink_name,
+        .handle = 0,
+        .size = 0
+    };
+    
+    int ret = ioctl(fd, DRM_IOCTL_GEM_OPEN, &gopen);
+    if (ret < 0) {
+        printf("DRM_IOCTL_GEM_OPEN failed: %s\n", strerror(errno));
+        return ret;
+    }
+    
+    *handle = gopen.handle;
+    *size = gopen.size;
+    printf("Opened GEM object with flink name %u: handle=%u, size=%lu\n", 
+           flink_name, *handle, *size);
+    return 0;
+}
+
+float rand_float() {
+    return rand()/(float)RAND_MAX;
+}
+
+void matmul_fp32(int m, int k, int n, _Float16 *src0 , _Float16 *src1, float* dst) {
+    for (int i = 0; i < m; i++) {
+      for (int j = 0; j < n; j++) {
+        float sum = 0;
+        for (int l = 0; l < k; l++) {
+          sum += src0[i*k + l] * src1[j*k + l];
+        }
+       dst[i*n + j] = sum;
+      }
+    }
+}
+
+int weight_fp16(int C, int k, int c) {
+  int dst =0;
+  int kpg = ((k-1)/16);
+  int cpg = ((c-1)/32);
+  dst = ((cpg*32)*16)+ (kpg*16*C);
+  dst = dst + ((c-1)%32) + (((k-1)%16)*32);
+  return dst;
+}
+
+int feature_data(int C, int H, int W, int C2, int c, int h, int w) {
+  int plane = (c-1)/C2;
+  int src = plane * H * W * C2;
+  int offset = (c-1) % C2;
+  int pos = src + C2 * ((h-1) * W + (w-1)) + offset;
+  return pos;
+}
+
+
+// #define NPUOP(op, value, reg) (((uint64_t)(op & 0xffff))<< 48) | ( ((uint64_t)(value & 0xffffffff)) << 16) | (uint64_t)(reg & 0xffff)
+
+static inline uint64_t EMIT(uint32_t reg, uint32_t value)
+{
+  uint32_t target = rkt_get_target(reg) + 0x1;
+
+  uint64_t packed_value = 0;
+  packed_value = ((uint64_t)target) << 48;
+  packed_value |= ((uint64_t)value) << 16;
+  packed_value |= (uint64_t)reg;
+
+  return packed_value;
+}
+
+// only using cna & core, dpu outputs to memory
+void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_desc, npu_dpu_desc *dpu_desc) {
+  uint32_t value;
+
+  printf("DEBUG: gen_matmul_task called\n");
+  printf("DEBUG: cna_desc->datain_channel=%u, cna_desc->weight_kernels=%u\n", 
+         cna_desc->datain_channel, cna_desc->weight_kernels);
+  printf("DEBUG: Writing ops[0] to ops[10]\n");
+
+  static_assert(OP_REG_DPU == 0x1001, "OP_REG_DPU must be 0x1001");
+  static_assert(DPU_S_POINTER == 0x4004, "DPU_S_POINTER must be 0x4004");
+
+  ops[0] = NPUOP(OP_REG_DPU, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1), DPU_S_POINTER);
+  
+  // EMIT(0x00004004, 0xE)
+  assert(ops[0] == EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1)));
+
+
+
+
+
+  value = ((cna_desc->proc_precision & 0x7) <<7) |  ((cna_desc->in_precision & 0x7)<<4) | 
+  (cna_desc->conv_mode & 0xf);
+  // value = ((cna_desc->proc_precision << 7) & 0x00000380) |  ((cna_desc->in_precision & 0x7)<<4) | 
+  ops[1] = NPUOP(OP_REG_CNA, value, CNA_CONV_CON1);
+  value = ((cna_desc->kernel_groups & 0xFF) << 16) | ((cna_desc->feature_grains & 0x3FF) << 4);
+  ops[2] = NPUOP(OP_REG_CNA, value, CNA_CONV_CON2);
+  value = ((cna_desc->conv_y_stride & 0x7) << 3) | (cna_desc->conv_x_stride & 0x7);
+  ops[3] = NPUOP(OP_REG_CNA, value, CNA_CONV_CON3);
+  value = ((cna_desc->datain_width) & 0x7FF) << 16 | (cna_desc->datain_height & 0x7FF);
+  ops[4] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE0);
+  value = ((cna_desc->datain_channel-1) & 0xFFFF) << 16 | (cna_desc->datain_channel & 0xFFFF);
+  ops[5] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE1);
+  value = cna_desc->dataout_width & 0x7FF;
+  ops[6] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE2);
+  value = cna_desc->dataout_atomics & 0x3FFFF;
+  ops[7] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE3);
+  value = cna_desc->weight_bytes;
+  ops[8] = NPUOP(OP_REG_CNA, value, CNA_WEIGHT_SIZE0);
+  value = cna_desc->weight_bytes_per_kernel & 0x7FFFF;
+  ops[9] = NPUOP(OP_REG_CNA, value, CNA_WEIGHT_SIZE1);
+  value = ((cna_desc->weight_width & 0x1F) <<24) | ((cna_desc->weight_height & 0x1F) << 16) |
+    (cna_desc->weight_kernels & 0x3FFF);
+  ops[10] = NPUOP(OP_REG_CNA, value, CNA_WEIGHT_SIZE2);
+  
+  printf("DEBUG: Writing ops[11] to ops[20]\n");
+  value = ((cna_desc->weight_bank & 0xF) << 4) | (cna_desc->data_bank & 0xF);
+  ops[11] = NPUOP(OP_REG_CNA, value, CNA_CBUF_CON0);
+  value = cna_desc->data_entries & 0x1FFF;
+  ops[12] = NPUOP(OP_REG_CNA, value, CNA_CBUF_CON1);
+  value = ((cna_desc->data_sign & 0x1) << 3) | ((cna_desc->cvt_type & 0x1)<< 1) | (cna_desc->cvt_bypass & 0x1);
+  ops[13] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON0);
+  value = ((cna_desc->cvt_scale0 & 0xFFFF) << 16) | 0x0;
+  ops[14] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON1);
+  value = ((cna_desc->cvt_scale1 & 0xFFFF) << 16) | 0x0;
+  ops[15] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON2);
+  value = ((cna_desc->cvt_scale2 & 0xFFFF) << 16) | 0x0;
+  ops[16] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON3);
+  value = ((cna_desc->cvt_scale3 & 0xFFFF) << 16) | 0x0;
+  ops[17] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON4);
+  value = cna_desc->fc_skip_en & 0x1;
+  ops[18] = NPUOP(OP_REG_CNA, value, CNA_FC_CON0);
+  value = cna_desc->data_offset & 0x1FFFF;
+  ops[19] = NPUOP(OP_REG_CNA, value, CNA_FC_CON1); 
+  value = ((cna_desc->pad_left & 0xF) << 4) | (cna_desc->pad_top & 0xF);
+  ops[20] = NPUOP(OP_REG_CNA, value, CNA_PAD_CON0);
+
+  printf("DEBUG: Writing ops[21] to ops[30]\n");
+  ops[21] = NPUOP(OP_REG_CNA, cna_desc->feature_base_addr, CNA_FEATURE_DATA_ADDR);
+  value = cna_desc->weight_offset & 0x1FFFF;
+  ops[22] = NPUOP(OP_REG_CNA, value, CNA_FC_CON2);
+  value = ((cna_desc->weight_burst_len & 0xF) << 16) | (cna_desc->data_burst_len & 0xF);
+  ops[23] = NPUOP(OP_REG_CNA, value, CNA_DMA_CON0);
+  value = cna_desc->line_stride & 0xFFFFFFF;
+  ops[24] = NPUOP(OP_REG_CNA, value, CNA_DMA_CON1);
+  value = cna_desc->surf_stride & 0xFFFFFFF;
+  ops[25] = NPUOP(OP_REG_CNA, value, CNA_DMA_CON2);
+  value = ((cna_desc->dma_width & 0x7FF) << 16) | (cna_desc->dma_height & 0x7FF);
+  ops[26] = NPUOP(OP_REG_CNA, value, CNA_FC_DATA_SIZE0);
+  value = cna_desc->dma_channel & 0xFFFF;
+  ops[27] = NPUOP(OP_REG_CNA, value, CNA_FC_DATA_SIZE1);
+  ops[28] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_CTRL);
+  ops[29] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_REGNUM);
+  ops[30] = NPUOP(OP_REG_CNA, cna_desc->decompress_addr0, CNA_DCOMP_ADDR0);
+
+  printf("DEBUG: Writing ops[31] to ops[50]\n");
+  ops[31] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT);
+  ops[32] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT1);
+  ops[33] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT2);
+  ops[34] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT3);
+  ops[35] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT4);
+  ops[36] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT5);
+  ops[37] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT6);
+  ops[38] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT7);
+  ops[39] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT8);
+  ops[40] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT9);
+  ops[41] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT10);
+  ops[42] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT11);
+  ops[43] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT12);
+  ops[44] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT13);
+  ops[45] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT14);
+  ops[46] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT15);
+  ops[47] = NPUOP(OP_REG_CNA, 0x0, CNA_CVT_CON5);
+  ops[48] = NPUOP(OP_REG_CNA, 0x0, CNA_PAD_CON1);
+  value = ((core_desc->proc_precision & 0x7) << 8) | (core_desc->qd_en & 0x1);
+  ops[49] = NPUOP(OP_REG_CORE, value, CORE_MISC_CFG);
+  value = ((core_desc->dataout_height & 0xFFFF) << 16) | (core_desc->dataout_width & 0xFFFF);
+  ops[50] = NPUOP(OP_REG_CORE, value, CORE_DATAOUT_SIZE_0);
+  value = core_desc->dataout_channel & 0xFFFF;
+  ops[51] = NPUOP(OP_REG_CORE, value, CORE_DATAOUT_SIZE_1);
+  ops[52] = NPUOP(OP_REG_CORE, 0x0, CORE_CLIP_TRUNCATE);
+  ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
+
+  printf("DEBUG: Writing ops[54] to ops[70]\n");
+  value = ((dpu_desc->burst_len & 0xF) << 5) | ((dpu_desc->conv_mode & 0x3) <<3) |
+    ((dpu_desc->output_mode & 0x3) <<1) | (dpu_desc->flying_mode & 0x1);
+  ops[54] = NPUOP(OP_REG_DPU, value, DPU_FEATURE_MODE_CFG);
+  value = ((dpu_desc->out_precision & 0x7) << 29) | ((dpu_desc->in_precision & 0x7) << 26) |
+    (dpu_desc->proc_precision & 0x7);
+  ops[55] = NPUOP(OP_REG_DPU, value, DPU_DATA_FORMAT);
+  ops[56] = NPUOP(OP_REG_DPU, 0x0, DPU_OFFSET_PEND);
+  ops[57] = NPUOP(OP_REG_DPU, dpu_desc->dst_base_addr, DPU_DST_BASE_ADD);
+  value = (dpu_desc->dst_surf_stride & 0xFFFFFFF) << 4;
+  ops[58] = NPUOP(OP_REG_DPU, value, DPU_DST_SURF_STRIDE);
+  value = dpu_desc->width & 0x1FFF;
+  ops[59] = NPUOP(OP_REG_DPU, value, DPU_DATA_CUBE_WIDTH);
+  value = dpu_desc->height & 0x1FFF;
+  ops[60] = NPUOP(OP_REG_DPU, value, DPU_DATA_CUBE_HEIGHT);
+  ops[61] = NPUOP(OP_REG_DPU, 0x0, DPU_DATA_CUBE_NOTCH_ADDR);
+  value = ((dpu_desc->channel & 0x1FFF) << 16) | (dpu_desc->channel & 0x1FFF);
+  ops[62] = NPUOP(OP_REG_DPU, value, DPU_DATA_CUBE_CHANNEL);
+  value = ((dpu_desc->bs_relu_bypass & 0x1) << 6) | ((dpu_desc->bs_mul_bypass & 0x1) << 4) |
+    ((dpu_desc->bs_alu_bypass & 0x1) << 1) | (dpu_desc->bs_bypass & 0x1);
+  ops[63] = NPUOP(OP_REG_DPU, value, DPU_BS_CFG);
+  ops[64] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_ALU_CFG);
+  ops[65] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_MUL_CFG);
+  ops[66] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_RELUX_CMP_VALUE);
+  value = ((dpu_desc->size_e_2 & 0x7) << 8) | ((dpu_desc->size_e_1 & 0x7) << 5) | 
+    ((dpu_desc->size_e_0 & 0x7) << 2) | ((dpu_desc->od_bypass & 0x1) << 1);
+  ops[67] = NPUOP(OP_REG_DPU, value,  DPU_BS_OW_CFG);
+  ops[68] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_OW_OP);
+  value = dpu_desc->channel_wdma & 0x1FFF;
+  ops[69] = NPUOP(OP_REG_DPU, value, DPU_WDMA_SIZE_0);
+  value = ((dpu_desc->height_wdma & 0x1FFF) << 16) | (dpu_desc->width_wdma & 0x1FFF);
+  ops[70] = NPUOP(OP_REG_DPU, value, DPU_WDMA_SIZE_1);
+  value = ((dpu_desc->bn_relu_bypass & 0x1) << 6) | ((dpu_desc->bn_mul_bypass &0x1) << 4) |
+    ((dpu_desc->bn_alu_bypass & 0x1) << 1) | (dpu_desc->bn_bypass & 0x1);
+  ops[71] = NPUOP(OP_REG_DPU, value, DPU_BN_CFG);
+  ops[72] = NPUOP(OP_REG_DPU, 0x0, DPU_BN_ALU_CFG);
+  ops[73] = NPUOP(OP_REG_DPU, 0x0, DPU_BN_MUL_CFG);
+  ops[74] = NPUOP(OP_REG_DPU, 0x0,DPU_BN_RELUX_CMP_VALUE);
+  value = ((dpu_desc->ew_relu_bypass & 0x1) << 9) | ((dpu_desc->ew_op_cvt_bypass & 0x1) << 8) |
+    ((dpu_desc->ew_lut_bypass & 0x1) <<7) | ((dpu_desc->ew_op_bypass & 0x1) << 1) |
+    (dpu_desc->ew_bypass & 0x1);
+  ops[75] = NPUOP(OP_REG_DPU, value, DPU_EW_CFG);
+  ops[76] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_CVT_OFFSET_VALUE);
+  ops[77] = NPUOP(OP_REG_DPU, 0x1, DPU_EW_CVT_SCALE_VALUE);
+  ops[78] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_RELUX_CMP_VALUE);
+  ops[79] = NPUOP(OP_REG_DPU, 0x0, DPU_OUT_CVT_OFFSET);
+  value = ((dpu_desc->fp32tofp16_en & 0x1) << 16) | (dpu_desc->out_cvt_scale & 0xFFFF);
+  ops[80] = NPUOP(OP_REG_DPU, value, DPU_OUT_CVT_SCALE);
+  ops[81] = NPUOP(OP_REG_DPU, 0x0, DPU_OUT_CVT_SHIFT);
+  ops[82] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_0);
+  ops[83] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_1);
+  ops[84] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_2);
+  ops[85] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_3);
+  ops[86] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_4);
+  ops[87] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_5);
+  ops[88] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_6);
+  ops[89] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_OP_VALUE_7);
+  value = ((dpu_desc->surf_add & 0xFFFFFFF) << 4);
+  ops[90] = NPUOP(OP_REG_DPU, value, DPU_SURFACE_ADD);
+  ops[91] = NPUOP(OP_REG_DPU, 0x0, DPU_40C4);
+  ops[92] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_ACCESS_CFG);
+  ops[93] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_ACCESS_DATA);
+  ops[94] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_CFG);
+  ops[95] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_INFO);
+  ops[96] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LE_START);
+  ops[97] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LE_END);
+  ops[98] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LO_START);
+  ops[99] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LO_END);
+  ops[100] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LE_SLOPE_SCALE);
+  ops[101] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LE_SLOPE_SHIFT);
+  ops[102] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LO_SLOPE_SCALE);
+  ops[103] = NPUOP(OP_REG_DPU, 0x0, DPU_LUT_LO_SLOPE_SHIFT);
+  ops[104] = NPUOP(OP_NONE, 0x0, 0x0);
+  ops[105] = NPUOP(OP_REG_PC, 0x0, PC_REGISTER_AMOUNTS);
+  ops[106] = NPUOP(OP_40, 0x0, 0x0);
+  ops[107] = NPUOP(OP_ENABLE, (PC_ENABLE_DPU | PC_ENABLE_CNA | PC_ENABLE), PC_OPERATION_ENABLE);
+
+  printf("DEBUG: gen_matmul_task completed successfully\n");
+  printf("DEBUG: Total operations written: 108 (ops[0] to ops[107])\n");
+  printf("DEBUG: Expected regcfg_amount: 104\n");
+  printf("DEBUG: Mismatch: 108 - 104 = 4 operations extra\n");
+}
+
+/*
+ * Simplified version of matrix mutliplication because :
+ * a) we fail if cbuf storage is exceeded ie M,K,N get too large
+ * b) because of (a) only generates a single task
+ *
+ * task memory needs to hold at laest 112 values
+ * TODO: Fix a) & b) 
+ *
+ */
+int gen_matmul_fp16(matmul_params_t *params) {
+
+   npu_cna_desc cna_desc;
+   npu_core_desc core_desc;
+   npu_dpu_desc dpu_desc;
+
+   unsigned int fd_bytes;
+   unsigned int fd_banks;
+   unsigned int weight_banks;
+   int surf_stride;
+
+   // Add debug output
+   printf("DEBUG: gen_matmul_fp16 called with params: m=%d, k=%d, n=%d\n", params->m, params->k, params->n);
+
+   cna_desc.conv_mode = direct_convolution;
+   cna_desc.in_precision = precision_float16;
+   cna_desc.proc_precision = precision_float16;
+
+   cna_desc.kernel_groups = 0;
+   cna_desc.feature_grains = params->m+1;
+   cna_desc.conv_x_stride = 1;
+   cna_desc.conv_y_stride = 1;
+
+   cna_desc.datain_width = 1;
+   cna_desc.datain_height = params->m;
+   cna_desc.datain_channel = params->k;
+   cna_desc.dataout_width = 1;
+   cna_desc.dataout_height = params->m;
+   cna_desc.dataout_atomics = cna_desc.dataout_width * cna_desc.dataout_height;
+
+   cna_desc.weight_width = 1;
+   cna_desc.weight_height = 1;
+   cna_desc.weight_kernels = params->n;
+   cna_desc.weight_bytes_per_kernel = cna_desc.weight_width * cna_desc.weight_height * 
+     cna_desc.datain_channel * sizeof(__fp16);
+   cna_desc.weight_bytes = cna_desc.weight_bytes_per_kernel * cna_desc.weight_kernels; 
+
+   fd_bytes = cna_desc.datain_width * cna_desc.datain_height * cna_desc.datain_channel * sizeof(__fp16);
+   fd_banks = (fd_bytes / NPU_CBUF_BANK_SIZE);
+   fd_banks = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? fd_banks : fd_banks +1;
+   weight_banks = (cna_desc.weight_bytes / NPU_CBUF_BANK_SIZE);
+   weight_banks = ((cna_desc.weight_bytes % NPU_CBUF_BANK_SIZE)==0) ? weight_banks : weight_banks + 1;
+   
+   // Add debug output for CBUF calculations
+   printf("DEBUG: CBUF calculations:\n");
+   printf("  fd_bytes=%u, NPU_CBUF_BANK_SIZE=%u\n", fd_bytes, NPU_CBUF_BANK_SIZE);
+   printf("  weight_bytes_per_kernel=%u\n", cna_desc.weight_bytes_per_kernel);
+   printf("  weight_bytes=%u\n", cna_desc.weight_bytes);
+   printf("  fd_banks calculation: %u / %u = %u, remainder %u\n", 
+          fd_bytes, NPU_CBUF_BANK_SIZE, fd_bytes / NPU_CBUF_BANK_SIZE, fd_bytes % NPU_CBUF_BANK_SIZE);
+   printf("  weight_banks calculation: %u / %u = %u, remainder %u\n", 
+          cna_desc.weight_bytes, NPU_CBUF_BANK_SIZE, cna_desc.weight_bytes / NPU_CBUF_BANK_SIZE, cna_desc.weight_bytes % NPU_CBUF_BANK_SIZE);
+   
+   if ((fd_banks) > NPU_CBUF_BANKS-1) {
+     printf("DEBUG: ERROR: fd_banks (%u) > NPU_CBUF_BANKS-1 (%u), returning -1\n", fd_banks, NPU_CBUF_BANKS-1);
+     return -1;
+   } else {
+       if (cna_desc.weight_bytes_per_kernel <= NPU_CBUF_BANK_SIZE) {
+        weight_banks = NPU_CBUF_BANKS - fd_banks;
+        printf("DEBUG: weight_banks recalculated to %u\n", weight_banks);
+        printf("DEBUG: Total banks used: %u + %u = %u (max: %u)\n", fd_banks, weight_banks, fd_banks + weight_banks, NPU_CBUF_BANKS);
+       } else {
+         printf("DEBUG: ERROR: weight_bytes_per_kernel (%u) > NPU_CBUF_BANK_SIZE (%u), returning -2\n", 
+                cna_desc.weight_bytes_per_kernel, NPU_CBUF_BANK_SIZE);
+         return -2;
+       }
+   }
+
+   cna_desc.weight_bank = weight_banks;
+   cna_desc.data_bank = fd_banks;
+   cna_desc.data_entries = (cna_desc.datain_width * cna_desc.datain_channel) / 32;
+   cna_desc.data_entries = (((cna_desc.datain_width * cna_desc.datain_channel) % 32) == 0) ? 
+     cna_desc.data_entries : cna_desc.data_entries +1;
+   cna_desc.data_sign = 0x1;
+   cna_desc.cvt_type  = 0x1;
+   cna_desc.cvt_bypass = 0x1;
+   cna_desc.cvt_scale0 = 0x1;
+   cna_desc.cvt_scale1 = 0x1;
+   cna_desc.cvt_scale2 = 0x1;
+   cna_desc.cvt_scale3 = 0x1;
+   cna_desc.fc_skip_en = 0;
+   cna_desc.data_offset = 0x0;
+   cna_desc.pad_left = 0;
+   cna_desc.pad_top = 0;
+   cna_desc.feature_base_addr = params->input_dma;
+   cna_desc.weight_offset = 0;
+   cna_desc.weight_burst_len = 0xf;
+   cna_desc.data_burst_len = 0xf;
+   cna_desc.line_stride = cna_desc.datain_width * 4;
+   surf_stride = cna_desc.line_stride * ((cna_desc.datain_height / 4)-1);
+   surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
+   cna_desc.surf_stride = surf_stride;
+   cna_desc.dma_width = cna_desc.datain_width;
+   cna_desc.dma_height = cna_desc.datain_height;
+   cna_desc.dma_channel = cna_desc.datain_channel;
+   cna_desc.decompress_addr0 = params->weights_dma;
+
+   core_desc.proc_precision = precision_float16;
+   core_desc.qd_en = 1;
+   core_desc.dataout_height = cna_desc.dataout_height - 1;
+   core_desc.dataout_width = cna_desc.dataout_width - 1;
+   core_desc.dataout_channel = cna_desc.weight_kernels -1;
+
+   dpu_desc.burst_len = 0xf;
+   dpu_desc.conv_mode = direct_convolution;
+   dpu_desc.output_mode = 0x2;
+   dpu_desc.flying_mode = 0x0;
+   dpu_desc.out_precision = (params->fp32tofp16==0) ? precision_float32 : precision_float16;
+   dpu_desc.in_precision = precision_float16;
+   dpu_desc.proc_precision = precision_float16;
+   dpu_desc.dst_base_addr = params->output_dma;
+   dpu_desc.dst_surf_stride = cna_desc.dataout_height * cna_desc.dataout_width;
+   dpu_desc.width = core_desc.dataout_width ;
+   dpu_desc.height = core_desc.dataout_height;
+   dpu_desc.channel = core_desc.dataout_channel;
+   dpu_desc.bs_bypass = 1;
+   dpu_desc.bs_alu_bypass = 1;
+   dpu_desc.bs_mul_bypass = 1;
+   dpu_desc.bs_relu_bypass = 1;
+   dpu_desc.bn_bypass =1;
+   dpu_desc.bn_alu_bypass = 1;
+   dpu_desc.bn_mul_bypass = 1;
+   dpu_desc.bn_relu_bypass = 1;
+   dpu_desc.ew_bypass =1;
+   dpu_desc.ew_op_bypass =1;
+   dpu_desc.ew_lut_bypass =1;
+   dpu_desc.ew_op_cvt_bypass =1;
+   dpu_desc.ew_relu_bypass=1;
+   dpu_desc.fp32tofp16_en = params->fp32tofp16 & 0x1;
+   dpu_desc.out_cvt_scale =1;
+   if (params->fp32tofp16 ==0) {
+     dpu_desc.size_e_2 = 3;
+     dpu_desc.size_e_1 = 3;
+     dpu_desc.size_e_0 = 3;
+   } else {
+     dpu_desc.size_e_2 = 1;
+     dpu_desc.size_e_1 = 1;
+     dpu_desc.size_e_0 = 1;
+   }
+   dpu_desc.od_bypass = 1;
+   dpu_desc.width_wdma = core_desc.dataout_width;
+   dpu_desc.height_wdma = core_desc.dataout_height;
+   dpu_desc.channel_wdma = core_desc.dataout_channel;
+   dpu_desc.surf_add = (!params->fp32tofp16) ? dpu_desc.dst_surf_stride * 4 : dpu_desc.dst_surf_stride * 2;
+
+   gen_matmul_task(params->tasks,&cna_desc,&core_desc,&dpu_desc);
+
+   return 0;
+}
+
+_Float16 matrixA[(MAX_M*MAX_K)];
+_Float16 matrixB[(MAX_N*MAX_K)];
+float expected_result[MAX_M*MAX_N];
+uint64_t npu_regs[112];
+
+int main(int argc, char **argv) {
+    if (argc !=4) {
+      printf("Invalid number of args %d, needs to supply M K N ie matmul_fp16 <M> <K> <N>\n",argc);
+      return -1; 
+    }
+
+    int ret=0;
+    unsigned int M = atoi(argv[1]); 
+    unsigned int K = atoi(argv[2]); 
+    unsigned int N = atoi(argv[3]);
+
+    uint64_t regcmd_dma, regcmd_obj, tasks_dma, tasks_obj, input_dma, input_obj, weights_dma, weights_obj, output_dma, output_obj;
+    uint32_t regcmd_handle, tasks_handle, input_handle, weights_handle, output_handle;
+    uint32_t regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink;
+
+    // check matric dimensin
+    if (M<=0 || M>MAX_M || ((M%4)!=0 && M!=1) || K<=0 || K>MAX_K || (K%32)!=0 || N<=0 || N>MAX_N || (N%16)!=0) {
+        printf("Invalid matrix dimensions: M=%d (must be >0, <=%d, multiple of 4 or 1), K=%d (must be >0, <=%d, multiple of 32), N=%d (must be >0, <=%d, multiple of 16)\n", M, MAX_M, K, MAX_K, N, MAX_N);
+        return -1;
+    }
+
+    // allocate mem
+    int fd = npu_open();
+    uint64_t *regcmd         = mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle);
+    struct rknpu_task *tasks = mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
+    void *input              = mem_allocate(fd, M*K*sizeof(__fp16), &input_dma, &input_obj, 0, &input_handle);
+    void *weights            = mem_allocate(fd, N*K*sizeof(__fp16), &weights_dma, &weights_obj, 0, &weights_handle);
+    void *output             = mem_allocate(fd, M*N*sizeof(float), &output_dma, &output_obj, 0, &output_handle);
+    printf("input dma is %lx, output dma is %lx, weights dma is %lx\n", input_dma, output_dma, weights_dma);
+    if ((regcmd == NULL) || (tasks == NULL) || (input == NULL) || (weights == NULL) || (output == NULL)) {
+      printf("Failed to allocate memory \n");
+      exit(1);
+    }
+    
+    if (create_flink_name(fd, regcmd_handle, &regcmd_flink) < 0 ||
+        create_flink_name(fd, tasks_handle, &tasks_flink) < 0 ||
+        create_flink_name(fd, input_handle, &input_flink) < 0 ||
+        create_flink_name(fd, weights_handle, &weights_flink) < 0 ||
+        create_flink_name(fd, output_handle, &output_flink) < 0) {
+        printf("Failed to create flink name for one or more GEM objects\n");
+        goto cleanup;
+    }
+    printf("Created flink names: regcmd=%u, tasks=%u, input=%u, weights=%u, output=%u\n",
+           regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink);
+  
+    npu_reset(fd);
+  
+    matmul_params_t params;
+    params.m = M;
+    params.k = K;
+    params.n = N;
+    params.input_dma = input_dma;
+    params.weights_dma = weights_dma;
+    params.output_dma = output_dma;
+    params.tasks = (uint64_t *) &npu_regs;
+    params.fp32tofp16 = 0;
+    ret = gen_matmul_fp16(&params);
+    if (ret !=0) {
+      printf("gen_matmul_fp16 failed %d\n",ret);
+      goto cleanup;
+    }
+    
+    memcpy(regcmd,npu_regs,sizeof(npu_regs));
+  
+    tasks[0].flags  = 0;
+    tasks[0].op_idx = 0;
+    tasks[0].enable_mask = 0xd;
+    tasks[0].int_mask = 0x300; // wait for DPU to finish
+    tasks[0].int_clear = 0x1ffff;
+    tasks[0].int_status =0;
+    tasks[0].regcfg_amount = sizeof(npu_regs)/sizeof(uint64_t)-(RKNPU_PC_DATA_EXTRA_AMOUNT+4);
+    tasks[0].regcfg_offset = 0;
+    tasks[0].regcmd_addr = regcmd_dma;
+  
+    memset((void *)input,0,M*K*sizeof(_Float16));
+    memset((void *)weights,0,K*N*sizeof(_Float16));
+    memset((void *)output,0,M*N*sizeof(float));
+  
+    srand(time(NULL));
+  
+    // Need to use whole numbers for now as decimals return a slighty 
+    // different result compared to ARM float calculations. Hence Rockchip
+    // examples don't perform a exact comparison between expected and acutal
+    // results from the matrix mutlipcation for fp16. Need to know why?
+    for (int i = 0; i < M*K; i++) {
+      matrixA[i] = (int)(10.0*rand_float()); 
+    }
+    
+    for (int i = 0; i < N*K; i++) {
+      matrixB[i] = (int)(10.0*rand_float());
+    }
+  
+    _Float16 *weights_fp16 = weights;
+     
+    for(int n=1;n<=N;n++) {
+      for(int k=1;k<=K;k++) {
+        weights_fp16[weight_fp16(K,n,k)]= matrixB[((n-1)*K)+(k-1)];
+      }
+    }
+   
+    _Float16 *feature_data_fp16 = (_Float16*) input;
+  
+    for (int m=1;m<=M;m++) {
+      for (int k=1;k<=K;k++) {
+        feature_data_fp16[feature_data(K,M,1,8,k,m,1)]= matrixA[((m-1)*K)+(k-1)];
+      }
+    }
+  
+    matmul_fp32(M,K,N,(_Float16 *)&matrixA, (_Float16 *)&matrixB, (float *)&expected_result);
+  
+    struct rknpu_submit submit = {
+      .flags = RKNPU_JOB_PC | RKNPU_JOB_BLOCK | RKNPU_JOB_PINGPONG,
+      .timeout = 6000,
+      .task_start = 0,
+      .task_number = 1,
+      .task_counter = 0,
+      .priority = 0,
+      .task_obj_addr = tasks_obj,
+      .regcfg_obj_addr = 0,
+      .task_base_addr = 0,
+      .user_data = 0,
+      .core_mask = 1,
+      .fence_fd = -1,
+      .subcore_task = { // Only use core 1, nothing for core 2/3
+        {
+          .task_start = 0,
+          .task_number = 1,
+        }, { 1, 0}, {2, 0}, {0,0}, {0,0}
+      },
+    };
+    ret = ioctl(fd, DRM_IOCTL_RKNPU_SUBMIT, &submit);
+    printf("RKNPU_SUBMIT returned %d\n", ret);
+    if (ret <0) {
+      return ret;
+    }
+  
+    printf("=========================================================================================================\n");
+    float *output_data = (float*) output;
+    for (int m=1;m<=M;m++) {
+      for (int n=1;n<N;n++) {
+        float actual = output_data[feature_data(N, M, 1, 4, n, m, 1)];
+        float expected = expected_result[((m-1)*N)+(n-1)];
+        int32_t *e, *a;
+        e = (int32_t *)&expected;
+        a = (int32_t *)&actual;
+        if (actual != expected) {
+          printf("\nmismatch m:%d n:%d  expected:%6.5f acutal:%6.5f %x %x\n",m,n,expected,actual,*e,*a);
+          ret = -1;
+        }
+      }
+    }
+    if (ret == 0) {
+     printf("Multiplication of [%d,%d] x [%d,%d] succesful \n",M,K,N,K);	  
+    }
+    printf("=========================================================================================================\n");
+  
+    // Demonstrate how to use flink names to access the GEM objects
+    printf("\n=== Demonstrating GEM FLINK functionality ===\n");
+    printf("These flink names can be used by other processes to access the same memory:\n");
+    printf("regcmd: %u, tasks: %u, input: %u, weights: %u, output: %u\n",
+           regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink);
+    
+    // Example: Open the output GEM object using its flink name
+    uint32_t reopened_handle;
+    uint64_t reopened_size;
+    if (open_gem_by_flink(fd, output_flink, &reopened_handle, &reopened_size) == 0) {
+      printf("Successfully reopened output GEM object via flink name %u\n", output_flink);
+      printf("Reopened handle: %u, size: %lu\n", reopened_handle, reopened_size);
+      
+      // Map the reopened GEM object
+      struct rknpu_mem_map mem_map = { .handle = reopened_handle, .offset = 0 };
+      int map_ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, &mem_map);
+      if (map_ret >= 0) {
+        void *reopened_map = mmap(NULL, reopened_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mem_map.offset);
+        if (reopened_map != MAP_FAILED) {
+          printf("Successfully mapped reopened GEM object at %p\n", reopened_map);
+          
+          // Verify the data is accessible
+          float *reopened_output = (float*)reopened_map;
+          printf("First few values from reopened output: %f, %f, %f\n", 
+                 reopened_output[0], reopened_output[1], reopened_output[2]);
+          
+          munmap(reopened_map, reopened_size);
+        }
+      }
+    }
+  
+  cleanup:
+    munmap(regcmd,1024);
+    munmap(tasks,1024);
+    munmap(input,M*K*sizeof(_Float16));
+    munmap(weights,N*K*sizeof(_Float16));
+    munmap(output,M*N*sizeof(float));
+  
+    mem_destroy(fd, regcmd_handle, regcmd_obj);
+    mem_destroy(fd, tasks_handle, tasks_obj );
+    mem_destroy(fd, input_handle, input_obj);
+    mem_destroy(fd, weights_handle, weights_obj);
+    mem_destroy(fd, output_handle, output_obj);
+  
+    npu_close(fd);
+    return ret;
+  }
+  
