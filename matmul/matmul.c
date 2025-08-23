@@ -288,9 +288,11 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
     );
 
     
-  value = ((dpu_desc->bs_relu_bypass & 0x1) << 6) | ((dpu_desc->bs_mul_bypass & 0x1) << 4) |
-    ((dpu_desc->bs_alu_bypass & 0x1) << 1) | (dpu_desc->bs_bypass & 0x1);
-  ops[63] = NPUOP(OP_REG_DPU, value, DPU_BS_CFG);
+  ops[63] = EMIT(DPU_BS_CFG,
+      DPU_BS_CFG_BS_RELU_BYPASS(dpu_desc->bs_relu_bypass) |
+      DPU_BS_CFG_BS_MUL_BYPASS(dpu_desc->bs_mul_bypass) |
+      DPU_BS_CFG_BS_ALU_BYPASS(dpu_desc->bs_alu_bypass) |
+      DPU_BS_CFG_BS_BYPASS(dpu_desc->bs_bypass));
   ops[64] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_ALU_CFG);
   ops[65] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_MUL_CFG);
   ops[66] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_RELUX_CMP_VALUE);
@@ -720,4 +722,3 @@ int main(int argc, char **argv) {
     npu_close(fd);
     return ret;
   }
-  
