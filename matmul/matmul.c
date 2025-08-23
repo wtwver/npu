@@ -293,17 +293,16 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
       DPU_BS_CFG_BS_MUL_BYPASS(dpu_desc->bs_mul_bypass) |
       DPU_BS_CFG_BS_ALU_BYPASS(dpu_desc->bs_alu_bypass) |
       DPU_BS_CFG_BS_BYPASS(dpu_desc->bs_bypass));
-  ops[64] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_ALU_CFG);
-  ops[65] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_MUL_CFG);
-  ops[66] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_RELUX_CMP_VALUE);
-  value = ((dpu_desc->size_e_2 & 0x7) << 8) | ((dpu_desc->size_e_1 & 0x7) << 5) | 
+  ops[64] = EMIT(DPU_BS_ALU_CFG, 0x0);
+  ops[65] = EMIT(DPU_BS_MUL_CFG, 0x0);
+  ops[66] = EMIT(DPU_BS_RELUX_CMP_VALUE, 0x0);
+  value = ((dpu_desc->size_e_2 & 0x7) << 8) | ((dpu_desc->size_e_1 & 0x7) << 5) |
     ((dpu_desc->size_e_0 & 0x7) << 2) | ((dpu_desc->od_bypass & 0x1) << 1);
-  ops[67] = NPUOP(OP_REG_DPU, value,  DPU_BS_OW_CFG);
-  ops[68] = NPUOP(OP_REG_DPU, 0x0, DPU_BS_OW_OP);
-  value = dpu_desc->channel_wdma & 0x1FFF;
-  ops[69] = NPUOP(OP_REG_DPU, value, DPU_WDMA_SIZE_0);
+  ops[67] = EMIT(DPU_BS_OW_CFG, value);
+  ops[68] = EMIT(DPU_BS_OW_OP, 0x0);
+  ops[69] = EMIT(DPU_WDMA_SIZE_0, dpu_desc->channel_wdma & 0x1FFF);
   value = ((dpu_desc->height_wdma & 0x1FFF) << 16) | (dpu_desc->width_wdma & 0x1FFF);
-  ops[70] = NPUOP(OP_REG_DPU, value, DPU_WDMA_SIZE_1);
+  ops[70] = EMIT(DPU_WDMA_SIZE_1, value);
   value = ((dpu_desc->bn_relu_bypass & 0x1) << 6) | ((dpu_desc->bn_mul_bypass &0x1) << 4) |
     ((dpu_desc->bn_alu_bypass & 0x1) << 1) | (dpu_desc->bn_bypass & 0x1);
   ops[71] = NPUOP(OP_REG_DPU, value, DPU_BN_CFG);
