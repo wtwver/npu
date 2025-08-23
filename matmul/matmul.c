@@ -304,29 +304,44 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   ops[64] = EMIT(REG_DPU_BS_ALU_CFG, 0x0);
   ops[65] = EMIT(REG_DPU_BS_MUL_CFG, 0x0);
   ops[66] = EMIT(REG_DPU_BS_RELUX_CMP_VALUE, 0x0);
-  value = ((dpu_desc->size_e_2 & 0x7) << 8) | ((dpu_desc->size_e_1 & 0x7) << 5) |
-    ((dpu_desc->size_e_0 & 0x7) << 2) | ((dpu_desc->od_bypass & 0x1) << 1);
-  ops[67] = EMIT(REG_DPU_BS_OW_CFG, value);
+  ops[67] = EMIT(REG_DPU_BS_OW_CFG, 
+      DPU_BS_OW_CFG_SIZE_E_2(dpu_desc->size_e_2) |
+      DPU_BS_OW_CFG_SIZE_E_1(dpu_desc->size_e_1) |
+      DPU_BS_OW_CFG_SIZE_E_0(dpu_desc->size_e_0) |
+      DPU_BS_OW_CFG_OD_BYPASS(dpu_desc->od_bypass)
+    );
+
+
   ops[68] = EMIT(REG_DPU_BS_OW_OP, 0x0);
   ops[69] = EMIT(REG_DPU_WDMA_SIZE_0, dpu_desc->channel_wdma & 0x1FFF);
-  value = ((dpu_desc->height_wdma & 0x1FFF) << 16) | (dpu_desc->width_wdma & 0x1FFF);
-  ops[70] = EMIT(REG_DPU_WDMA_SIZE_1, value);
-  value = ((dpu_desc->bn_relu_bypass & 0x1) << 6) | ((dpu_desc->bn_mul_bypass &0x1) << 4) |
-    ((dpu_desc->bn_alu_bypass & 0x1) << 1) | (dpu_desc->bn_bypass & 0x1);
-  ops[71] = EMIT(REG_DPU_BN_CFG, value);
+  ops[70] = EMIT(REG_DPU_WDMA_SIZE_1, 
+      DPU_WDMA_SIZE_1_HEIGHT_WDMA(dpu_desc->height_wdma) |
+      DPU_WDMA_SIZE_1_WIDTH_WDMA(dpu_desc->width_wdma)
+    );
+  ops[71] = EMIT(REG_DPU_BN_CFG, 
+      DPU_BN_CFG_BN_RELU_BYPASS(dpu_desc->bn_relu_bypass) |
+      DPU_BN_CFG_BN_MUL_BYPASS(dpu_desc->bn_mul_bypass) |
+      DPU_BN_CFG_BN_ALU_BYPASS(dpu_desc->bn_alu_bypass) |
+      DPU_BN_CFG_BN_BYPASS(dpu_desc->bn_bypass)
+    );
   ops[72] = EMIT(REG_DPU_BN_ALU_CFG, 0x0);
   ops[73] = EMIT(REG_DPU_BN_MUL_CFG, 0x0);
   ops[74] = EMIT(REG_DPU_BN_RELUX_CMP_VALUE, 0x0);
-  value = ((dpu_desc->ew_relu_bypass & 0x1) << 9) | ((dpu_desc->ew_op_cvt_bypass & 0x1) << 8) |
-    ((dpu_desc->ew_lut_bypass & 0x1) <<7) | ((dpu_desc->ew_op_bypass & 0x1) << 1) |
-    (dpu_desc->ew_bypass & 0x1);
-  ops[75] = EMIT(REG_DPU_EW_CFG, value);
+  ops[75] = EMIT(REG_DPU_EW_CFG, 
+      DPU_EW_CFG_EW_RELU_BYPASS(dpu_desc->ew_relu_bypass) |
+      DPU_EW_CFG_EW_OP_CVT_BYPASS(dpu_desc->ew_op_cvt_bypass) |
+      DPU_EW_CFG_EW_LUT_BYPASS(dpu_desc->ew_lut_bypass) |
+      DPU_EW_CFG_EW_OP_BYPASS(dpu_desc->ew_op_bypass) |
+      DPU_EW_CFG_EW_BYPASS(dpu_desc->ew_bypass)
+    );
   ops[76] = EMIT(REG_DPU_EW_CVT_OFFSET_VALUE, 0x0);
   ops[77] = EMIT(REG_DPU_EW_CVT_SCALE_VALUE, 0x1);
   ops[78] = EMIT(REG_DPU_EW_RELUX_CMP_VALUE, 0x0);
   ops[79] = EMIT(REG_DPU_OUT_CVT_OFFSET, 0x0);
-  value = ((dpu_desc->fp32tofp16_en & 0x1) << 16) | (dpu_desc->out_cvt_scale & 0xFFFF);
-  ops[80] = EMIT(REG_DPU_OUT_CVT_SCALE, value);
+  ops[80] = EMIT(REG_DPU_OUT_CVT_SCALE, 
+    DPU_OUT_CVT_SCALE_FP32TOFP16_EN(dpu_desc->fp32tofp16_en) |
+    DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(dpu_desc->out_cvt_scale)
+    );
   ops[81] = EMIT(REG_DPU_OUT_CVT_SHIFT, 0x0);
   ops[82] = EMIT(REG_DPU_EW_OP_VALUE_0, 0x0);
   ops[83] = EMIT(REG_DPU_EW_OP_VALUE_1, 0x0);
@@ -336,8 +351,7 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   ops[87] = EMIT(REG_DPU_EW_OP_VALUE_5, 0x0);
   ops[88] = EMIT(REG_DPU_EW_OP_VALUE_6, 0x0);
   ops[89] = EMIT(REG_DPU_EW_OP_VALUE_7, 0x0);
-  value = ((dpu_desc->surf_add & 0xFFFFFFF) << 4);
-  ops[90] = EMIT(REG_DPU_SURFACE_ADD, value);
+  ops[90] = EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(dpu_desc->surf_add));
   ops[91] = EMIT(DPU_40C4, 0x0);
   ops[92] = EMIT(REG_DPU_LUT_ACCESS_CFG, 0x0);
   ops[93] = EMIT(REG_DPU_LUT_ACCESS_DATA, 0x0);
