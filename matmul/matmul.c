@@ -306,9 +306,9 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   value = ((dpu_desc->bn_relu_bypass & 0x1) << 6) | ((dpu_desc->bn_mul_bypass &0x1) << 4) |
     ((dpu_desc->bn_alu_bypass & 0x1) << 1) | (dpu_desc->bn_bypass & 0x1);
   ops[71] = NPUOP(OP_REG_DPU, value, DPU_BN_CFG);
-  ops[72] = NPUOP(OP_REG_DPU, 0x0, DPU_BN_ALU_CFG);
-  ops[73] = NPUOP(OP_REG_DPU, 0x0, DPU_BN_MUL_CFG);
-  ops[74] = NPUOP(OP_REG_DPU, 0x0,DPU_BN_RELUX_CMP_VALUE);
+  ops[72] = EMIT(DPU_BN_ALU_CFG, 0x0);
+  ops[73] = EMIT(DPU_BN_MUL_CFG, 0x0);
+  ops[74] = EMIT(DPU_BN_RELUX_CMP_VALUE, 0x0);
   value = ((dpu_desc->ew_relu_bypass & 0x1) << 9) | ((dpu_desc->ew_op_cvt_bypass & 0x1) << 8) |
     ((dpu_desc->ew_lut_bypass & 0x1) <<7) | ((dpu_desc->ew_op_bypass & 0x1) << 1) |
     (dpu_desc->ew_bypass & 0x1);
