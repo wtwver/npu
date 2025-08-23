@@ -358,10 +358,14 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   ops[107] = NPUOP(OP_ENABLE, (PC_ENABLE_DPU | PC_ENABLE_CNA | PC_ENABLE), REG_PC_OPERATION_ENABLE);
   // ops[107] = EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
 
+  const int total_ops = 112;  // npu_regs array size
+  int expected_regcfg = total_ops - (RKNPU_PC_DATA_EXTRA_AMOUNT + 4);
+  int mismatch = total_ops - expected_regcfg;
+
   printf("DEBUG: gen_matmul_task completed successfully\n");
-  printf("DEBUG: Total operations written: 108 (ops[0] to ops[107])\n");
-  printf("DEBUG: Expected regcfg_amount: 104\n");
-  printf("DEBUG: Mismatch: 108 - 104 = 4 operations extra\n");
+  printf("DEBUG: Total operations written: %d (ops[0] to ops[%d])\n", total_ops, total_ops-1);
+  printf("DEBUG: Expected regcfg_amount: %d\n", expected_regcfg);
+  printf("DEBUG: Mismatch: %d - %d = %d operations extra\n", total_ops, expected_regcfg, mismatch);
 }
 
 /*
