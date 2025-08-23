@@ -122,6 +122,7 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
       DPU_S_POINTER_EXECUTER_PP_EN(1) | 
       DPU_S_POINTER_POINTER_PP_EN(1)
     );
+    
   ops[1] = EMIT(REG_CNA_CONV_CON1, 
       CNA_CONV_CON1_PROC_PRECISION(cna_desc->proc_precision) | 
       CNA_CONV_CON1_IN_PRECISION(cna_desc->in_precision) |
@@ -135,45 +136,65 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
       CNA_CONV_CON3_CONV_Y_STRIDE(cna_desc->conv_y_stride) | 
       CNA_CONV_CON3_CONV_X_STRIDE(cna_desc->conv_x_stride)
     );
-
-
-  value = ((cna_desc->datain_width) & 0x7FF) << 16 | (cna_desc->datain_height & 0x7FF);
-  ops[4] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE0);
-  value = ((cna_desc->datain_channel-1) & 0xFFFF) << 16 | (cna_desc->datain_channel & 0xFFFF);
-  ops[5] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE1);
-  value = cna_desc->dataout_width & 0x7FF;
-  ops[6] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE2);
-  value = cna_desc->dataout_atomics & 0x3FFFF;
-  ops[7] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE3);
-  value = cna_desc->weight_bytes;
-  ops[8] = NPUOP(OP_REG_CNA, value, CNA_WEIGHT_SIZE0);
-  value = cna_desc->weight_bytes_per_kernel & 0x7FFFF;
-  ops[9] = NPUOP(OP_REG_CNA, value, CNA_WEIGHT_SIZE1);
-  value = ((cna_desc->weight_width & 0x1F) <<24) | ((cna_desc->weight_height & 0x1F) << 16) |
-    (cna_desc->weight_kernels & 0x3FFF);
-  ops[10] = NPUOP(OP_REG_CNA, value, CNA_WEIGHT_SIZE2);
-  
-  printf("DEBUG: Writing ops[11] to ops[20]\n");
-  value = ((cna_desc->weight_bank & 0xF) << 4) | (cna_desc->data_bank & 0xF);
-  ops[11] = NPUOP(OP_REG_CNA, value, CNA_CBUF_CON0);
-  value = cna_desc->data_entries & 0x1FFF;
-  ops[12] = NPUOP(OP_REG_CNA, value, CNA_CBUF_CON1);
-  value = ((cna_desc->data_sign & 0x1) << 3) | ((cna_desc->cvt_type & 0x1)<< 1) | (cna_desc->cvt_bypass & 0x1);
-  ops[13] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON0);
-  value = ((cna_desc->cvt_scale0 & 0xFFFF) << 16) | 0x0;
-  ops[14] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON1);
-  value = ((cna_desc->cvt_scale1 & 0xFFFF) << 16) | 0x0;
-  ops[15] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON2);
-  value = ((cna_desc->cvt_scale2 & 0xFFFF) << 16) | 0x0;
-  ops[16] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON3);
-  value = ((cna_desc->cvt_scale3 & 0xFFFF) << 16) | 0x0;
-  ops[17] = NPUOP(OP_REG_CNA, value, CNA_CVT_CON4);
-  value = cna_desc->fc_skip_en & 0x1;
-  ops[18] = NPUOP(OP_REG_CNA, value, CNA_FC_CON0);
-  value = cna_desc->data_offset & 0x1FFFF;
-  ops[19] = NPUOP(OP_REG_CNA, value, CNA_FC_CON1); 
-  value = ((cna_desc->pad_left & 0xF) << 4) | (cna_desc->pad_top & 0xF);
-  ops[20] = NPUOP(OP_REG_CNA, value, CNA_PAD_CON0);
+  ops[4] = EMIT(REG_CNA_DATA_SIZE0, 
+      CNA_DATA_SIZE0_DATAIN_WIDTH(cna_desc->datain_width) | 
+      CNA_DATA_SIZE0_DATAIN_HEIGHT(cna_desc->datain_height)
+    );
+  ops[5] = EMIT(REG_CNA_DATA_SIZE1, 
+      CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(cna_desc->datain_channel - 1) | 
+      CNA_DATA_SIZE1_DATAIN_CHANNEL(cna_desc->datain_channel)
+    );
+  ops[6] = EMIT(REG_CNA_DATA_SIZE2, 
+      CNA_DATA_SIZE2_DATAOUT_WIDTH(cna_desc->dataout_width)
+    );
+  ops[7] = EMIT(REG_CNA_DATA_SIZE3, 
+      CNA_DATA_SIZE3_DATAOUT_ATOMICS(cna_desc->dataout_atomics)
+    );
+  ops[8] = EMIT(REG_CNA_WEIGHT_SIZE0, 
+      CNA_WEIGHT_SIZE0_WEIGHT_BYTES(cna_desc->weight_bytes)
+    );
+  ops[9] = EMIT(REG_CNA_WEIGHT_SIZE1, 
+      CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(cna_desc->weight_bytes_per_kernel)
+    );
+  ops[10] = EMIT(REG_CNA_WEIGHT_SIZE2, 
+      CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(cna_desc->weight_width) | 
+      CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(cna_desc->weight_height) |
+      CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(cna_desc->weight_kernels)
+    );
+  ops[11] = EMIT(REG_CNA_CBUF_CON0, 
+      CNA_CBUF_CON0_WEIGHT_BANK(cna_desc->weight_bank) | 
+      CNA_CBUF_CON0_DATA_BANK(cna_desc->data_bank)
+    );
+  ops[12] = EMIT(REG_CNA_CBUF_CON1, 
+      CNA_CBUF_CON1_DATA_ENTRIES(cna_desc->data_entries)
+    );
+  ops[13] = EMIT(REG_CNA_CVT_CON0, 
+      CNA_CVT_CON0_DATA_SIGN(cna_desc->data_sign) | 
+      CNA_CVT_CON0_CVT_TYPE(cna_desc->cvt_type) | 
+      CNA_CVT_CON0_CVT_BYPASS(cna_desc->cvt_bypass)
+    );
+  ops[14] = EMIT(REG_CNA_CVT_CON1, 
+      CNA_CVT_CON1_CVT_SCALE0(cna_desc->cvt_scale0)
+    );
+  ops[15] = EMIT(REG_CNA_CVT_CON2, 
+      CNA_CVT_CON2_CVT_SCALE1(cna_desc->cvt_scale1)
+    );
+  ops[16] = EMIT(REG_CNA_CVT_CON3, 
+      CNA_CVT_CON3_CVT_SCALE2(cna_desc->cvt_scale2)
+    );
+  ops[17] = EMIT(REG_CNA_CVT_CON4, 
+      CNA_CVT_CON4_CVT_SCALE3(cna_desc->cvt_scale3)
+    );
+  ops[18] = EMIT(REG_CNA_FC_CON0, 
+      CNA_FC_CON0_FC_SKIP_EN(cna_desc->fc_skip_en)
+    );
+  ops[19] = EMIT(REG_CNA_FC_CON1, 
+      CNA_FC_CON1_DATA_OFFSET(cna_desc->data_offset)
+    ); 
+  ops[20] = EMIT(REG_CNA_PAD_CON0, 
+      CNA_PAD_CON0_PAD_LEFT(cna_desc->pad_left) | 
+      CNA_PAD_CON0_PAD_TOP(cna_desc->pad_top)
+    );
 
   printf("DEBUG: Writing ops[21] to ops[30]\n");
   ops[21] = NPUOP(OP_REG_CNA, cna_desc->feature_base_addr, CNA_FEATURE_DATA_ADDR);
