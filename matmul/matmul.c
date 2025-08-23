@@ -343,9 +343,9 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   ops[101] = EMIT(DPU_LUT_LE_SLOPE_SHIFT, 0x0);
   ops[102] = EMIT(DPU_LUT_LO_SLOPE_SCALE, 0x0);
   ops[103] = EMIT(DPU_LUT_LO_SLOPE_SHIFT, 0x0);
-  ops[104] = NPUOP(OP_NONE, 0x0, 0x0);  // Keep OP_NONE as NPUOP
-  ops[105] = NPUOP(OP_REG_PC, 0x0, PC_REGISTER_AMOUNTS);
-  ops[106] = NPUOP(OP_40, 0x0, 0x0);    // Keep OP_40 as NPUOP
+  ops[104] = EMIT(0x0, 0x0);  // Convert OP_NONE to EMIT with 0 values
+  ops[105] = EMIT(PC_REGISTER_AMOUNTS, 0x0);
+  ops[106] = EMIT(0x0, 0x0);  // Convert OP_40 to EMIT with 0 values
   ops[107] = NPUOP(OP_ENABLE, (PC_ENABLE_DPU | PC_ENABLE_CNA | PC_ENABLE), PC_OPERATION_ENABLE);
 
   printf("DEBUG: gen_matmul_task completed successfully\n");
