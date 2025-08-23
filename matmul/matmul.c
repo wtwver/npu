@@ -312,10 +312,10 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   value = ((dpu_desc->ew_relu_bypass & 0x1) << 9) | ((dpu_desc->ew_op_cvt_bypass & 0x1) << 8) |
     ((dpu_desc->ew_lut_bypass & 0x1) <<7) | ((dpu_desc->ew_op_bypass & 0x1) << 1) |
     (dpu_desc->ew_bypass & 0x1);
-  ops[75] = NPUOP(OP_REG_DPU, value, DPU_EW_CFG);
-  ops[76] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_CVT_OFFSET_VALUE);
-  ops[77] = NPUOP(OP_REG_DPU, 0x1, DPU_EW_CVT_SCALE_VALUE);
-  ops[78] = NPUOP(OP_REG_DPU, 0x0, DPU_EW_RELUX_CMP_VALUE);
+  ops[75] = EMIT(DPU_EW_CFG, value);
+  ops[76] = EMIT(DPU_EW_CVT_OFFSET_VALUE, 0x0);
+  ops[77] = EMIT(DPU_EW_CVT_SCALE_VALUE, 0x1);
+  ops[78] = EMIT(DPU_EW_RELUX_CMP_VALUE, 0x0);
   ops[79] = NPUOP(OP_REG_DPU, 0x0, DPU_OUT_CVT_OFFSET);
   value = ((dpu_desc->fp32tofp16_en & 0x1) << 16) | (dpu_desc->out_cvt_scale & 0xFFFF);
   ops[80] = NPUOP(OP_REG_DPU, value, DPU_OUT_CVT_SCALE);
