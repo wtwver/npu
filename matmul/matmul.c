@@ -97,11 +97,7 @@ int feature_data(int C, int H, int W, int C2, int c, int h, int w) {
   return pos;
 }
 
-
-// #define NPUOP(op, value, reg) (((uint64_t)(op & 0xffff))<< 48) | ( ((uint64_t)(value & 0xffffffff)) << 16) | (uint64_t)(reg & 0xffff)
-
-static inline uint64_t EMIT(uint32_t reg, uint32_t value)
-{
+static inline uint64_t EMIT(uint32_t reg, uint32_t value){
   uint32_t target = rkt_get_target(reg) + 0x1;
 
   uint64_t packed_value = 0;
@@ -121,26 +117,26 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
          cna_desc->datain_channel, cna_desc->weight_kernels);
   printf("DEBUG: Writing ops[0] to ops[10]\n");
 
-  static_assert(OP_REG_DPU == 0x1001, "OP_REG_DPU must be 0x1001");
-  static_assert(DPU_S_POINTER == 0x4004, "DPU_S_POINTER must be 0x4004");
+  ops[0] = EMIT(REG_DPU_S_POINTER, 
+      DPU_S_POINTER_POINTER_PP_MODE(1) | 
+      DPU_S_POINTER_EXECUTER_PP_EN(1) | 
+      DPU_S_POINTER_POINTER_PP_EN(1)
+    );
+  ops[1] = EMIT(REG_CNA_CONV_CON1, 
+      CNA_CONV_CON1_PROC_PRECISION(cna_desc->proc_precision) | 
+      CNA_CONV_CON1_IN_PRECISION(cna_desc->in_precision) |
+      CNA_CONV_CON1_CONV_MODE(cna_desc->conv_mode)
+    );
+  ops[2] = EMIT(REG_CNA_CONV_CON2,
+      CNA_CONV_CON2_KERNEL_GROUP(cna_desc->kernel_groups) |
+      CNA_CONV_CON2_FEATURE_GRAINS(cna_desc->feature_grains)
+    );
+  ops[3] = EMIT(REG_CNA_CONV_CON3, 
+      CNA_CONV_CON3_CONV_Y_STRIDE(cna_desc->conv_y_stride) | 
+      CNA_CONV_CON3_CONV_X_STRIDE(cna_desc->conv_x_stride)
+    );
 
-  ops[0] = NPUOP(OP_REG_DPU, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1), DPU_S_POINTER);
-  
-  // EMIT(0x00004004, 0xE)
-  assert(ops[0] == EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1)));
 
-
-
-
-
-  value = ((cna_desc->proc_precision & 0x7) <<7) |  ((cna_desc->in_precision & 0x7)<<4) | 
-  (cna_desc->conv_mode & 0xf);
-  // value = ((cna_desc->proc_precision << 7) & 0x00000380) |  ((cna_desc->in_precision & 0x7)<<4) | 
-  ops[1] = NPUOP(OP_REG_CNA, value, CNA_CONV_CON1);
-  value = ((cna_desc->kernel_groups & 0xFF) << 16) | ((cna_desc->feature_grains & 0x3FF) << 4);
-  ops[2] = NPUOP(OP_REG_CNA, value, CNA_CONV_CON2);
-  value = ((cna_desc->conv_y_stride & 0x7) << 3) | (cna_desc->conv_x_stride & 0x7);
-  ops[3] = NPUOP(OP_REG_CNA, value, CNA_CONV_CON3);
   value = ((cna_desc->datain_width) & 0x7FF) << 16 | (cna_desc->datain_height & 0x7FF);
   ops[4] = NPUOP(OP_REG_CNA, value, CNA_DATA_SIZE0);
   value = ((cna_desc->datain_channel-1) & 0xFFFF) << 16 | (cna_desc->datain_channel & 0xFFFF);
