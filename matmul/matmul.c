@@ -27,6 +27,14 @@
 #define MAX_K 4096 
 #define MAX_N 4096 
 
+#ifndef NPU_HW_H
+enum  { direct_convolution = 0}; 
+enum  { precision_int8 = 0,
+        precision_float16 = 2,
+        precision_int32 = 4,
+        precision_float32 = 5};
+#endif
+
 int create_flink_name(int fd, uint32_t handle, uint32_t *flink_name) {
     struct drm_gem_flink flink_req = {
         .handle = handle,
@@ -288,65 +296,67 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
     );
 
     
-  ops[63] = EMIT(DPU_BS_CFG,
+  ops[63] = EMIT(REG_DPU_BS_CFG,
       DPU_BS_CFG_BS_RELU_BYPASS(dpu_desc->bs_relu_bypass) |
       DPU_BS_CFG_BS_MUL_BYPASS(dpu_desc->bs_mul_bypass) |
       DPU_BS_CFG_BS_ALU_BYPASS(dpu_desc->bs_alu_bypass) |
       DPU_BS_CFG_BS_BYPASS(dpu_desc->bs_bypass));
-  ops[64] = EMIT(DPU_BS_ALU_CFG, 0x0);
-  ops[65] = EMIT(DPU_BS_MUL_CFG, 0x0);
-  ops[66] = EMIT(DPU_BS_RELUX_CMP_VALUE, 0x0);
+  ops[64] = EMIT(REG_DPU_BS_ALU_CFG, 0x0);
+  ops[65] = EMIT(REG_DPU_BS_MUL_CFG, 0x0);
+  ops[66] = EMIT(REG_DPU_BS_RELUX_CMP_VALUE, 0x0);
   value = ((dpu_desc->size_e_2 & 0x7) << 8) | ((dpu_desc->size_e_1 & 0x7) << 5) |
     ((dpu_desc->size_e_0 & 0x7) << 2) | ((dpu_desc->od_bypass & 0x1) << 1);
-  ops[67] = EMIT(DPU_BS_OW_CFG, value);
-  ops[68] = EMIT(DPU_BS_OW_OP, 0x0);
-  ops[69] = EMIT(DPU_WDMA_SIZE_0, dpu_desc->channel_wdma & 0x1FFF);
+  ops[67] = EMIT(REG_DPU_BS_OW_CFG, value);
+  ops[68] = EMIT(REG_DPU_BS_OW_OP, 0x0);
+  ops[69] = EMIT(REG_DPU_WDMA_SIZE_0, dpu_desc->channel_wdma & 0x1FFF);
   value = ((dpu_desc->height_wdma & 0x1FFF) << 16) | (dpu_desc->width_wdma & 0x1FFF);
-  ops[70] = EMIT(DPU_WDMA_SIZE_1, value);
+  ops[70] = EMIT(REG_DPU_WDMA_SIZE_1, value);
   value = ((dpu_desc->bn_relu_bypass & 0x1) << 6) | ((dpu_desc->bn_mul_bypass &0x1) << 4) |
     ((dpu_desc->bn_alu_bypass & 0x1) << 1) | (dpu_desc->bn_bypass & 0x1);
-  ops[71] = EMIT(DPU_BN_CFG, value);
-  ops[72] = EMIT(DPU_BN_ALU_CFG, 0x0);
-  ops[73] = EMIT(DPU_BN_MUL_CFG, 0x0);
-  ops[74] = EMIT(DPU_BN_RELUX_CMP_VALUE, 0x0);
+  ops[71] = EMIT(REG_DPU_BN_CFG, value);
+  ops[72] = EMIT(REG_DPU_BN_ALU_CFG, 0x0);
+  ops[73] = EMIT(REG_DPU_BN_MUL_CFG, 0x0);
+  ops[74] = EMIT(REG_DPU_BN_RELUX_CMP_VALUE, 0x0);
   value = ((dpu_desc->ew_relu_bypass & 0x1) << 9) | ((dpu_desc->ew_op_cvt_bypass & 0x1) << 8) |
     ((dpu_desc->ew_lut_bypass & 0x1) <<7) | ((dpu_desc->ew_op_bypass & 0x1) << 1) |
     (dpu_desc->ew_bypass & 0x1);
-  ops[75] = EMIT(DPU_EW_CFG, value);
-  ops[76] = EMIT(DPU_EW_CVT_OFFSET_VALUE, 0x0);
-  ops[77] = EMIT(DPU_EW_CVT_SCALE_VALUE, 0x1);
-  ops[78] = EMIT(DPU_EW_RELUX_CMP_VALUE, 0x0);
-  ops[79] = EMIT(DPU_OUT_CVT_OFFSET, 0x0);
+  ops[75] = EMIT(REG_DPU_EW_CFG, value);
+  ops[76] = EMIT(REG_DPU_EW_CVT_OFFSET_VALUE, 0x0);
+  ops[77] = EMIT(REG_DPU_EW_CVT_SCALE_VALUE, 0x1);
+  ops[78] = EMIT(REG_DPU_EW_RELUX_CMP_VALUE, 0x0);
+  ops[79] = EMIT(REG_DPU_OUT_CVT_OFFSET, 0x0);
   value = ((dpu_desc->fp32tofp16_en & 0x1) << 16) | (dpu_desc->out_cvt_scale & 0xFFFF);
-  ops[80] = EMIT(DPU_OUT_CVT_SCALE, value);
-  ops[81] = EMIT(DPU_OUT_CVT_SHIFT, 0x0);
-  ops[82] = EMIT(DPU_EW_OP_VALUE_0, 0x0);
-  ops[83] = EMIT(DPU_EW_OP_VALUE_1, 0x0);
-  ops[84] = EMIT(DPU_EW_OP_VALUE_2, 0x0);
-  ops[85] = EMIT(DPU_EW_OP_VALUE_3, 0x0);
-  ops[86] = EMIT(DPU_EW_OP_VALUE_4, 0x0);
-  ops[87] = EMIT(DPU_EW_OP_VALUE_5, 0x0);
-  ops[88] = EMIT(DPU_EW_OP_VALUE_6, 0x0);
-  ops[89] = EMIT(DPU_EW_OP_VALUE_7, 0x0);
+  ops[80] = EMIT(REG_DPU_OUT_CVT_SCALE, value);
+  ops[81] = EMIT(REG_DPU_OUT_CVT_SHIFT, 0x0);
+  ops[82] = EMIT(REG_DPU_EW_OP_VALUE_0, 0x0);
+  ops[83] = EMIT(REG_DPU_EW_OP_VALUE_1, 0x0);
+  ops[84] = EMIT(REG_DPU_EW_OP_VALUE_2, 0x0);
+  ops[85] = EMIT(REG_DPU_EW_OP_VALUE_3, 0x0);
+  ops[86] = EMIT(REG_DPU_EW_OP_VALUE_4, 0x0);
+  ops[87] = EMIT(REG_DPU_EW_OP_VALUE_5, 0x0);
+  ops[88] = EMIT(REG_DPU_EW_OP_VALUE_6, 0x0);
+  ops[89] = EMIT(REG_DPU_EW_OP_VALUE_7, 0x0);
   value = ((dpu_desc->surf_add & 0xFFFFFFF) << 4);
-  ops[90] = EMIT(DPU_SURFACE_ADD, value);
+  ops[90] = EMIT(REG_DPU_SURFACE_ADD, value);
   ops[91] = EMIT(DPU_40C4, 0x0);
-  ops[92] = EMIT(DPU_LUT_ACCESS_CFG, 0x0);
-  ops[93] = EMIT(DPU_LUT_ACCESS_DATA, 0x0);
-  ops[94] = EMIT(DPU_LUT_CFG, 0x0);
-  ops[95] = EMIT(DPU_LUT_INFO, 0x0);
-  ops[96] = EMIT(DPU_LUT_LE_START, 0x0);
-  ops[97] = EMIT(DPU_LUT_LE_END, 0x0);
-  ops[98] = EMIT(DPU_LUT_LO_START, 0x0);
-  ops[99] = EMIT(DPU_LUT_LO_END, 0x0);
-  ops[100] = EMIT(DPU_LUT_LE_SLOPE_SCALE, 0x0);
-  ops[101] = EMIT(DPU_LUT_LE_SLOPE_SHIFT, 0x0);
-  ops[102] = EMIT(DPU_LUT_LO_SLOPE_SCALE, 0x0);
-  ops[103] = EMIT(DPU_LUT_LO_SLOPE_SHIFT, 0x0);
-  ops[104] = EMIT(0x0, 0x0);  // Convert OP_NONE to EMIT with 0 values
-  ops[105] = EMIT(PC_REGISTER_AMOUNTS, 0x0);
-  ops[106] = EMIT(0x0, 0x0);  // Convert OP_40 to EMIT with 0 values
-  ops[107] = NPUOP(OP_ENABLE, (PC_ENABLE_DPU | PC_ENABLE_CNA | PC_ENABLE), PC_OPERATION_ENABLE);
+  ops[92] = EMIT(REG_DPU_LUT_ACCESS_CFG, 0x0);
+  ops[93] = EMIT(REG_DPU_LUT_ACCESS_DATA, 0x0);
+  ops[94] = EMIT(REG_DPU_LUT_CFG, 0x0);
+  ops[95] = EMIT(REG_DPU_LUT_INFO, 0x0);
+  ops[96] = EMIT(REG_DPU_LUT_LE_START, 0x0);
+  ops[97] = EMIT(REG_DPU_LUT_LE_END, 0x0);
+  ops[98] = EMIT(REG_DPU_LUT_LO_START, 0x0);
+  ops[99] = EMIT(REG_DPU_LUT_LO_END, 0x0);
+  ops[100] = EMIT(REG_DPU_LUT_LE_SLOPE_SCALE, 0x0);
+  ops[101] = EMIT(REG_DPU_LUT_LE_SLOPE_SHIFT, 0x0);
+  ops[102] = EMIT(REG_DPU_LUT_LO_SLOPE_SCALE, 0x0);
+  ops[103] = EMIT(REG_DPU_LUT_LO_SLOPE_SHIFT, 0x0);
+  ops[104] = EMIT(REG_PC_VERSION, 0x0);  // Convert OP_NONE to EMIT with 0 values
+  ops[105] = EMIT(REG_PC_REGISTER_AMOUNTS, 0x0);
+  ops[106] = EMIT(REG_PC_VERSION, 0x0);  // Convert OP_40 to EMIT with 0 values
+
+  ops[107] = NPUOP(OP_ENABLE, (PC_ENABLE_DPU | PC_ENABLE_CNA | PC_ENABLE), REG_PC_OPERATION_ENABLE);
+  // ops[107] = EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
 
   printf("DEBUG: gen_matmul_task completed successfully\n");
   printf("DEBUG: Total operations written: 108 (ops[0] to ops[107])\n");
