@@ -197,69 +197,97 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
     );
 
   printf("DEBUG: Writing ops[21] to ops[30]\n");
-  ops[21] = NPUOP(OP_REG_CNA, cna_desc->feature_base_addr, CNA_FEATURE_DATA_ADDR);
-  value = cna_desc->weight_offset & 0x1FFFF;
-  ops[22] = NPUOP(OP_REG_CNA, value, CNA_FC_CON2);
-  value = ((cna_desc->weight_burst_len & 0xF) << 16) | (cna_desc->data_burst_len & 0xF);
-  ops[23] = NPUOP(OP_REG_CNA, value, CNA_DMA_CON0);
-  value = cna_desc->line_stride & 0xFFFFFFF;
-  ops[24] = NPUOP(OP_REG_CNA, value, CNA_DMA_CON1);
-  value = cna_desc->surf_stride & 0xFFFFFFF;
-  ops[25] = NPUOP(OP_REG_CNA, value, CNA_DMA_CON2);
-  value = ((cna_desc->dma_width & 0x7FF) << 16) | (cna_desc->dma_height & 0x7FF);
-  ops[26] = NPUOP(OP_REG_CNA, value, CNA_FC_DATA_SIZE0);
-  value = cna_desc->dma_channel & 0xFFFF;
-  ops[27] = NPUOP(OP_REG_CNA, value, CNA_FC_DATA_SIZE1);
-  ops[28] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_CTRL);
-  ops[29] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_REGNUM);
-  ops[30] = NPUOP(OP_REG_CNA, cna_desc->decompress_addr0, CNA_DCOMP_ADDR0);
+  ops[21] = EMIT(REG_CNA_FEATURE_DATA_ADDR, cna_desc->feature_base_addr);
+  ops[22] = EMIT(REG_CNA_FC_CON2, 
+      CNA_FC_CON2_WEIGHT_OFFSET(cna_desc->weight_offset)
+    );
+  ops[23] = EMIT(REG_CNA_DMA_CON0, 
+      CNA_DMA_CON0_WEIGHT_BURST_LEN(cna_desc->weight_burst_len) | 
+      CNA_DMA_CON0_DATA_BURST_LEN(cna_desc->data_burst_len)
+    );
+  ops[24] = EMIT(REG_CNA_DMA_CON1, 
+      CNA_DMA_CON1_LINE_STRIDE(cna_desc->line_stride)
+    );
+  ops[25] = EMIT(REG_CNA_DMA_CON2, 
+      CNA_DMA_CON2_SURF_STRIDE(cna_desc->surf_stride)
+    );
+  ops[26] = EMIT(REG_CNA_FC_DATA_SIZE0, 
+      CNA_FC_DATA_SIZE0_DMA_WIDTH(cna_desc->dma_width) | 
+      CNA_FC_DATA_SIZE0_DMA_HEIGHT(cna_desc->dma_height)
+    );
+  ops[27] = EMIT(REG_CNA_FC_DATA_SIZE1, 
+      CNA_FC_DATA_SIZE1_DMA_CHANNEL(cna_desc->dma_channel)
+    );
+  ops[28] = EMIT(REG_CNA_DCOMP_CTRL, 0x0);
+  ops[29] = EMIT(REG_CNA_DCOMP_REGNUM, 0x0);
+  ops[30] = EMIT(REG_CNA_DCOMP_ADDR0, cna_desc->decompress_addr0);
 
   printf("DEBUG: Writing ops[31] to ops[50]\n");
-  ops[31] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT);
-  ops[32] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT1);
-  ops[33] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT2);
-  ops[34] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT3);
-  ops[35] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT4);
-  ops[36] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT5);
-  ops[37] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT6);
-  ops[38] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT7);
-  ops[39] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT8);
-  ops[40] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT9);
-  ops[41] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT10);
-  ops[42] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT11);
-  ops[43] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT12);
-  ops[44] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT13);
-  ops[45] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT14);
-  ops[46] = NPUOP(OP_REG_CNA, 0x0, CNA_DCOMP_AMOUNT15);
-  ops[47] = NPUOP(OP_REG_CNA, 0x0, CNA_CVT_CON5);
-  ops[48] = NPUOP(OP_REG_CNA, 0x0, CNA_PAD_CON1);
-  value = ((core_desc->proc_precision & 0x7) << 8) | (core_desc->qd_en & 0x1);
-  ops[49] = NPUOP(OP_REG_CORE, value, CORE_MISC_CFG);
-  value = ((core_desc->dataout_height & 0xFFFF) << 16) | (core_desc->dataout_width & 0xFFFF);
-  ops[50] = NPUOP(OP_REG_CORE, value, CORE_DATAOUT_SIZE_0);
-  value = core_desc->dataout_channel & 0xFFFF;
-  ops[51] = NPUOP(OP_REG_CORE, value, CORE_DATAOUT_SIZE_1);
-  ops[52] = NPUOP(OP_REG_CORE, 0x0, CORE_CLIP_TRUNCATE);
+  ops[31] = EMIT(REG_CNA_DCOMP_AMOUNT0, 0x0);
+  ops[32] = EMIT(REG_CNA_DCOMP_AMOUNT1, 0x0);
+  ops[33] = EMIT(REG_CNA_DCOMP_AMOUNT2, 0x0);
+  ops[34] = EMIT(REG_CNA_DCOMP_AMOUNT3, 0x0);
+  ops[35] = EMIT(REG_CNA_DCOMP_AMOUNT4, 0x0);
+  ops[36] = EMIT(REG_CNA_DCOMP_AMOUNT5, 0x0);
+  ops[37] = EMIT(REG_CNA_DCOMP_AMOUNT6, 0x0);
+  ops[38] = EMIT(REG_CNA_DCOMP_AMOUNT7, 0x0);
+  ops[39] = EMIT(REG_CNA_DCOMP_AMOUNT8, 0x0);
+  ops[40] = EMIT(REG_CNA_DCOMP_AMOUNT9, 0x0);
+  ops[41] = EMIT(REG_CNA_DCOMP_AMOUNT10, 0x0);
+  ops[42] = EMIT(REG_CNA_DCOMP_AMOUNT11, 0x0);
+  ops[43] = EMIT(REG_CNA_DCOMP_AMOUNT12, 0x0);
+  ops[44] = EMIT(REG_CNA_DCOMP_AMOUNT13, 0x0);
+  ops[45] = EMIT(REG_CNA_DCOMP_AMOUNT14, 0x0);
+  ops[46] = EMIT(REG_CNA_DCOMP_AMOUNT15, 0x0);
+  ops[47] = EMIT(REG_CNA_CVT_CON5, 0x0);
+  ops[48] = EMIT(REG_CNA_PAD_CON1, 0x0);
+  ops[49] = EMIT(REG_CORE_MISC_CFG, 
+      CORE_MISC_CFG_PROC_PRECISION(core_desc->proc_precision) | 
+      CORE_MISC_CFG_QD_EN(core_desc->qd_en)
+    );
+  ops[50] = EMIT(REG_CORE_DATAOUT_SIZE_0, 
+      CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(core_desc->dataout_height) | 
+      CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(core_desc->dataout_width)
+    );
+  ops[51] = EMIT(REG_CORE_DATAOUT_SIZE_1, 
+      CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(core_desc->dataout_channel)
+    );
+  ops[52] = EMIT(REG_CORE_CLIP_TRUNCATE, 0x0);
+  
+  // 801 3030 0
+  // ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
   ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
 
   printf("DEBUG: Writing ops[54] to ops[70]\n");
-  value = ((dpu_desc->burst_len & 0xF) << 5) | ((dpu_desc->conv_mode & 0x3) <<3) |
-    ((dpu_desc->output_mode & 0x3) <<1) | (dpu_desc->flying_mode & 0x1);
-  ops[54] = NPUOP(OP_REG_DPU, value, DPU_FEATURE_MODE_CFG);
-  value = ((dpu_desc->out_precision & 0x7) << 29) | ((dpu_desc->in_precision & 0x7) << 26) |
-    (dpu_desc->proc_precision & 0x7);
-  ops[55] = NPUOP(OP_REG_DPU, value, DPU_DATA_FORMAT);
-  ops[56] = NPUOP(OP_REG_DPU, 0x0, DPU_OFFSET_PEND);
-  ops[57] = NPUOP(OP_REG_DPU, dpu_desc->dst_base_addr, DPU_DST_BASE_ADD);
-  value = (dpu_desc->dst_surf_stride & 0xFFFFFFF) << 4;
-  ops[58] = NPUOP(OP_REG_DPU, value, DPU_DST_SURF_STRIDE);
-  value = dpu_desc->width & 0x1FFF;
-  ops[59] = NPUOP(OP_REG_DPU, value, DPU_DATA_CUBE_WIDTH);
-  value = dpu_desc->height & 0x1FFF;
-  ops[60] = NPUOP(OP_REG_DPU, value, DPU_DATA_CUBE_HEIGHT);
-  ops[61] = NPUOP(OP_REG_DPU, 0x0, DPU_DATA_CUBE_NOTCH_ADDR);
-  value = ((dpu_desc->channel & 0x1FFF) << 16) | (dpu_desc->channel & 0x1FFF);
-  ops[62] = NPUOP(OP_REG_DPU, value, DPU_DATA_CUBE_CHANNEL);
+  ops[54] = EMIT(REG_DPU_FEATURE_MODE_CFG, 
+      DPU_FEATURE_MODE_CFG_BURST_LEN(dpu_desc->burst_len) | 
+      DPU_FEATURE_MODE_CFG_CONV_MODE(dpu_desc->conv_mode) |
+      DPU_FEATURE_MODE_CFG_OUTPUT_MODE(dpu_desc->output_mode) | 
+      DPU_FEATURE_MODE_CFG_FLYING_MODE(dpu_desc->flying_mode)
+    );
+  ops[55] = EMIT(REG_DPU_DATA_FORMAT, 
+      DPU_DATA_FORMAT_OUT_PRECISION(dpu_desc->out_precision) |
+      DPU_DATA_FORMAT_IN_PRECISION(dpu_desc->in_precision) |
+      DPU_DATA_FORMAT_PROC_PRECISION(dpu_desc->proc_precision)
+    );
+  ops[56] = EMIT(REG_DPU_OFFSET_PEND, 0x0);
+  ops[57] = EMIT(REG_DPU_DST_BASE_ADDR, dpu_desc->dst_base_addr);
+  ops[58] = EMIT(REG_DPU_DST_SURF_STRIDE, 
+      DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(dpu_desc->dst_surf_stride)
+    );
+  ops[59] = EMIT(REG_DPU_DATA_CUBE_WIDTH, 
+      DPU_DATA_CUBE_WIDTH_WIDTH(dpu_desc->width)
+    );
+  ops[60] = EMIT(REG_DPU_DATA_CUBE_HEIGHT, 
+      DPU_DATA_CUBE_HEIGHT_HEIGHT(dpu_desc->height)
+    );
+  ops[61] = EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, 0x0);
+  ops[62] = EMIT(REG_DPU_DATA_CUBE_CHANNEL, 
+      DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(dpu_desc->channel) | 
+      DPU_DATA_CUBE_CHANNEL_CHANNEL(dpu_desc->channel)
+    );
+
+    
   value = ((dpu_desc->bs_relu_bypass & 0x1) << 6) | ((dpu_desc->bs_mul_bypass & 0x1) << 4) |
     ((dpu_desc->bs_alu_bypass & 0x1) << 1) | (dpu_desc->bs_bypass & 0x1);
   ops[63] = NPUOP(OP_REG_DPU, value, DPU_BS_CFG);
