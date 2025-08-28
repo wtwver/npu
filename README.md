@@ -1,13 +1,18 @@
-fix matmul result is wrong
-
 # TODO
-1. first run convert onnx to rknn
-python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+./alu_int8 1 works on only 1 element but ./alu_fp16 1 works on 5 elements
 
-2. run rknn_benchmark ensure the ops run correctly
-./rknn_benchmark models/add_1.rknn 
 
-3. convert and run for each onnx model
+# How to make onnx
+/home/orangepi/npu/create_1x1_add.py
+
+# How to convert
+python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+./rknn_benchmark models/8add_1.rknn 
+
+# How to build matmul / alu
+gcc -o matmul matmul.c npu_interface.c  -ldrm -I. && ./matmul 32 32 32
+gcc alu_int8.c -o alu_int8 -lm  -ldrm -I. && ./alu_int8 1
+
 
 ## 📊 ONNX & RKNN Model Testing Results
 
@@ -43,12 +48,6 @@ python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.on
 | 26 | abs        | -        | 3,702    | 0.27ms      | ✅         | ✅         | Math            | ✅ (Auto-converted to LeakyRelu)         |
 | 27 | relu       | -        | 18,868   | 0.05ms      | ✅         | ✅         | Activation      | ✅ (Relu)             |
 | 28 | sigmoid    | -        | 3,269    | 0.31ms      | ✅         | ✅         | Activation      | ✅ (Sigmoid)          |
-
-
-
-# How to convert rknn model
-python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
-
 
 # How to dump GEM
 

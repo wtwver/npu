@@ -1,0 +1,962 @@
+WARNING: Cannot find schema for: registers.xml - skipping validation
+EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2) | DPU_FEATURE_MODE_CFG_FLYING_MODE(1));
+EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_ALU_ALGO(3));
+EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(7) | DPU_DATA_CUBE_CHANNEL_CHANNEL(7));
+EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_OD_BYPASS(1));
+EMIT(REG_DPU_BS_OW_OP, 0x0);
+EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(7));
+EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_WIDTH_WDMA(9));
+EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+EMIT(REG_DPU_BN_ALU_CFG, 0x0);
+EMIT(REG_DPU_BN_MUL_CFG, 0x0);
+EMIT(REG_DPU_BN_RELUX_CMP_VALUE, 0x0);
+EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_ALU_ALGO(3) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1));
+EMIT(REG_DPU_EW_CVT_OFFSET_VALUE, 0x0);
+EMIT(REG_DPU_EW_CVT_SCALE_VALUE, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+EMIT(REG_DPU_EW_RELUX_CMP_VALUE, 0x0);
+EMIT(REG_DPU_OUT_CVT_OFFSET, 0x0);
+EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+EMIT(REG_DPU_OUT_CVT_SHIFT, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_0, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_1, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_2, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_3, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_4, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_5, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_6, 0x0);
+EMIT(REG_DPU_EW_OP_VALUE_7, 0x0);
+EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(12));
+EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(12));
+1001 40c4 0
+EMIT(REG_DPU_LUT_ACCESS_CFG, 0x0);
+EMIT(REG_DPU_LUT_ACCESS_DATA, 0x0);
+EMIT(REG_DPU_LUT_CFG, 0x0);
+EMIT(REG_DPU_LUT_INFO, 0x0);
+EMIT(REG_DPU_LUT_LE_START, 0x0);
+EMIT(REG_DPU_LUT_LE_END, 0x0);
+EMIT(REG_DPU_LUT_LO_START, 0x0);
+EMIT(REG_DPU_LUT_LO_END, 0x0);
+EMIT(REG_DPU_LUT_LE_SLOPE_SCALE, 0x0);
+EMIT(REG_DPU_LUT_LE_SLOPE_SHIFT, 0x0);
+EMIT(REG_DPU_LUT_LO_SLOPE_SCALE, 0x0);
+EMIT(REG_DPU_LUT_LO_SLOPE_SHIFT, 0x0);
+EMIT(REG_DPU_DST_BASE_ADDR, 0xf5e4e000);
+EMIT(REG_DPU_RDMA_RDMA_SRC_BASE_ADDR, 0xffe7d000);
+EMIT(REG_DPU_RDMA_RDMA_EW_BASE_ADDR, 0xf5e5f000);
+EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_WIDTH, DPU_RDMA_RDMA_DATA_CUBE_WIDTH_WIDTH(9));
+EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_HEIGHT, 0x0);
+EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_CHANNEL, DPU_RDMA_RDMA_DATA_CUBE_CHANNEL_CHANNEL(7));
+EMIT(REG_DPU_RDMA_RDMA_BRDMA_CFG, 0x0);
+EMIT(REG_DPU_RDMA_RDMA_NRDMA_CFG, 0x0);
+EMIT(REG_DPU_RDMA_RDMA_BN_BASE_ADDR, 0x0);
+EMIT(REG_DPU_RDMA_RDMA_ERDMA_CFG, DPU_RDMA_RDMA_ERDMA_CFG_ERDMA_DATA_MODE(1) | DPU_RDMA_RDMA_ERDMA_CFG_ERDMA_DATA_SIZE(2));
+EMIT(REG_DPU_RDMA_RDMA_EW_SURF_STRIDE, DPU_RDMA_RDMA_EW_SURF_STRIDE_EW_SURF_STRIDE(12));
+EMIT(REG_DPU_RDMA_RDMA_FEATURE_MODE_CFG, DPU_RDMA_RDMA_FEATURE_MODE_CFG_IN_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_PROC_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_MRDMA_FP16TOFP32_EN(1) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_FLYING_MODE(1));
+EMIT(REG_DPU_RDMA_RDMA_SRC_DMA_CFG, 0x0);
+EMIT(REG_DPU_RDMA_RDMA_SURF_NOTCH, DPU_RDMA_RDMA_SURF_NOTCH_SURF_NOTCH_ADDR(2));
+EMIT(REG_DPU_RDMA_RDMA_PAD_CFG, 0x0);
+EMIT(REG_DPU_RDMA_RDMA_WEIGHT, DPU_RDMA_RDMA_WEIGHT_E_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_N_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_B_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_M_WEIGHT(1));
+EMIT(REG_DPU_RDMA_RDMA_EW_SURF_NOTCH, DPU_RDMA_RDMA_EW_SURF_NOTCH_EW_SURF_NOTCH(2));
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+EMIT(REG_PC_REGISTER_AMOUNTS, 0x0);
+EMIT(REG_PC_REGISTER_AMOUNTS, 0x0);
+WARNING: target 0x81 doesn't match register's domain 0x100
+EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12));
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);
+WARNING: target 0x0 doesn't match register's domain 0x100
+EMIT(REG_PC_VERSION, 0x0);

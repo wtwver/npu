@@ -1,3 +1,0 @@
-drm name is rknpu - 20231018 - RKNPU driver
-du is rknpu
-gem open got -1 0 0
