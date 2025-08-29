@@ -1,3 +1,9 @@
+# How to dump
+
+
+
+
+
 # TODO
 ./alu_int8 1 works on only 1 element but ./alu_fp16 1 works on 5 elements
 

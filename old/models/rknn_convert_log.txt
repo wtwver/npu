@@ -1,0 +1,219 @@
+2025-08-21 06:36:01.682956:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+
+2025-08-21 06:37:20.982812:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+
+2025-08-21 06:45:14.799398:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+
+2025-08-21 06:46:37.373842:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/exp.onnx -o /home/orangepi/npu/models/
+
+2025-08-21 06:48:16.752570:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/div.onnx -o /home/orangepi/npu/models/
+
+2025-08-21 13:25:23.289895:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/add_1.onnx -o /home/orangepi/npu/models/
+
+2025-08-21 13:25:55.073007:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/abs.onnx -o models/
+
+2025-08-21 13:26:05.433623:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/acos.onnx -o models/
+
+2025-08-21 13:26:16.682906:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/adaptive_avg_pool2d.onnx -o models/
+
+2025-08-21 13:26:37.608411:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/round.onnx -o models/
+
+2025-08-21 13:26:40.742417:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/sub.onnx -o models/
+
+2025-08-21 13:26:46.944646:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/reduce_mean.onnx -o models/
+
+2025-08-21 13:26:53.154636:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/cat.onnx -o models/
+
+2025-08-21 13:26:56.308685:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/conv1d.onnx -o models/
+
+2025-08-21 13:27:05.465218:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/sqrt.onnx -o models/
+
+2025-08-21 13:27:08.606791:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/ceil.onnx -o models/
+
+2025-08-21 13:27:11.697657:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/reduce_sum.onnx -o models/
+
+2025-08-21 13:27:14.862981:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/neg.onnx -o models/
+
+2025-08-21 13:27:18.044988:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/floor.onnx -o models/
+
+2025-08-21 13:27:27.230140:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/pow.onnx -o models/
+
+2025-08-21 13:27:30.371722:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/elu.onnx -o models/
+
+2025-08-21 13:27:48.480840:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/tan.onnx -o models/
+
+2025-08-21 13:27:57.537552:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/reduce_max.onnx -o models/
+
+2025-08-21 13:28:00.686519:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/asin.onnx -o models/
+
+2025-08-21 13:28:03.775688:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/leaky_relu.onnx -o models/
+
+2025-08-21 13:28:06.898724:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/softplus.onnx -o models/
+
+2025-08-21 13:28:13.056959:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/add.onnx -o models/
+
+2025-08-21 13:28:19.214518:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/sigmoid.onnx -o models/
+
+2025-08-21 13:28:25.450417:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/sin.onnx -o models/
+
+2025-08-21 13:28:28.593081:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/log.onnx -o models/
+
+2025-08-21 13:28:31.741533:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/erf.onnx -o models/
+
+2025-08-21 13:28:35.016263:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/mul.onnx -o models/
+
+2025-08-21 13:28:47.145467:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/transpose.onnx -o models/
+
+2025-08-21 13:28:50.273276:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/relu.onnx -o models/
+
+2025-08-21 13:29:08.442842:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/atan.onnx -o models/
+
+2025-08-21 13:29:20.250059:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/reduce_min.onnx -o models/
+
+2025-08-21 13:29:29.427208:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/sign.onnx -o models/
+
+2025-08-21 13:29:35.476900:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/max_pool2d.onnx -o models/
+
+2025-08-21 13:29:47.656875:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/adaptive_max_pool2d.onnx -o models/
+
+2025-08-21 13:29:59.672531:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/flatten.onnx -o models/
+
+2025-08-21 13:30:05.861635:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/avg_pool2d.onnx -o models/
+
+2025-08-21 13:30:09.018713:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/conv2d.onnx -o models/
+
+2025-08-21 13:30:12.204115:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/cos.onnx -o models/
+
+2025-08-21 15:54:11.750446:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/elu.onnx -o models/
+
+2025-08-21 15:55:35.930981:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/zeros_test_fixed.onnx -o models/
+
+2025-08-21 15:56:39.592824:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/zeros_computation_test.onnx -o models/
+
+2025-08-21 16:01:22.657188:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/ones_computation_test.onnx -o models/
+
+2025-08-22 00:51:58.775923:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/empty_computational.onnx -o models/
+
+2025-08-22 00:23:29.336674:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/empty_better.onnx -o models/
+
+2025-08-22 00:23:36.383698:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/empty_identity.onnx -o models/
+
+2025-08-22 00:28:08.243395:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/mod_fixed.onnx -o models/
+
+2025-08-22 00:29:31.008801:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/mod_scalar.onnx -o models/
+
+2025-08-22 00:32:20.730762:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/15_eq_simple.onnx -o models/
+
+2025-08-22 00:37:29.773628:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/17_lt.onnx -o models/
+
+2025-08-22 00:37:41.875421:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/19_gt.onnx -o models/
+
+2025-08-22 00:40:12.340375:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/18_le.onnx -o models/
+
+2025-08-22 00:40:23.153964:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/20_ge.onnx -o models/
+
+2025-08-22 00:43:28.469341:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/26_abs.onnx -o models/ -v
+
+2025-08-22 00:47:30.595501:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i models/16_ne.onnx -o models/ -v
+
+2025-08-22 14:00:54.303391:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-22 15:15:11.284824:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-22 15:15:23.517352:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-22 15:21:55.460402:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/add_1x1.onnx -o /home/orangepi/npu/models/
+
+2025-08-23 01:22:32.772672:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/add_1x1.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 20:30:28.550129:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 20:31:23.662176:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 20:32:04.916998:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 20:32:26.192517:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 20:32:47.650219:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 20:33:54.279075:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 21:10:09.409755:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 21:10:51.785463:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
+2025-08-25 21:26:08.406027:
+/home/orangepi/.local/lib/python3.10/site-packages/rknn/api/rknn_convert.py -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
+
