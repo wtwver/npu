@@ -25,6 +25,70 @@ def _IOWR(type_, nr, struct_):
 DRM_IOC_BASE = 'd'
 DRM_COMMAND_BASE = 0x40
 
+class Colors:
+    RESET = '\033[0m'
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    BOLD = '\033[1m'
+
+    @staticmethod
+    def highlight_hex(text):
+        """Highlight hexadecimal numbers and addresses"""
+        import re
+        # Highlight addresses in brackets [0x...]
+        text = re.sub(r'(\[0x[0-9a-fA-F]+\])', f'{Colors.CYAN}\\1{Colors.RESET}', text)
+        # Highlight hex values 0x...
+        text = re.sub(r'(0x[0-9a-fA-F]+)', f'{Colors.CYAN}\\1{Colors.RESET}', text)
+        return text
+
+    @staticmethod
+    def highlight_register(text):
+        """Highlight register names like REG_CORE_SOMETHING"""
+        import re
+        text = re.sub(r'(REG_[A-Z_]+)', f'{Colors.GREEN}\\1{Colors.RESET}', text)
+        return text
+
+    @staticmethod
+    def highlight_keyword(text):
+        """Highlight keywords like EMIT, ENABLED, DISABLED"""
+        import re
+        keywords = ['EMIT', 'ENABLED', 'DISABLED', 'Unknown']
+        for keyword in keywords:
+            text = re.sub(rf'\b({keyword})\b', f'{Colors.YELLOW}\\1{Colors.RESET}', text)
+        return text
+
+    @staticmethod
+    def highlight_destination(text):
+        """Highlight destinations like PC, CNA, CORE, DPU"""
+        import re
+        destinations = ['PC', 'CNA', 'CORE', 'DPU', 'DPU_RDMA', 'PPU', 'PPU_RDMA']
+        for dest in destinations:
+            text = re.sub(rf'\b({dest})\b', f'{Colors.YELLOW}\\1{Colors.RESET}', text)
+        return text
+
+    @staticmethod
+    def highlight_instruction(text):
+        """Highlight instruction data like lsb 1234567890abcdef"""
+        import re
+        text = re.sub(r'(lsb\s+[0-9a-fA-F]+)', f'{Colors.WHITE}\\1{Colors.RESET}', text)
+        return text
+
+    @staticmethod
+    def apply_all_highlighting(text):
+        """Apply all highlighting to text"""
+        text = Colors.highlight_hex(text)
+        text = Colors.highlight_register(text)
+        text = Colors.highlight_keyword(text)
+        text = Colors.highlight_destination(text)
+        text = Colors.highlight_instruction(text)
+        return text
+
+
 # DRM structs
 class drm_version(ctypes.Structure):
     _fields_ = [
@@ -242,9 +306,10 @@ def decode_dump_file(xml_file, dump_file):
                                 emit_str += "%s_%s(%d)" % (reg.full_name.upper(), field.name.upper(), field_value)
                                 first = False
                 emit_str += ");"
-                print(emit_str)
+                print(Colors.apply_all_highlighting(emit_str))
             else:
-                print("%x %x %x" % (target, offset, value))
+                output = "%x %x %x" % (target, offset, value)
+                print(Colors.apply_all_highlighting(output))
 
 def mask(low, high):
     return ((0xffffffffffffffff >> (64 - (high + 1 - low))) << low)
@@ -254,12 +319,14 @@ def register3_stuff(fd):
         gopen = drm_gem_open()
         gopen.name = 3
         fcntl.ioctl(fd, DRM_IOCTL_GEM_OPEN, gopen)
-        print(f"gem open got 0 {gopen.handle} {gopen.size}")
+        output = f"gem open got 0 {gopen.handle} {gopen.size}"
+        print(Colors.apply_all_highlighting(output))
 
         mem_map = rknpu_mem_map()
         mem_map.handle = gopen.handle
         fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, mem_map)
-        print(f"memmap returned 0 {hex(mem_map.offset)}")
+        output = f"memmap returned 0 {hex(mem_map.offset)}"
+        print(Colors.apply_all_highlighting(output))
 
         instr_map = mmap.mmap(fd, gopen.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=mem_map.offset)
         print(f"mmap returned {instr_map}")
@@ -274,8 +341,10 @@ def register3_stuff(fd):
         for i in range(gopen.size // 40):
             block = instr_map[i * 40 : (i + 1) * 40]
             instrs = struct.unpack("<10I", block)
-            print(f"[{i}] {instrs[7] - a}")
-            print(f"\t{hex(instrs[8])}")
+            output = f"[{i}] {instrs[7] - a}"
+            print(Colors.apply_all_highlighting(output))
+            output = f"\t{hex(instrs[8])}"
+            print(Colors.apply_all_highlighting(output))
             a = instrs[7]
             if instrs[8] == 0:
                 break
@@ -294,12 +363,14 @@ def dump_gem_flink(fd, flink_name):
         gopen = drm_gem_open()
         gopen.name = flink_name
         fcntl.ioctl(fd, DRM_IOCTL_GEM_OPEN, gopen)
-        print(f"gem flink {flink_name}: ret=0 handle={gopen.handle} size={gopen.size}")
+        output = f"gem flink {flink_name}: ret=0 handle={gopen.handle} size={gopen.size}"
+        print(Colors.apply_all_highlighting(output))
 
         mem_map = rknpu_mem_map()
         mem_map.handle = gopen.handle
         fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, mem_map)
-        print(f"memmap returned 0 {hex(mem_map.offset)}")
+        output = f"memmap returned 0 {hex(mem_map.offset)}"
+        print(Colors.apply_all_highlighting(output))
 
         instr_map = mmap.mmap(fd, gopen.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=mem_map.offset)
         print(f"mmap returned {instr_map}")
@@ -313,10 +384,13 @@ def dump_gem_flink(fd, flink_name):
             if all(x == 0 for x in here):
                 remaining_blocks = total_blocks - i // 16
                 remaining_bytes = remaining_blocks * 16
-                print(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}")
-                print(f"... {remaining_blocks} blocks ({remaining_bytes} bytes) from 0x{i:08x} to 0x{gopen.size-1:08x} are all zeros")
+                output = f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"
+                print(Colors.apply_all_highlighting(output))
+                output = f"... {remaining_blocks} blocks ({remaining_bytes} bytes) from 0x{i:08x} to 0x{gopen.size-1:08x} are all zeros"
+                print(Colors.apply_all_highlighting(output))
                 break
-            print(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}")
+            output = f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"
+            print(Colors.apply_all_highlighting(output))
 
         instr_map.close()
     except OSError as e:
@@ -463,17 +537,21 @@ def dump_gem_for_decode(fd, flink_name):
                                 spacing = " " * (50 - len(reg_info))
                             else:
                                 spacing = " "
-                            print(f"{reg_info}{spacing}{emit_str}")
+                            output = f"{reg_info}{spacing}{emit_str}"
+                            print(Colors.apply_all_highlighting(output))
                         else:
                             # Show raw register info for unknown registers in ultra-compact format
-                            print(f"[{8 * i + 0xffef0000:x}] lsb {instr:016x} - {dst} Unknown")
+                            output = f"[{8 * i + 0xffef0000:x}] lsb {instr:016x} - {dst} Unknown"
+                            print(Colors.apply_all_highlighting(output))
                     except Exception as e:
                         # If XML parsing fails, show raw register info in ultra-compact format
-                        print(f"[{8 * i + 0xffef0000:x}] lsb {instr:016x} - {dst} Unknown")
+                        output = f"[{8 * i + 0xffef0000:x}] lsb {instr:016x} - {dst} Unknown"
+                        print(Colors.apply_all_highlighting(output))
                         pass
                 else:
                     # Show raw register info when no XML file in ultra-compact format
-                    print(f"[{8 * i + 0xffef0000:x}] lsb {instr:016x} - {dst} Unknown")
+                    output = f"[{8 * i + 0xffef0000:x}] lsb {instr:016x} - {dst} Unknown"
+                    print(Colors.apply_all_highlighting(output))
 
                 # Convert to signed short for compatibility with decode.py
                 signed_low = low if low <= 32767 else low - 65536
