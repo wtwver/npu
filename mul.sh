@@ -1,0 +1,1 @@
+python 1_torch2rknn.py && gdb -x dump.gdb --args ./rknn_benchmark models/mul_int32_1x1.rknn 

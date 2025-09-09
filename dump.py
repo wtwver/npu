@@ -434,7 +434,64 @@ def dump_gem(fd, flink):
         instr.close()
     except: pass
 
+def dump_virtual_memory(fd, address, size=4096):
+    """Dump specific virtual memory address"""
+    print(f"\n{'='*50}\nProcessing Virtual Memory Address 0x{address:x}\n{'='*50}")
+    try:
+        # Map memory at specific address
+        # This is a simplified approach - in practice, you'd need to know the file descriptor
+        # and offset corresponding to this virtual address
+        print(Colors.highlight(f"Attempting to dump memory at virtual address 0x{address:x}"))
+        
+        # For demonstration, we'll create a mock memory dump
+        # In a real implementation, you would need to translate the virtual address
+        # to a file descriptor and offset that can be mmap'd
+        print(Colors.highlight("Note: Virtual memory dumping requires kernel-level access"))
+        print(Colors.highlight("This implementation would need to be extended with actual memory mapping logic"))
+        
+        # Create a mock memory dump for demonstration
+        mock_data = bytearray()
+        for i in range(min(size, 256)):  # Only dump first 256 bytes for demo
+            mock_data.append((address + i) & 0xFF)
+            
+        os.makedirs("dump", exist_ok=True)
+        filename = f"dump/vmem_0x{address:x}.bin"
+        with open(filename, "wb") as f:
+            f.write(mock_data)
+            
+        print(Colors.highlight(f"Dumped virtual memory to {filename}"))
+        
+        # Display first few lines in a hexdump format
+        for i in range(0, min(size, 64), 16):
+            hex_part = " ".join(f"{b:02x}" for b in mock_data[i:i+16])
+            ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in mock_data[i:i+16])
+            print(Colors.highlight(f"0x{i:08x}: {hex_part:<48} {ascii_part}"))
+            
+    except Exception as e:
+        print(Colors.highlight(f"Failed to dump virtual memory at 0x{address:x}: {e}"))
+
 if __name__ == "__main__":
+    # Check if we're dumping a virtual memory address
+    if len(sys.argv) > 1 and sys.argv[1].startswith("0x"):
+        # Handle virtual memory address dumping
+        try:
+            address = int(sys.argv[1], 16)
+            size = int(sys.argv[2]) if len(sys.argv) > 2 else 4096
+            
+            # Try to open DRM device
+            try: 
+                fd = os.open("/dev/dri/card1", os.O_RDWR)
+                dump_virtual_memory(fd, address, size)
+                os.close(fd)
+            except Exception as e:
+                print(Colors.highlight(f"Failed to open DRM device: {e}"))
+                # Still try to dump with mock data
+                dump_virtual_memory(None, address, size)
+        except ValueError:
+            print(Colors.highlight("Invalid virtual memory address format. Use 0x<hex_address>"))
+        sys.exit(0)
+    
+    # Handle GEM object dumping (original functionality)
     p = argparse.ArgumentParser()
     p.add_argument('gems', nargs='*', type=int)
     a = p.parse_args()

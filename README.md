@@ -1,17 +1,21 @@
-# How to dump
-
-
-
-
-
 # TODO
+```
+test until 1_torch2rknn.py use 6 ALU_ALGO
+
 ./alu_int8 1 works on only 1 element but ./alu_fp16 1 works on 5 elements
+```
 
+# How to dump
+gdb --args ./rknn_benchmark models/add_1.rknn 
+python dump.py 1
 
-# How to make onnx
-/home/orangepi/npu/create_1x1_add.py
+# How to create add onnx from torch
+python 1_torch2rknn.py
 
-# How to convert
+# How to create add onnx from parser
+python /home/orangepi/npu/old/create_1x1_add.py
+
+# How to convert onnx to rknn
 python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
 ./rknn_benchmark models/8add_1.rknn 
 
