@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wl,--allow-shlib-undefined CMakeFiles/int32add.dir/int32add.cpp.o -o int32add  -Wl,-rpath,/home/orangepi/npu/cpp/header: ../header//librknnrt.so 
