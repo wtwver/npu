@@ -32,7 +32,8 @@
  #include "rkt_registers.h"
  #include <stdlib.h>
  #include <stdio.h>
- 
+ #include <errno.h>
+
  #ifdef __cplusplus
  extern "C" {
  #endif
@@ -44,6 +45,59 @@
  } DynamicArray;
  
  DynamicArray regs;
+
+
+/**
+ * @brief Create a flink name for a GEM handle
+ * @param fd DRM device file descriptor
+ * @param handle GEM handle to create flink name for
+ * @param flink_name Pointer to store the resulting flink name
+ * @return 0 on success, negative error code on failure
+ */
+ int create_flink_name(int fd, uint32_t handle, uint32_t *flink_name) {
+   struct drm_gem_flink flink_req = {
+       .handle = handle,
+       .name = 0
+   };
+
+   int ret = ioctl(fd, DRM_IOCTL_GEM_FLINK, &flink_req);
+   if (ret < 0) {
+       printf("ERROR: DRM_IOCTL_GEM_FLINK failed: %s (%d)\n", strerror(errno), errno);
+       return ret;
+   }
+
+   *flink_name = flink_req.name;
+   printf("SUCCESS: Created flink name %u for handle %u\n", *flink_name, handle);
+   return 0;
+}
+
+/**
+* @brief Open a GEM object by flink name
+* @param fd DRM device file descriptor
+* @param flink_name Flink name of the GEM object
+* @param handle Pointer to store the resulting GEM handle
+* @param size Pointer to store the GEM object size
+* @return 0 on success, negative error code on failure
+*/
+int open_gem_by_flink(int fd, uint32_t flink_name, uint32_t *handle, uint64_t *size) {
+   struct drm_gem_open gopen = {
+       .name = flink_name,
+       .handle = 0,
+       .size = 0
+   };
+   
+   int ret = ioctl(fd, DRM_IOCTL_GEM_OPEN, &gopen);
+   if (ret < 0) {
+       printf("DRM_IOCTL_GEM_OPEN failed: %s\n", strerror(errno));
+       return ret;
+   }
+   
+   *handle = gopen.handle;
+   *size = gopen.size;
+   printf("Opened GEM object with flink name %u: handle=%u, size=%lu\n", 
+          flink_name, *handle, *size);
+   return 0;
+}
  
  // Initialize the dynamic array
  void initArray(DynamicArray *arr, size_t initialCapacity) {
@@ -155,7 +209,7 @@
  }
  
  
-  void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint32_t flags) {
+ void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint32_t flags, uint32_t *handle) {
  
      int ret;
      struct rknpu_mem_create mem_create = {
@@ -179,6 +233,7 @@
    
      *dma_addr = mem_create.dma_addr;
      *obj = mem_create.obj_addr;
+     if (handle) *handle = mem_create.handle;  // Return the GEM handle if requested
      return map;
    }
    
@@ -212,23 +267,42 @@
  
  struct MemHandles createRegCmd(int fd, int type_size, uint32_t alu_algorithm)
  {
-     // Set the ALU algorithm for this operation
-     set_alu_algorithm(alu_algorithm);
-     uint64_t tasks_dma, tasks_obj;
-     struct rknpu_task *tasks = (struct rknpu_task *)mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING);
+
+    // Set the ALU algorithm for this operation
+    set_alu_algorithm(alu_algorithm);
+    uint64_t tasks_dma, tasks_obj;
+    uint32_t tasks_handle;
+    struct rknpu_task *tasks = (struct rknpu_task *)mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
+
+    uint64_t regcmd_dma, regcmd_obj;
+    uint32_t regcmd_handle;
+    uint64_t *regcmd = (uint64_t *)(mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle));
+    
+    uint64_t input_dma, input_obj;
+    uint32_t input_handle;
+    void *input = mem_allocate(fd, type_size, &input_dma, &input_obj, 0, &input_handle);  
+
+    uint64_t weights_dma, weights_obj;
+    uint32_t weights_handle;
+    void *weights = mem_allocate(fd, type_size, &weights_dma, &weights_obj, 0, &weights_handle);
+
+    uint64_t output_dma, output_obj;
+    uint32_t output_handle;
+    void *output = mem_allocate(fd, type_size, &output_dma, &output_obj, 0, &output_handle);
+
+    uint32_t regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink;
+
+    if (create_flink_name(fd, regcmd_handle, &regcmd_flink) < 0 ||
+        create_flink_name(fd, tasks_handle, &tasks_flink) < 0 ||
+        create_flink_name(fd, input_handle, &input_flink) < 0 ||
+        create_flink_name(fd, weights_handle, &weights_flink) < 0 ||
+        create_flink_name(fd, output_handle, &output_flink) < 0) {
+        printf("Failed to create flink name for one or more GEM objects\n");
+    }
+    printf("Created flink names: regcmd=%u, tasks=%u, input=%u, weights=%u, output=%u\n",
+        regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink);
  
-     uint64_t regcmd_dma, regcmd_obj;
-     uint64_t *regcmd = (uint64_t *)(mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0));
-     
-     uint64_t input_dma, input_obj;
-     void *input = mem_allocate(fd, type_size, &input_dma, &input_obj, 0);  
- 
-     uint64_t weights_dma, weights_obj;
-     void *weights = mem_allocate(fd, type_size, &weights_dma, &weights_obj, 0);
- 
-     uint64_t output_dma, output_obj;
-     void *output = mem_allocate(fd, type_size, &output_dma, &output_obj, 0);
- 
+
      // To return input, weights, and output, you can use output parameters or a struct.
      // Example: define a struct to hold them and return it.
      // Set input, weights and output physical memory locations. Note limited to 
@@ -364,7 +438,6 @@
      EMIT(REG_DPU_EW_OP_VALUE_6, 0);
      EMIT(REG_DPU_EW_OP_VALUE_7, 0);
  
-     EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(12))
      EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(12))
  
      emit_raw(&regs, DPU | 0x1, 0x40c4, 0);

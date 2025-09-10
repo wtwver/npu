@@ -1,4 +1,4 @@
-#include "header/rknn_api.h"
+#include "rknn_api.h"
 #include <iostream>
 #include <sys/stat.h>
 #include <cstring>
@@ -19,7 +19,7 @@ bool fileExists(const std::string& filename) {
 std::string selectModelPath(const std::string& operation, int size) {
     // Try to find a model specific to this size
     std::stringstream specific_model_path_ss;
-    specific_model_path_ss << "../models/" << operation << "_int32_1x" << size << ".rknn";
+    specific_model_path_ss << "models/" << operation << "_int32_1x" << size << ".rknn";
     std::string specific_model_path = specific_model_path_ss.str();
     
     // Check if the specific model exists
@@ -30,7 +30,7 @@ std::string selectModelPath(const std::string& operation, int size) {
     
     // Fall back to the generic 1x1 model
     std::stringstream generic_model_path_ss;
-    generic_model_path_ss << "../models/" << operation << "_int32_1x1.rknn";
+    generic_model_path_ss << "models/" << operation << "_int32_1x1.rknn";
     std::string generic_model_path = generic_model_path_ss.str();
     std::cout << "Using generic model: " << generic_model_path << std::endl;
     return generic_model_path;

@@ -11,9 +11,9 @@ class Model(torch.nn.Module):
 size = 1
 if sys.argv[1:]:
     size = int(sys.argv[1])
-dtype = torch.int8
+dtype = torch.float16
 ops = "add"
-model_path = f"models/{ops}_int8_1x{size}.onnx"
+model_path = f"models/{ops}_float16_1x{size}.onnx"
 
 x = torch.full((1, size), 2, dtype=dtype)
 y = torch.full((1, size), 1, dtype=dtype)
@@ -35,6 +35,3 @@ rknn.load_onnx(model=model_path)
 rknn.build(do_quantization=False, dataset=None)
 rknn.export_rknn(model_path.replace('.onnx', '.rknn'))
 print("RKNN model exported successfully!")
-
-import subprocess
-subprocess.run(["gdb", "-x", "dump.gdb", "--args", "./rknn_benchmark", model_path.replace('.onnx', '.rknn')])

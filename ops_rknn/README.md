@@ -1,7 +1,7 @@
-g++ -o ops_int32 ops_int32.cpp -I. -lrknnrt -std=c++11
-g++ -o ops_int8 ops_int8.cpp -I. -lrknnrt -std=c++11
+g++ -o ops_int32 ops_int32.cpp -I../include -lrknnrt -std=c++11
+g++ -o ops_int8 ops_int8.cpp -I../include -lrknnrt -std=c++11
 
-gdb -x ops.gdb --args ./ops_int32 mul 1x5
+gdb -x ops.gdb --args ./ops_int32 add 1x10
 ./ops_int32 add 1x3
 ./ops_int32 sub 1x4
 ./ops_int32 div 1x5
