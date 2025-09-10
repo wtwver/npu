@@ -23,5 +23,6 @@ c
 c
 c
 shell python3 dump.py 1 
-shell python3 dump.py 1 | grep ALGO
+shell python3 dump.py 1 | grep REG_DPU_EW_CFG 
+shell echo "============"
 q

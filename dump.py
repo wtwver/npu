@@ -328,7 +328,8 @@ def dump_gem(fd, flink):
 
         m = rknpu_mem_map()
         m.handle = g.handle
-        fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, m)
+        ret = fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, m)
+        print(f"DRM_IOCTL_RKNPU_MEM_MAP returned", ret, hex(m.offset))
 
         instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=m.offset)
         print(f"mmap returned {instr}")
@@ -360,10 +361,11 @@ def dump_gem(fd, flink):
 
         m = rknpu_mem_map()
         m.handle = g.handle
-        fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, m)
+        ret = fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, m)
+        print(f"memmap returned", ret, hex(m.offset))
 
         instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=m.offset)
-        print(f"mmap returned {instr}")
+        print(f"mmap returned {instr}", m.offset)
 
         # Initialize parser for XML register definitions
         regs, domains = {}, {}
