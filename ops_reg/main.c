@@ -1,19 +1,29 @@
-
 #include <stdio.h>
 #include "rknnops.h"
- 
 
 int main(int argc, char **argv) {
 
-    __fp16* a = (__fp16*)malloc(10 * sizeof(__fp16));
-    __fp16* b = (__fp16*)malloc(10 * sizeof(__fp16));
-    for (size_t i = 0; i < 10; i++) {
+    int size = 2 ;
+    __fp16* a = (__fp16*)malloc(size * sizeof(__fp16));
+    __fp16* b = (__fp16*)malloc(size * sizeof(__fp16));
+    for (size_t i = 0; i < size; i++) {
         a[i] = 1.1f;
         b[i] = 2.2f;
     }
     // _Float16* result = float16_alu_op(a, b, alu_algorithm);
     __fp16* result = float16_add_op(a, b);
-    for (size_t i = 0; i < 10; i++) {
+    printf("Input0: ");
+    for (size_t i = 0; i < size; i++) {
+        printf("%f ", a[i]);
+    };
+
+    printf("\nInput1: ");
+    for (size_t i = 0; i < size; i++) {
+        printf("%f ", b[i]);
+    };
+
+    printf("\nResult: ");
+    for (size_t i = 0; i < size; i++) {
         printf("%f ", result[i]);
     }
     printf("\n");
