@@ -1,7 +1,5 @@
-run 
-break ioctl
+break rknn_destroy
 run
-c 70
 shell python3 dump.py 1 
 shell python3 dump.py 2
 shell python3 dump.py 3 

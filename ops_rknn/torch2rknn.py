@@ -8,7 +8,7 @@ class Model(torch.nn.Module):
     def forward(self, x, y):
         return x + y
 
-size = 1
+size = 2
 if sys.argv[1:]:
     size = int(sys.argv[1])
 dtype = torch.float16
