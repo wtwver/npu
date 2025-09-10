@@ -11,6 +11,7 @@ int main(int argc, char **argv) {
         a[i] = 1.1f;
         b[i] = 2.2f;
     }
+    // _Float16* result = float16_alu_op(a, b, alu_algorithm);
     __fp16* result = float16_add_op(a, b);
     for (size_t i = 0; i < 10; i++) {
         printf("%f ", result[i]);
