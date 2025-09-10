@@ -110,22 +110,19 @@ int main(int argc, char* argv[]) {
     // Record start time
     auto start = std::chrono::high_resolution_clock::now();
     
-    // Process each element individually since the model is 1x1
-    for (int i = 0; i < size; i++) {
-        // Setup inputs for single element
         rknn_input inputs[2];
         memset(inputs, 0, 2 * sizeof(rknn_input));
         inputs[0].index = 0;
-        inputs[0].buf = &input0[i];
-        inputs[0].size = sizeof(__fp16);
         inputs[0].type = RKNN_TENSOR_FLOAT16;
         inputs[0].fmt = RKNN_TENSOR_NCHW;
+        inputs[0].buf = input0.data();
+        inputs[0].size = size * sizeof(__fp16);
         
         inputs[1].index = 1;
-        inputs[1].buf = &input1[i];
-        inputs[1].size = sizeof(__fp16);
         inputs[1].type = RKNN_TENSOR_FLOAT16;
         inputs[1].fmt = RKNN_TENSOR_NCHW;
+        inputs[1].buf = input1.data();
+        inputs[1].size = size * sizeof(__fp16);
         
         ret = rknn_inputs_set(ctx, 2, inputs);
         if (ret < 0) {
@@ -156,12 +153,13 @@ int main(int argc, char* argv[]) {
         }
         
         // Store result
-        float* result = (float*)output.buf;
-        results[i] = result[0];
+        float* result_buf = (float*)output.buf;
+        for (int i = 0; i < size; i++) {
+            results[i] = result_buf[i];
+        }
         
         // Release output for this iteration
         rknn_outputs_release(ctx, 1, &output);
-    }
     
     // Record end time
     auto end = std::chrono::high_resolution_clock::now();
