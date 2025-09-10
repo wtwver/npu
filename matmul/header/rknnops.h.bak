@@ -32,6 +32,7 @@
 #include "rkt_registers.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -583,6 +584,7 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm)
 {
     int fd = getDeviceFd();
     rknn_tensor_type dtype = RKNN_TENSOR_FLOAT16;
+    initArray(&regs, 1024);
 
     struct MemHandles handles = createRegCmd(fd, get_type_size(dtype), alu_algorithm);
     __fp16 *weights_fp16 = (__fp16*)(handles.weights);
@@ -593,6 +595,8 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm)
     memcpy(feature_data_fp16, b, get_type_size(dtype));
 
     int ret = submitTask(fd, handles.tasks_obj);
+    freeArray(&regs);  // Clean up the array
+    close(fd);  // Close the device file descriptor
     if(ret < 0) {
         printf("RKNPU_SUBMIT failed %d\n",ret);
         return NULL;
@@ -623,6 +627,7 @@ __fp16* float16_add_op(__fp16* a, __fp16* b)
  {
      int fd = getDeviceFd();
      rknn_tensor_type dtype = RKNN_TENSOR_INT16;
+     initArray(&regs, 1024);
 
      struct MemHandles handles = createRegCmd(fd, get_type_size(dtype), alu_algorithm);
      int16_t *weights_int16 = (int16_t*)(handles.weights);
@@ -633,6 +638,8 @@ __fp16* float16_add_op(__fp16* a, __fp16* b)
      memcpy(feature_data_int16, b, get_type_size(dtype));
  
      int ret = submitTask(fd, handles.tasks_obj);
+     freeArray(&regs);  // Clean up the array
+     close(fd);  // Close the device file descriptor
      if(ret < 0) {
          printf("RKNPU_SUBMIT failed %d\n",ret);
          return NULL;
@@ -675,6 +682,8 @@ __fp16* float16_add_op(__fp16* a, __fp16* b)
      memcpy(feature_data_int8, b, get_type_size(dtype));
  
      int ret = submitTask(fd, handles.tasks_obj);
+     freeArray(&regs);  // Clean up the array
+     close(fd);  // Close the device file descriptor
      if(ret < 0) {
          printf("RKNPU_SUBMIT failed %d\n",ret);
          return NULL;

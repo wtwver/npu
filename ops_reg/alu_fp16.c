@@ -4,8 +4,6 @@
 #include <errno.h>
 #include "rknnops.h"
 
-
-
 int main(int argc, char **argv) {
     if (argc != 2) {
         printf("Usage: %s <alu_algorithm>\n", argv[0]);
@@ -21,21 +19,11 @@ int main(int argc, char **argv) {
 
     // Get DRM device file descriptor
     int fd = getDeviceFd();
-    if (fd < 0) {
-        printf("Failed to get device file descriptor\n");
-        return 1;
-    }
     printf("Device fd: %d\n", fd);
 
     _Float16* a = (_Float16*)malloc(5 * sizeof(_Float16));
     _Float16* b = (_Float16*)malloc(5 * sizeof(_Float16));
 
-    if (a == NULL || b == NULL) {
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-
-    // Initialize test data
     printf("sizeof(_Float16) = %zu\n", sizeof(_Float16));
     for (size_t i = 0; i < 5; i++) {
         a[i] = 18.0f;
@@ -43,7 +31,6 @@ int main(int argc, char **argv) {
         printf("Setting a[%zu] = %.1f, b[%zu] = %.1f\n", i, (float)a[i], i, (float)b[i]);
     }
 
-    // Display input values
     printf("Input A: ");
     for (size_t i = 0; i < 5; i++) {
         printf("%.1f ", (float)a[i]);
