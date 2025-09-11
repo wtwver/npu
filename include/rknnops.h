@@ -713,8 +713,8 @@ struct MemHandles createRegCmd(int fd, int type_size, uint32_t alu_algorithm)
    // Set input, weights and output physical memory locations. Note limited to 
    // a 32 bit address size (4GB)
       
-   // regcmd_helper_add1x2(input_dma, weights_dma, output_dma);
-   regcmd_helper_original(input_dma, weights_dma, output_dma);
+   regcmd_helper_add1x2(input_dma, weights_dma, output_dma);
+   // regcmd_helper_original(input_dma, weights_dma, output_dma);
 
    uint64_t npu_regs_a[regs.size];
    memcpy(npu_regs_a, regs.data, regs.size * sizeof(uint64_t));  // Copy elements to array
