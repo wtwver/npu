@@ -16,8 +16,16 @@ int main(int argc, char **argv) {
         a[i] = 68.0f;
         b[i] = 85.0f;
     }
-    // _Float16* result = float16_alu_op(a, b, alu_algorithm);
-    __fp16* result = float16_add_op(a, b, size);
+    // 4'd0: Max;
+    // 4'd1: Min;
+    // 4'd2: Add;
+    // 4'd3: Div;
+    // 4'd4: Minus;
+    // 4'd5: Abs;
+    // 4'd6: Neg;
+    // 4'd7: Floor;
+    // 4'd8: Ceil.
+    __fp16* result = float16_alu_op(a, b, 2, size);
     printf("Input0: ");
     for (size_t i = 0; i < size; i++) {
         printf("%f ", a[i]);

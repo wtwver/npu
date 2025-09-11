@@ -794,11 +794,6 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
    return output_data;
 }
 
-__fp16* float16_add_op(__fp16* a, __fp16* b, int size)
-{
-   return float16_alu_op(a, b, 2, size); // ALU algorithm 2 = Add
-}
-
 int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)
 {
    int fd = getDeviceFd();

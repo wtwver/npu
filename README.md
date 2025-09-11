@@ -1,6 +1,7 @@
 # TODO
 
-use EMIT for add
+
+
 
 # How 
 
@@ -9,3 +10,7 @@ How to convert onnx to rknn
 
 How to build matmul / alu
 - gcc -o matmul matmul.c npu_interface.c  -ldrm -I. && ./matmul 32 32 32
+
+
+# Ref
+https://github.com/liej6799/rk3588
