@@ -176,7 +176,6 @@ int get_type_size(rknn_tensor_type type){
 }
 
 void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint32_t flags, uint32_t *handle) {
-
    int ret;
    struct rknpu_mem_create mem_create = {
       .flags = flags | RKNPU_MEM_NON_CACHEABLE,
@@ -722,8 +721,10 @@ struct MemHandles createRegCmd(int fd, int type_size, uint32_t alu_algorithm)
    memcpy(regcmd,npu_regs_a,sizeof(npu_regs_a));
 
    tasks[0].flags  = 0;
-   tasks[0].op_idx = 4;
-   tasks[0].enable_mask = 0x18;
+   // tasks[0].op_idx = 4;
+   tasks[0].op_idx = 0;
+   // tasks[0].enable_mask = 0x18;
+   tasks[0].enable_mask = 0xd;
    tasks[0].int_mask = 0x300; // wait for DPU to finish
    tasks[0].int_clear = 0x1ffff;
    tasks[0].int_status = 0;

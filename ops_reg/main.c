@@ -7,8 +7,8 @@ int main(int argc, char **argv) {
     __fp16* a = (__fp16*)malloc(size * sizeof(__fp16));
     __fp16* b = (__fp16*)malloc(size * sizeof(__fp16));
     for (size_t i = 0; i < size; i++) {
-        a[i] = 1.1f;
-        b[i] = 2.2f;
+        a[i] = 85.0f;
+        b[i] = 85.0f;
     }
     // _Float16* result = float16_alu_op(a, b, alu_algorithm);
     __fp16* result = float16_add_op(a, b);
