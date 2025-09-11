@@ -713,8 +713,8 @@ struct MemHandles createRegCmd(int fd, int type_size, uint32_t alu_algorithm)
    // Set input, weights and output physical memory locations. Note limited to 
    // a 32 bit address size (4GB)
       
-   regcmd_helper_add1x2(input_dma, weights_dma, output_dma);
-   // regcmd_helper(input_dma, weights_dma, output_dma);
+   // regcmd_helper_add1x2(input_dma, weights_dma, output_dma);
+   regcmd_helper_original(input_dma, weights_dma, output_dma);
 
    uint64_t npu_regs_a[regs.size];
    memcpy(npu_regs_a, regs.data, regs.size * sizeof(uint64_t));  // Copy elements to array
@@ -781,8 +781,10 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm)
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
    
-   memcpy(weights_fp16, a, get_type_size(dtype));
-   memcpy(feature_data_fp16, b, get_type_size(dtype));
+   memcpy(weights_fp16,      a, sizeof(a) / get_type_size(dtype));
+   memcpy(feature_data_fp16, b, sizeof(b) / get_type_size(dtype));
+   // memcpy(weights_fp16, a, 2*get_type_size(dtype));
+   // memcpy(feature_data_fp16, b, 2*get_type_size(dtype));
 
    int ret = submitTask(fd, handles.tasks_obj);
    if(ret < 0) {

@@ -463,37 +463,74 @@ def dump_virtual_memory(fd, address, size=4096):
     """Dump specific virtual memory address"""
     print(f"\n{'='*50}\nProcessing Virtual Memory Address 0x{address:x}\n{'='*50}")
     try:
-        # Map memory at specific address
-        # This is a simplified approach - in practice, you'd need to know the file descriptor
-        # and offset corresponding to this virtual address
+        # Try to map the virtual memory using the device file descriptor
         print(Colors.highlight(f"Attempting to dump memory at virtual address 0x{address:x}"))
+        print(Colors.highlight("Note: This attempts to map virtual memory through the DRM device"))
+        print(Colors.highlight("For actual physical memory dumps, you would need to know the GEM object handle"))
         
-        # For demonstration, we'll create a mock memory dump
-        # In a real implementation, you would need to translate the virtual address
-        # to a file descriptor and offset that can be mmap'd
-        print(Colors.highlight("Note: Virtual memory dumping requires kernel-level access"))
-        print(Colors.highlight("This implementation would need to be extended with actual memory mapping logic"))
+        # Align address to page boundary and adjust size accordingly
+        page_size = 4096
+        aligned_address = address & ~(page_size - 1)
+        offset = address - aligned_address
+        aligned_size = ((offset + size + page_size - 1) // page_size) * page_size
         
-        # Create a mock memory dump for demonstration
-        mock_data = bytearray()
-        for i in range(min(size, 256)):  # Only dump first 256 bytes for demo
-            mock_data.append((address + i) & 0xFF)
+        print(Colors.highlight(f"Mapping parameters: address=0x{address:x}, aligned=0x{aligned_address:x}, offset=0x{offset:x}, size={size}, aligned_size={aligned_size}"))
+        
+        # Try to map the memory
+        try:
+            # Map memory with READ permissions
+            mem = mmap.mmap(fd, aligned_size, mmap.MAP_SHARED, mmap.PROT_READ, offset=aligned_address)
+            print(Colors.highlight(f"Successfully mapped memory region"))
             
+            # Extract the requested data
+            data = mem[offset:offset+size]
+            mem.close()
+            
+        except Exception as mmap_error:
+            print(Colors.highlight(f"mmap failed: {mmap_error}"))
+            # Try with different protection flags
+            try:
+                mem = mmap.mmap(fd, aligned_size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=aligned_address)
+                data = mem[offset:offset+size]
+                mem.close()
+                print(Colors.highlight(f"mmap with PROT_READ|PROT_WRITE succeeded"))
+            except Exception as fallback_error:
+                print(Colors.highlight(f"All mmap attempts failed: {fallback_error}"))
+                print(Colors.highlight("Cannot map virtual memory at this address"))
+                print(Colors.highlight("To dump actual memory, you need to:"))
+                print(Colors.highlight("1. Find the GEM object associated with this virtual address"))
+                print(Colors.highlight("2. Use DRM_IOCTL_GEM_OPEN to get the handle"))
+                print(Colors.highlight("3. Use DRM_IOCTL_RKNPU_MEM_MAP to get the offset"))
+                print(Colors.highlight("4. Use mmap with the correct offset"))
+                return  # Exit without creating mock data
+        
         os.makedirs("dump", exist_ok=True)
         filename = f"dump/vmem_0x{address:x}.bin"
         with open(filename, "wb") as f:
-            f.write(mock_data)
+            f.write(data)
             
         print(Colors.highlight(f"Dumped virtual memory to {filename}"))
         
-        # Display first few lines in a hexdump format
-        for i in range(0, min(size, 64), 16):
-            hex_part = " ".join(f"{b:02x}" for b in mock_data[i:i+16])
-            ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in mock_data[i:i+16])
+        # Display data in hexdump format
+        print(Colors.highlight(f"\nHex dump of virtual memory at 0x{address:x}:"))
+        for i in range(0, min(len(data), size), 16):
+            # Get 16 bytes for this line
+            chunk = data[i:i+16]
+            # Convert to hex
+            hex_part = " ".join(f"{b:02x}" for b in chunk)
+            # Convert to ASCII (printable characters or dots)
+            ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
+            # Print with address
             print(Colors.highlight(f"0x{i:08x}: {hex_part:<48} {ascii_part}"))
+            
+        # If we have more data than displayed, show summary
+        if len(data) > 256:
+            print(Colors.highlight(f"... ({len(data) - 256} more bytes not shown)"))
             
     except Exception as e:
         print(Colors.highlight(f"Failed to dump virtual memory at 0x{address:x}: {e}"))
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     # Check if we're dumping a virtual memory address
@@ -502,6 +539,13 @@ if __name__ == "__main__":
         try:
             address = int(sys.argv[1], 16)
             size = int(sys.argv[2]) if len(sys.argv) > 2 else 4096
+            
+            print(Colors.highlight("Virtual Memory Dumping Information:"))
+            print(Colors.highlight("=============================="))
+            print(Colors.highlight("This tool attempts to dump virtual memory through the DRM device."))
+            print(Colors.highlight("For meaningful results, you need to know the correct virtual address."))
+            print(Colors.highlight("For GEM object memory dumps, use the GEM flink name instead."))
+            print(Colors.highlight(""))
             
             # Try to open DRM device
             try: 
@@ -514,12 +558,32 @@ if __name__ == "__main__":
                 dump_virtual_memory(None, address, size)
         except ValueError:
             print(Colors.highlight("Invalid virtual memory address format. Use 0x<hex_address>"))
+            print(Colors.highlight("Example: python3 dump.py 0x100000"))
         sys.exit(0)
     
     # Handle GEM object dumping (original functionality)
-    p = argparse.ArgumentParser()
-    p.add_argument('gems', nargs='*', type=int)
+    p = argparse.ArgumentParser(description="Dump GEM objects from RKNNPU device")
+    p.add_argument('gems', nargs='*', type=int, help="GEM flink names to dump (default: 1 2)")
+    p.add_argument('--vmem', metavar='ADDR', help="Dump virtual memory at hex address (e.g., 0x100000)")
+    p.add_argument('--size', type=int, default=4096, help="Size in bytes for virtual memory dump (default: 4096)")
     a = p.parse_args()
+
+    # Handle virtual memory dump from arguments
+    if a.vmem:
+        try:
+            address = int(a.vmem, 16)
+            # Try to open DRM device
+            try: 
+                fd = os.open("/dev/dri/card1", os.O_RDWR)
+                dump_virtual_memory(fd, address, a.size)
+                os.close(fd)
+            except Exception as e:
+                print(Colors.highlight(f"Failed to open DRM device: {e}"))
+                # Still try to dump with mock data
+                dump_virtual_memory(None, address, a.size)
+        except ValueError:
+            print(Colors.highlight("Invalid virtual memory address format. Use 0x<hex_address>"))
+        sys.exit(0)
 
     try: fd = os.open("/dev/dri/card1", os.O_RDWR)
     except: sys.exit(1)

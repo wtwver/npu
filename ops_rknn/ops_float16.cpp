@@ -103,8 +103,9 @@ int main(int argc, char* argv[]) {
     
     // Initialize inputs with sample values
     for (int i = 0; i < size; i++) {
-        input0[i] = static_cast<__fp16>(i + 1.1);  // 1.1, 2.1, 3.1, ...
-        input1[i] = static_cast<__fp16>(2.0);      // All 2s
+        // input0[i] = static_cast<__fp16>(i + 1.1);  // 1.1, 2.1, 3.1, ...
+        input0[i] = static_cast<__fp16>(68.0);  // 1.1, 2.1, 3.1, ...
+        input1[i] = static_cast<__fp16>(85.0);      // All 2s
     }
     
     // Record start time
