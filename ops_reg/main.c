@@ -9,12 +9,15 @@ int main(int argc, char **argv) {
     }
     __fp16* a = (__fp16*)malloc(size * sizeof(__fp16));
     __fp16* b = (__fp16*)malloc(size * sizeof(__fp16));
+    printf("size: %d %d\n", sizeof(a), sizeof(b));
+
+
     for (size_t i = 0; i < size; i++) {
         a[i] = 68.0f;
         b[i] = 85.0f;
     }
     // _Float16* result = float16_alu_op(a, b, alu_algorithm);
-    __fp16* result = float16_add_op(a, b);
+    __fp16* result = float16_add_op(a, b, size);
     printf("Input0: ");
     for (size_t i = 0; i < size; i++) {
         printf("%f ", a[i]);

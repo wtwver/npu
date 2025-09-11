@@ -770,7 +770,7 @@ int submitTask(int fd, uint64_t tasks_obj){
    return ioctl(fd, DRM_IOCTL_RKNPU_SUBMIT, &submit);
 }
 
-__fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm)
+__fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
 {
    int fd = getDeviceFd();
    printf("fd: %d\n", fd);
@@ -781,8 +781,8 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm)
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
    
-   memcpy(weights_fp16,      a, sizeof(a) / get_type_size(dtype));
-   memcpy(feature_data_fp16, b, sizeof(b) / get_type_size(dtype));
+   memcpy(weights_fp16,      a, size * get_type_size(dtype));
+   memcpy(feature_data_fp16, b, size * get_type_size(dtype));
    // memcpy(weights_fp16, a, 2*get_type_size(dtype));
    // memcpy(feature_data_fp16, b, 2*get_type_size(dtype));
 
@@ -794,9 +794,9 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm)
    return output_data;
 }
 
-__fp16* float16_add_op(__fp16* a, __fp16* b)
+__fp16* float16_add_op(__fp16* a, __fp16* b, int size)
 {
-   return float16_alu_op(a, b, 2); // ALU algorithm 2 = Add
+   return float16_alu_op(a, b, 2, size); // ALU algorithm 2 = Add
 }
 
 int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)

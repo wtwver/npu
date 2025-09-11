@@ -1,4 +1,4 @@
-break rknn_destroy
+break rknn_run
 run
 shell python3 dump.py 1 
 shell python3 dump.py 2
