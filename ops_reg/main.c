@@ -25,7 +25,8 @@ int main(int argc, char **argv) {
     // 4'd6: Neg;
     // 4'd7: Floor;
     // 4'd8: Ceil.
-    __fp16* result = float16_alu_op(a, b, 2, size);
+    // CUSTOM 9: MUL
+    __fp16* result = float16_alu_op(a, b, 9, size);
     printf("Input0: ");
     for (size_t i = 0; i < size; i++) {
         printf("%f ", a[i]);

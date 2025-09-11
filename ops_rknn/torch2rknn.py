@@ -6,13 +6,13 @@ class Model(torch.nn.Module):
         super(Model, self).__init__()
 
     def forward(self, x, y):
-        return x + y
+        return x * y
 
-size = 2
+size = 1
 if sys.argv[1:]:
     size = int(sys.argv[1])
 dtype = torch.float16
-ops = "add"
+ops = "mul"
 model_path = f"models/{ops}_float16_1x{size}.onnx"
 
 x = torch.full((1, size), 2, dtype=dtype)
