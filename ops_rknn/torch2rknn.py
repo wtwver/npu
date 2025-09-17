@@ -1,3 +1,4 @@
+from math import exp
 import torch, sys
 from rknn.api import RKNN
 
@@ -6,13 +7,13 @@ class Model(torch.nn.Module):
         super(Model, self).__init__()
 
     def forward(self, x, y):
-        return x * y
+        return torch.floor_divide(x, y)
 
 size = 1
 if sys.argv[1:]:
     size = int(sys.argv[1])
 dtype = torch.float16
-ops = "mul"
+ops = "floor"
 model_path = f"models/{ops}_float16_1x{size}.onnx"
 
 x = torch.full((1, size), 2, dtype=dtype)
@@ -24,9 +25,15 @@ print(f"Expected output: {x + y}")
 # Export to ONNX 
 m = Model()
 torch.onnx.export(m, (x, y), model_path,
-                  opset_version=11,
+                #   opset_version=11,
                   input_names=['input_x', 'input_y'],
                   output_names=['output'])
+
+#### what is dynamo_export
+# torch.onnx.dynamo_export(m, (x, y), model_path,
+#                 #   opset_version=11,
+#                   input_names=['input_x', 'input_y'],
+#                   output_names=['output'])
 
 # ONNX to RKNN
 rknn = RKNN()

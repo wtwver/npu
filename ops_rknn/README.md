@@ -2,7 +2,7 @@ g++ -o ops_int32 ops_int32.cpp -I../include -lrknnrt -std=c++11
 g++ -o ops_int8 ops_int8.cpp -I../include -lrknnrt -std=c++11
 g++ -o ops_float16 ops_float16.cpp -I../include -lrknnrt -std=c++11
 
-gdb -x ops.gdb --args ./ops_float16 mul 1x10
+gdb -x ops.gdb --args ./ops_int32 and 1x1
 ./ops_int32 add 1x3
 ./ops_int32 sub 1x4
 ./ops_int32 div 1x5

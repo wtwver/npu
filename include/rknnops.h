@@ -48,20 +48,20 @@ DynamicArray regs;
 
 
 int create_flink_name(int fd, uint32_t handle, uint32_t *flink_name) {
-struct drm_gem_flink flink_req = {
-      .handle = handle,
-      .name = 0
-};
+   struct drm_gem_flink flink_req = {
+         .handle = handle,
+         .name = 0
+   };
 
-int ret = ioctl(fd, DRM_IOCTL_GEM_FLINK, &flink_req);
-if (ret < 0) {
-      printf("ERROR: DRM_IOCTL_GEM_FLINK failed: %s (%d)\n", strerror(errno), errno);
-      return ret;
-}
+   int ret = ioctl(fd, DRM_IOCTL_GEM_FLINK, &flink_req);
+   if (ret < 0) {
+         printf("ERROR: DRM_IOCTL_GEM_FLINK failed: %s (%d)\n", strerror(errno), errno);
+         return ret;
+   }
 
-*flink_name = flink_req.name;
-printf("SUCCESS: Created flink name %u for handle %u\n", *flink_name, handle);
-return 0;
+   *flink_name = flink_req.name;
+   printf("SUCCESS: Created flink name %u for handle %u\n", *flink_name, handle);
+   return 0;
 }
 
 int open_gem_by_flink(int fd, uint32_t flink_name, uint32_t *handle, uint64_t *size) {
@@ -253,12 +253,10 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
       EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(7));
       EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_WIDTH_WDMA(params[i].wdma_size_1));
       EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
-      if (current_alu_algorithm == 9)
-         EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1) | DPU_EW_CFG_EW_OP_TYPE(1))
-      else
-         EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_ALU_ALGO(current_alu_algorithm) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1));
+      EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_ALU_ALGO(current_alu_algorithm) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1));
       EMIT(REG_DPU_EW_CVT_SCALE_VALUE, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
       EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+      
       EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(1));
       EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_WIDTH, DPU_RDMA_RDMA_DATA_CUBE_WIDTH_WIDTH(params[i].rdma_data_cube_width));
       EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_CHANNEL, DPU_RDMA_RDMA_DATA_CUBE_CHANNEL_CHANNEL(7));
@@ -274,8 +272,22 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
       EMIT(REG_DPU_RDMA_RDMA_WEIGHT, DPU_RDMA_RDMA_WEIGHT_E_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_N_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_B_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_M_WEIGHT(1));
       EMIT(REG_DPU_RDMA_RDMA_EW_SURF_NOTCH, DPU_RDMA_RDMA_EW_SURF_NOTCH_EW_SURF_NOTCH(params[i].rdma_ew_surf_notch));
       // EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12));
+      
+      if (current_alu_algorithm == 9){
+         EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1) | DPU_EW_CFG_EW_OP_TYPE(1))
+      }
+      else if(current_alu_algorithm == 3 || current_alu_algorithm == 7 || current_alu_algorithm ==8 ){
+         // swap input and weights for DIV
+         EMIT(REG_DPU_RDMA_RDMA_SRC_BASE_ADDR, DPU_RDMA_RDMA_SRC_BASE_ADDR_SRC_BASE_ADDR(weights_dma)+ params[i].rdma_src_base_addr_offset);
+         EMIT(REG_DPU_RDMA_RDMA_EW_BASE_ADDR, DPU_RDMA_RDMA_EW_BASE_ADDR_EW_BASE_ADDR(input_dma)+ params[i].rdma_ew_base_addr_offset);
+
+         EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_ALU_ALGO(current_alu_algorithm) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1));
+         EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(0) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+         EMIT(REG_DPU_RDMA_RDMA_FEATURE_MODE_CFG, DPU_RDMA_RDMA_FEATURE_MODE_CFG_IN_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_PROC_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_MRDMA_FP16TOFP32_EN(0) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_FLYING_MODE(1));      
+      }
       emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12) | PC_OPERATION_ENABLE_OP_EN(0));
       EMIT(REG_PC_VERSION, 0x00020000);
+   
    }
 }
 

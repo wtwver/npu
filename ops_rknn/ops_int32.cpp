@@ -40,14 +40,14 @@ int main(int argc, char* argv[]) {
     // Check command line arguments
     if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <operation> 1x<size>" << std::endl;
-        std::cerr << "Operations: mul, add, sub, div" << std::endl;
+        std::cerr << "Operations: mul, add, sub, div, and" << std::endl;
         return -1;
     }
     
     // Parse operation from command line argument
     std::string operation = argv[1];
-    if (operation != "mul" && operation != "add" && operation != "sub" && operation != "div") {
-        std::cerr << "Error: Operation must be either 'mul', 'add', 'sub', or 'div'" << std::endl;
+    if (operation != "mul" && operation != "add" && operation != "sub" && operation != "div" && operation != "and") {
+        std::cerr << "Error: Operation must be one of: 'mul', 'add', 'sub', 'div', 'and'" << std::endl;
         return -1;
     }
     
@@ -99,7 +99,8 @@ int main(int argc, char* argv[]) {
     // Create input arrays of specified size
     std::vector<int> input0(size);
     std::vector<int> input1(size);
-    std::vector<float> results(size);
+    std::vector<float> results_float(size);
+    std::vector<int> results_int(size);
     
     // Initialize inputs with sample values
     for (int i = 0; i < size; i++) {
@@ -145,7 +146,7 @@ int main(int argc, char* argv[]) {
         // Get output
         rknn_output output;
         memset(&output, 0, sizeof(output));
-        output.want_float = 1;
+        output.want_float = (operation == "div") ? 1 : 0;
         output.index = 0;
         
         ret = rknn_outputs_get(ctx, 1, &output, NULL);
@@ -156,8 +157,13 @@ int main(int argc, char* argv[]) {
         }
         
         // Store result
-        float* result = (float*)output.buf;
-        results[i] = result[0];
+        if (operation == "div") {
+            float* result = (float*)output.buf;
+            results_float[i] = result[0];
+        } else {
+            int32_t* result = (int32_t*)output.buf;
+            results_int[i] = result[0];
+        }
         
         // Release output for this iteration
         rknn_outputs_release(ctx, 1, &output);
@@ -200,19 +206,19 @@ int main(int argc, char* argv[]) {
         if (i > 0) std::cout << " ";
         if (operation == "div") {
             // For division, we need to format floats properly
-            if (results[i] == (int)results[i]) {
+            if (results_float[i] == (int)results_float[i]) {
                 // Whole number
                 std::cout.width(4);
-                std::cout << (int)results[i];
+                std::cout << (int)results_float[i];
             } else {
                 // Decimal number
                 std::cout.width(4);
                 std::cout.precision(1);
-                std::cout << std::fixed << results[i];
+                std::cout << std::fixed << results_float[i];
             }
         } else {
             std::cout.width(2);
-            std::cout << (int)results[i];
+            std::cout << results_int[i];
         }
     }
     std::cout << std::endl;
@@ -236,6 +242,12 @@ int main(int argc, char* argv[]) {
             if (i > 0) std::cout << " ";
             std::cout.width(2);
             std::cout << (input0[i] - input1[i]);
+        }
+    } else if (operation == "and") {
+        for (int i = 0; i < size; i++) {
+            if (i > 0) std::cout << " ";
+            std::cout.width(2);
+            std::cout << (input0[i] & input1[i]);
         }
     } else { // div
         for (int i = 0; i < size; i++) {

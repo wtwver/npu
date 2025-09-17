@@ -12,8 +12,8 @@ int main(int argc, char **argv) {
     printf("size: %d %d\n", sizeof(a), sizeof(b));
 
     for (size_t i = 0; i < size; i++) {
-        a[i] = 68.0f;
-        b[i] = 85.0f;
+        a[i] = 85.0f;
+        b[i] = 68.0f;
     }
     // 4'd0: Max;
     // 4'd1: Min;
@@ -30,12 +30,17 @@ int main(int argc, char **argv) {
     printf("Input1: "); for (size_t i = 0; i < size; i++) printf("%f ", b[i]); printf("\n");
     printf("Result/Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", result[i]); printf("\n");
 
-    for (size_t i = 0; i < size; i++) {
-        b[i] = 2.0f;
-    }
-    result = float16_alu_op(result, b, 9, size);
+    result = float16_alu_op(a, b, 3, size);
+    printf("Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", a[i]); printf("\n");
     printf("Input1: "); for (size_t i = 0; i < size; i++) printf("%f ", b[i]); printf("\n");
-    printf("Result: "); for (size_t i = 0; i < size; i++) printf("%f ", result[i]); printf("\n");
+    printf("Result/Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", result[i]); printf("\n");
+
+    result = float16_alu_op(a, b, 7, size);
+    printf("Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", a[i]); printf("\n");
+    printf("Input1: "); for (size_t i = 0; i < size; i++) printf("%f ", b[i]); printf("\n");
+    printf("Result/Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", result[i]); printf("\n");
+
+
 
     return 0;
 }

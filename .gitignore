@@ -1,4 +1,6 @@
 __pycache__
 *.npy
 *.bin
+*.onnx
+*.rknn
 .venv/*

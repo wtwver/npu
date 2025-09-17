@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     printf("sizeof(_Float16) = %zu\n", sizeof(_Float16));
     for (size_t i = 0; i < 5; i++) {
         a[i] = 18.0f;
-        b[i] = 2.0f;
+        b[i] = 2.1f;
         printf("Setting a[%zu] = %.1f, b[%zu] = %.1f\n", i, (float)a[i], i, (float)b[i]);
     }
 
@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
     printf("\n");
 
     printf("Calling NPU float16_alu_op...\n");
-    _Float16* result = float16_alu_op(a, b, alu_algorithm);
+    _Float16* result = float16_alu_op(a, b, alu_algorithm, 5);
 
     if (result != NULL) {
         printf("NPU results: ");
