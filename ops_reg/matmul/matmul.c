@@ -1,127 +1,72 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <math.h>
-#include <time.h>
-#include <sys/mman.h>
-#include <stddef.h>
-#include <string.h>
 #include <stdio.h>
-
+#include <fcntl.h>
+#include <stdint.h>
 #include <sys/ioctl.h>
-#include <libdrm/drm.h>
+#include <sys/mman.h>
+#include <errno.h>
+#include <string.h>
 #include "rknpu-ioctl.h"
-#include "npu_interface.h"
-#include "npu_matmul.h"
 #include "npu_hw.h"
 #include "npu_cna.h"
 #include "npu_dpu.h"
-#include "npu_matmul.h"
 #include "rkt_registers.h"
 
-#ifndef NPU_HW_H
-enum  { direct_convolution = 0}; 
-enum  { precision_int8 = 0,
-        precision_float16 = 2,
-        precision_int32 = 4,
-        precision_float32 = 5};
-#endif
+typedef struct {
+  uint16_t  m;
+  uint16_t  k;
+  uint16_t  n;
+  uint32_t  input_dma;
+  uint32_t  weights_dma;
+  uint32_t  output_dma;
+  uint64_t  *tasks;
+  uint8_t   fp32tofp16;
+} matmul_params_t;
 
-// Define different MAX values based on operation type for display purposes
-#define MAX_M_INT8 544
-#define MAX_K_INT8 4096
-#define MAX_N_INT8 4096
 
-#define MAX_M_FP16 384
-#define MAX_K_FP16 4096
-#define MAX_N_FP16 4096
+void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint32_t flags, uint32_t *handle) {
+  int ret;
+  struct rknpu_mem_create mem_create = {
+    .flags = flags | RKNPU_MEM_NON_CACHEABLE,
+    .size = size,
+  };
 
-// Use the maximum values across all operation types for array declarations
-#define MAX_M MAX_M_INT8  // 544 (largest)
-#define MAX_K MAX_K_FP16  // 4096
-#define MAX_N MAX_N_FP16  // 4096
+  ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_CREATE, &mem_create);
+  if(ret < 0)  {
+    printf("RKNPU_MEM_CREATE failed %d\n",ret);
+    return NULL;
+  }
+
+  struct rknpu_mem_map mem_map = { .handle = mem_create.handle, .offset=0 };
+  ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, &mem_map);
+  if(ret < 0) {
+    printf("RKNPU_MEM_MAP failed %d\n",ret);
+    return NULL;
+  }
+
+  void *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mem_map.offset);
+
+  *dma_addr = mem_create.dma_addr;
+  *obj = mem_create.obj_addr;
+  *handle = mem_create.handle;
+  return map;
+}
 
 int create_flink_name(int fd, uint32_t handle, uint32_t *flink_name) {
-    struct drm_gem_flink flink_req = {
-        .handle = handle,
-        .name = 0
-    };
+  struct drm_gem_flink flink_req = {
+      .handle = handle,
+      .name = 0
+  };
 
-    int ret = ioctl(fd, DRM_IOCTL_GEM_FLINK, &flink_req);
-    if (ret < 0) {
-        printf("ERROR: DRM_IOCTL_GEM_FLINK failed: %s (%d)\n", strerror(errno), errno);
-        return ret;
-    }
+  int ret = ioctl(fd, DRM_IOCTL_GEM_FLINK, &flink_req);
+  if (ret < 0) {
+      printf("ERROR: DRM_IOCTL_GEM_FLINK failed: %s (%d)\n", strerror(errno), errno);
+      return ret;
+  }
 
-    *flink_name = flink_req.name;
-    printf("SUCCESS: Created flink name %u for handle %u\n", *flink_name, handle);
-    return 0;
-}
-
-int open_gem_by_flink(int fd, uint32_t flink_name, uint32_t *handle, uint64_t *size) {
-    struct drm_gem_open gopen = {
-        .name = flink_name,
-        .handle = 0,
-        .size = 0
-    };
-    
-    int ret = ioctl(fd, DRM_IOCTL_GEM_OPEN, &gopen);
-    if (ret < 0) {
-        printf("DRM_IOCTL_GEM_OPEN failed: %s\n", strerror(errno));
-        return ret;
-    }
-    
-    *handle = gopen.handle;
-    *size = gopen.size;
-    printf("Opened GEM object with flink name %u: handle=%u, size=%lu\n", 
-           flink_name, *handle, *size);
-    return 0;
-}
-
-float rand_float() {
-    return rand()/(float)RAND_MAX;
-}
-
-void matmul_fp32(int m, int k, int n, _Float16 *src0 , _Float16 *src1, float* dst) {
-    for (int i = 0; i < m; i++) {
-      for (int j = 0; j < n; j++) {
-        float sum = 0;
-        for (int l = 0; l < k; l++) {
-          sum += src0[i*k + l] * src1[j*k + l];
-        }
-       dst[i*n + j] = sum;
-      }
-    }
-}
-
-int weight_fp16(int C, int k, int c) {
-  int dst =0;
-  int kpg = ((k-1)/16);
-  int cpg = ((c-1)/32);
-  dst = ((cpg*32)*16)+ (kpg*16*C);
-  dst = dst + ((c-1)%32) + (((k-1)%16)*32);
-  return dst;
-}
-
-int feature_data(int C, int H, int W, int C2, int c, int h, int w) {
-  int plane = (c-1)/C2;
-  int src = plane * H * W * C2;
-  int offset = (c-1) % C2;
-  int pos = src + C2 * ((h-1) * W + (w-1)) + offset;
-  return pos;
-}
-
-int weight_int8(int C, int k, int c) {
-  int dst = 0;
-  int kpg = ((k-1)/16);
-  int cpg = ((c-1)/64);
-  dst = ((cpg*64)*16) + (kpg*16*C);
-  dst = dst + ((c-1)%64) + (((k-1)%16)*64);
-  return dst;
+  *flink_name = flink_req.name;
+  printf("SUCCESS: Created flink name %u for handle %u\n", *flink_name, handle);
+  return 0;
 }
 
 static inline uint64_t EMIT(uint32_t reg, uint32_t value){
@@ -135,14 +80,11 @@ static inline uint64_t EMIT(uint32_t reg, uint32_t value){
   return packed_value;
 }
 
-// only using cna & core, dpu outputs to memory
 void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_desc, npu_dpu_desc *dpu_desc) {
   uint32_t value;
 
-  printf("DEBUG: gen_matmul_task called\n");
-  printf("DEBUG: cna_desc->datain_channel=%u, cna_desc->weight_kernels=%u\n", 
-         cna_desc->datain_channel, cna_desc->weight_kernels);
-  printf("DEBUG: Writing ops[0] to ops[10]\n");
+  // printf("DEBUG: cna_desc->datain_channel=%u, cna_desc->weight_kernels=%u\n", 
+        //  cna_desc->datain_channel, cna_desc->weight_kernels);
 
   ops[0] = EMIT(REG_DPU_S_POINTER, 
       DPU_S_POINTER_POINTER_PP_MODE(1) | 
@@ -223,7 +165,6 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
       CNA_PAD_CON0_PAD_TOP(cna_desc->pad_top)
     );
 
-  printf("DEBUG: Writing ops[21] to ops[30]\n");
   ops[21] = EMIT(REG_CNA_FEATURE_DATA_ADDR, cna_desc->feature_base_addr);
   ops[22] = EMIT(REG_CNA_FC_CON2, 
       CNA_FC_CON2_WEIGHT_OFFSET(cna_desc->weight_offset)
@@ -389,173 +330,9 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   const int total_ops = 112;  // npu_regs array size
   int expected_regcfg = total_ops - (RKNPU_PC_DATA_EXTRA_AMOUNT + 4);
   int mismatch = total_ops - expected_regcfg;
-
-  printf("DEBUG: gen_matmul_task completed successfully\n");
-  printf("DEBUG: Total operations written: %d (ops[0] to ops[%d])\n", total_ops, total_ops-1);
-  printf("DEBUG: Expected regcfg_amount: %d\n", expected_regcfg);
-  printf("DEBUG: Mismatch: %d - %d = %d operations extra\n", total_ops, expected_regcfg, mismatch);
 }
 
-/*
- * Simplified version of matrix mutliplication because :
- * a) we fail if cbuf storage is exceeded ie M,K,N get too large
- * b) because of (a) only generates a single task
- *
- * task memory needs to hold at laest 112 values
- * TODO: Fix a) & b) 
- *
- */
 int gen_matmul_fp16(matmul_params_t *params) {
-
-   npu_cna_desc cna_desc;
-   npu_core_desc core_desc;
-   npu_dpu_desc dpu_desc;
-
-   unsigned int fd_bytes;
-   unsigned int fd_banks;
-   unsigned int weight_banks;
-   int surf_stride;
-
-   // Add debug output
-   printf("DEBUG: gen_matmul_fp16 called with params: m=%d, k=%d, n=%d\n", params->m, params->k, params->n);
-
-   cna_desc.conv_mode = direct_convolution;
-   cna_desc.in_precision = precision_float16;
-   cna_desc.proc_precision = precision_float16;
-
-   cna_desc.kernel_groups = 0;
-   cna_desc.feature_grains = params->m+1;
-   cna_desc.conv_x_stride = 1;
-   cna_desc.conv_y_stride = 1;
-
-   cna_desc.datain_width = 1;
-   cna_desc.datain_height = params->m;
-   cna_desc.datain_channel = params->k;
-   cna_desc.dataout_width = 1;
-   cna_desc.dataout_height = params->m;
-   cna_desc.dataout_atomics = cna_desc.dataout_width * cna_desc.dataout_height;
-
-   cna_desc.weight_width = 1;
-   cna_desc.weight_height = 1;
-   cna_desc.weight_kernels = params->n;
-   cna_desc.weight_bytes_per_kernel = cna_desc.weight_width * cna_desc.weight_height * 
-     cna_desc.datain_channel * sizeof(__fp16);
-   cna_desc.weight_bytes = cna_desc.weight_bytes_per_kernel * cna_desc.weight_kernels; 
-
-   fd_bytes = cna_desc.datain_width * cna_desc.datain_height * cna_desc.datain_channel * sizeof(__fp16);
-   fd_banks = (fd_bytes / NPU_CBUF_BANK_SIZE);
-   fd_banks = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? fd_banks : fd_banks +1;
-   weight_banks = (cna_desc.weight_bytes / NPU_CBUF_BANK_SIZE);
-   weight_banks = ((cna_desc.weight_bytes % NPU_CBUF_BANK_SIZE)==0) ? weight_banks : weight_banks + 1;
-   
-   // Add debug output for CBUF calculations
-   printf("DEBUG: CBUF calculations:\n");
-   printf("  fd_bytes=%u, NPU_CBUF_BANK_SIZE=%u\n", fd_bytes, NPU_CBUF_BANK_SIZE);
-   printf("  weight_bytes_per_kernel=%u\n", cna_desc.weight_bytes_per_kernel);
-   printf("  weight_bytes=%u\n", cna_desc.weight_bytes);
-   printf("  fd_banks calculation: %u / %u = %u, remainder %u\n", 
-          fd_bytes, NPU_CBUF_BANK_SIZE, fd_bytes / NPU_CBUF_BANK_SIZE, fd_bytes % NPU_CBUF_BANK_SIZE);
-   printf("  weight_banks calculation: %u / %u = %u, remainder %u\n", 
-          cna_desc.weight_bytes, NPU_CBUF_BANK_SIZE, cna_desc.weight_bytes / NPU_CBUF_BANK_SIZE, cna_desc.weight_bytes % NPU_CBUF_BANK_SIZE);
-   
-   if ((fd_banks) > NPU_CBUF_BANKS-1) {
-     printf("DEBUG: ERROR: fd_banks (%u) > NPU_CBUF_BANKS-1 (%u), returning -1\n", fd_banks, NPU_CBUF_BANKS-1);
-     return -1;
-   } else {
-       if (cna_desc.weight_bytes_per_kernel <= NPU_CBUF_BANK_SIZE) {
-        weight_banks = NPU_CBUF_BANKS - fd_banks;
-        printf("DEBUG: weight_banks recalculated to %u\n", weight_banks);
-        printf("DEBUG: Total banks used: %u + %u = %u (max: %u)\n", fd_banks, weight_banks, fd_banks + weight_banks, NPU_CBUF_BANKS);
-       } else {
-         printf("DEBUG: ERROR: weight_bytes_per_kernel (%u) > NPU_CBUF_BANK_SIZE (%u), returning -2\n", 
-                cna_desc.weight_bytes_per_kernel, NPU_CBUF_BANK_SIZE);
-         return -2;
-       }
-   }
-
-   cna_desc.weight_bank = weight_banks;
-   cna_desc.data_bank = fd_banks;
-   cna_desc.data_entries = (cna_desc.datain_width * cna_desc.datain_channel) / 32;
-   cna_desc.data_entries = (((cna_desc.datain_width * cna_desc.datain_channel) % 32) == 0) ? 
-     cna_desc.data_entries : cna_desc.data_entries +1;
-   cna_desc.data_sign = 0x1;
-   cna_desc.cvt_type  = 0x1;
-   cna_desc.cvt_bypass = 0x1;
-   cna_desc.cvt_scale0 = 0x1;
-   cna_desc.cvt_scale1 = 0x1;
-   cna_desc.cvt_scale2 = 0x1;
-   cna_desc.cvt_scale3 = 0x1;
-   cna_desc.fc_skip_en = 0;
-   cna_desc.data_offset = 0x0;
-   cna_desc.pad_left = 0;
-   cna_desc.pad_top = 0;
-   cna_desc.feature_base_addr = params->input_dma;
-   cna_desc.weight_offset = 0;
-   cna_desc.weight_burst_len = 0xf;
-   cna_desc.data_burst_len = 0xf;
-   cna_desc.line_stride = cna_desc.datain_width * 4;
-   surf_stride = cna_desc.line_stride * ((cna_desc.datain_height / 4)-1);
-   surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
-   cna_desc.surf_stride = surf_stride;
-   cna_desc.dma_width = cna_desc.datain_width;
-   cna_desc.dma_height = cna_desc.datain_height;
-   cna_desc.dma_channel = cna_desc.datain_channel;
-   cna_desc.decompress_addr0 = params->weights_dma;
-
-   core_desc.proc_precision = precision_float16;
-   core_desc.qd_en = 1;
-   core_desc.dataout_height = cna_desc.dataout_height - 1;
-   core_desc.dataout_width = cna_desc.dataout_width - 1;
-   core_desc.dataout_channel = cna_desc.weight_kernels -1;
-
-   dpu_desc.burst_len = 0xf;
-   dpu_desc.conv_mode = direct_convolution;
-   dpu_desc.output_mode = 0x2;
-   dpu_desc.flying_mode = 0x0;
-   dpu_desc.out_precision = (params->fp32tofp16==0) ? precision_float32 : precision_float16;
-   dpu_desc.in_precision = precision_float16;
-   dpu_desc.proc_precision = precision_float16;
-   dpu_desc.dst_base_addr = params->output_dma;
-   dpu_desc.dst_surf_stride = cna_desc.dataout_height * cna_desc.dataout_width;
-   dpu_desc.width = core_desc.dataout_width ;
-   dpu_desc.height = core_desc.dataout_height;
-   dpu_desc.channel = core_desc.dataout_channel;
-   dpu_desc.bs_bypass = 1;
-   dpu_desc.bs_alu_bypass = 1;
-   dpu_desc.bs_mul_bypass = 1;
-   dpu_desc.bs_relu_bypass = 1;
-   dpu_desc.bn_bypass =1;
-   dpu_desc.bn_alu_bypass = 1;
-   dpu_desc.bn_mul_bypass = 1;
-   dpu_desc.bn_relu_bypass = 1;
-   dpu_desc.ew_bypass =1;
-   dpu_desc.ew_op_bypass =1;
-   dpu_desc.ew_lut_bypass =1;
-   dpu_desc.ew_op_cvt_bypass =1;
-   dpu_desc.ew_relu_bypass=1;
-   dpu_desc.fp32tofp16_en = params->fp32tofp16 & 0x1;
-   dpu_desc.out_cvt_scale =1;
-   if (params->fp32tofp16 ==0) {
-     dpu_desc.size_e_2 = 3;
-     dpu_desc.size_e_1 = 3;
-     dpu_desc.size_e_0 = 3;
-   } else {
-     dpu_desc.size_e_2 = 1;
-     dpu_desc.size_e_1 = 1;
-     dpu_desc.size_e_0 = 1;
-   }
-   dpu_desc.od_bypass = 1;
-   dpu_desc.width_wdma = core_desc.dataout_width;
-   dpu_desc.height_wdma = core_desc.dataout_height;
-   dpu_desc.channel_wdma = core_desc.dataout_channel;
-   dpu_desc.surf_add = (!params->fp32tofp16) ? dpu_desc.dst_surf_stride * 4 : dpu_desc.dst_surf_stride * 2;
-
-   gen_matmul_task(params->tasks,&cna_desc,&core_desc,&dpu_desc);
-
-   return 0;
-}
-
-int gen_matmul_int8(matmul_params_t *params) {
 
   npu_cna_desc cna_desc;
   npu_core_desc core_desc;
@@ -566,9 +343,12 @@ int gen_matmul_int8(matmul_params_t *params) {
   unsigned int weight_banks;
   int surf_stride;
 
+  // Add debug output
+  // printf("DEBUG: gen_matmul_fp16 called with params: m=%d, k=%d, n=%d\n", params->m, params->k, params->n);
+
   cna_desc.conv_mode = direct_convolution;
-  cna_desc.in_precision = precision_int8;
-  cna_desc.proc_precision = precision_int8;
+  cna_desc.in_precision = precision_float16;
+  cna_desc.proc_precision = precision_float16;
 
   cna_desc.kernel_groups = 0;
   cna_desc.feature_grains = params->m+1;
@@ -585,20 +365,25 @@ int gen_matmul_int8(matmul_params_t *params) {
   cna_desc.weight_width = 1;
   cna_desc.weight_height = 1;
   cna_desc.weight_kernels = params->n;
-  cna_desc.weight_bytes_per_kernel = cna_desc.weight_width * cna_desc.weight_height *
-    cna_desc.datain_channel * sizeof(int8_t);
-  cna_desc.weight_bytes = cna_desc.weight_bytes_per_kernel * cna_desc.weight_kernels;
+  cna_desc.weight_bytes_per_kernel = cna_desc.weight_width * cna_desc.weight_height * 
+    cna_desc.datain_channel * sizeof(__fp16);
+  cna_desc.weight_bytes = cna_desc.weight_bytes_per_kernel * cna_desc.weight_kernels; 
 
-  fd_bytes = cna_desc.datain_width * cna_desc.datain_height * cna_desc.datain_channel * sizeof(int8_t);
+  fd_bytes = cna_desc.datain_width * cna_desc.datain_height * cna_desc.datain_channel * sizeof(__fp16);
   fd_banks = (fd_bytes / NPU_CBUF_BANK_SIZE);
   fd_banks = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? fd_banks : fd_banks +1;
   weight_banks = (cna_desc.weight_bytes / NPU_CBUF_BANK_SIZE);
   weight_banks = ((cna_desc.weight_bytes % NPU_CBUF_BANK_SIZE)==0) ? weight_banks : weight_banks + 1;
   
-  printf("DEBUG: int8 CBUF calculations:\n");
-  printf("  fd_bytes=%u, weight_bytes=%u\n", fd_bytes, cna_desc.weight_bytes);
-  printf("  fd_banks=%u, weight_banks=%u (available: %u)\n", 
-         fd_banks, weight_banks, NPU_CBUF_BANKS);
+  // Add debug output for CBUF calculations
+  // printf("DEBUG: CBUF calculations:\n");
+  // printf("  fd_bytes=%u, NPU_CBUF_BANK_SIZE=%u\n", fd_bytes, NPU_CBUF_BANK_SIZE);
+  // printf("  weight_bytes_per_kernel=%u\n", cna_desc.weight_bytes_per_kernel);
+  // printf("  weight_bytes=%u\n", cna_desc.weight_bytes);
+  // printf("  fd_banks calculation: %u / %u = %u, remainder %u\n", 
+  //        fd_bytes, NPU_CBUF_BANK_SIZE, fd_bytes / NPU_CBUF_BANK_SIZE, fd_bytes % NPU_CBUF_BANK_SIZE);
+  // printf("  weight_banks calculation: %u / %u = %u, remainder %u\n", 
+  //        cna_desc.weight_bytes, NPU_CBUF_BANK_SIZE, cna_desc.weight_bytes / NPU_CBUF_BANK_SIZE, cna_desc.weight_bytes % NPU_CBUF_BANK_SIZE);
   
   if ((fd_banks) > NPU_CBUF_BANKS-1) {
     printf("DEBUG: ERROR: fd_banks (%u) > NPU_CBUF_BANKS-1 (%u), returning -1\n", fd_banks, NPU_CBUF_BANKS-1);
@@ -607,6 +392,7 @@ int gen_matmul_int8(matmul_params_t *params) {
       if (cna_desc.weight_bytes_per_kernel <= NPU_CBUF_BANK_SIZE) {
        weight_banks = NPU_CBUF_BANKS - fd_banks;
        printf("DEBUG: weight_banks recalculated to %u\n", weight_banks);
+       printf("DEBUG: Total banks used: %u + %u = %u (max: %u)\n", fd_banks, weight_banks, fd_banks + weight_banks, NPU_CBUF_BANKS);
       } else {
         printf("DEBUG: ERROR: weight_bytes_per_kernel (%u) > NPU_CBUF_BANK_SIZE (%u), returning -2\n", 
                cna_desc.weight_bytes_per_kernel, NPU_CBUF_BANK_SIZE);
@@ -616,8 +402,8 @@ int gen_matmul_int8(matmul_params_t *params) {
 
   cna_desc.weight_bank = weight_banks;
   cna_desc.data_bank = fd_banks;
-  cna_desc.data_entries = (cna_desc.datain_width * cna_desc.datain_channel) / 64;
-  cna_desc.data_entries = (((cna_desc.datain_width * cna_desc.datain_channel) % 64) == 0) ?
+  cna_desc.data_entries = (cna_desc.datain_width * cna_desc.datain_channel) / 32;
+  cna_desc.data_entries = (((cna_desc.datain_width * cna_desc.datain_channel) % 32) == 0) ? 
     cna_desc.data_entries : cna_desc.data_entries +1;
   cna_desc.data_sign = 0x1;
   cna_desc.cvt_type  = 0x1;
@@ -643,8 +429,8 @@ int gen_matmul_int8(matmul_params_t *params) {
   cna_desc.dma_channel = cna_desc.datain_channel;
   cna_desc.decompress_addr0 = params->weights_dma;
 
-  core_desc.proc_precision = precision_int8;
-  core_desc.qd_en = 0;
+  core_desc.proc_precision = precision_float16;
+  core_desc.qd_en = 1;
   core_desc.dataout_height = cna_desc.dataout_height - 1;
   core_desc.dataout_width = cna_desc.dataout_width - 1;
   core_desc.dataout_channel = cna_desc.weight_kernels -1;
@@ -653,9 +439,9 @@ int gen_matmul_int8(matmul_params_t *params) {
   dpu_desc.conv_mode = direct_convolution;
   dpu_desc.output_mode = 0x2;
   dpu_desc.flying_mode = 0x0;
-  dpu_desc.out_precision = precision_int32;
-  dpu_desc.in_precision = precision_int8;
-  dpu_desc.proc_precision = precision_int8;
+  dpu_desc.out_precision = (params->fp32tofp16==0) ? precision_float32 : precision_float16;
+  dpu_desc.in_precision = precision_float16;
+  dpu_desc.proc_precision = precision_float16;
   dpu_desc.dst_base_addr = params->output_dma;
   dpu_desc.dst_surf_stride = cna_desc.dataout_height * cna_desc.dataout_width;
   dpu_desc.width = core_desc.dataout_width ;
@@ -674,383 +460,172 @@ int gen_matmul_int8(matmul_params_t *params) {
   dpu_desc.ew_lut_bypass =1;
   dpu_desc.ew_op_cvt_bypass =1;
   dpu_desc.ew_relu_bypass=1;
-  dpu_desc.fp32tofp16_en =0;
+  dpu_desc.fp32tofp16_en = params->fp32tofp16 & 0x1;
   dpu_desc.out_cvt_scale =1;
-  dpu_desc.size_e_2 = 7;
-  dpu_desc.size_e_1 = 7;
-  dpu_desc.size_e_0 = 7;
+  if (params->fp32tofp16 ==0) {
+    dpu_desc.size_e_2 = 3;
+    dpu_desc.size_e_1 = 3;
+    dpu_desc.size_e_0 = 3;
+  } else {
+    dpu_desc.size_e_2 = 1;
+    dpu_desc.size_e_1 = 1;
+    dpu_desc.size_e_0 = 1;
+  }
   dpu_desc.od_bypass = 1;
   dpu_desc.width_wdma = core_desc.dataout_width;
   dpu_desc.height_wdma = core_desc.dataout_height;
   dpu_desc.channel_wdma = core_desc.dataout_channel;
-  dpu_desc.surf_add = dpu_desc.dst_surf_stride * 8;
+  dpu_desc.surf_add = (!params->fp32tofp16) ? dpu_desc.dst_surf_stride * 4 : dpu_desc.dst_surf_stride * 2;
 
   gen_matmul_task(params->tasks,&cna_desc,&core_desc,&dpu_desc);
 
   return 0;
 }
 
-_Float16 matrixA[(MAX_M*MAX_K)];
-_Float16 matrixB[(MAX_N*MAX_K)];
-float expected_result[MAX_M*MAX_N];
-uint64_t npu_regs[112];
+int weight_fp16(int C, int k, int c) {
+  int dst =0;
+  int kpg = ((k-1)/16);
+  int cpg = ((c-1)/32);
+  dst = ((cpg*32)*16)+ (kpg*16*C);
+  dst = dst + ((c-1)%32) + (((k-1)%16)*32);
+  return dst;
+}
+
+int feature_data(int C, int H, int W, int C2, int c, int h, int w) {
+  int plane = (c-1)/C2;
+  int src = plane * H * W * C2;
+  int offset = (c-1) % C2;
+  int pos = src + C2 * ((h-1) * W + (w-1)) + offset;
+  return pos;
+}
+
+int submitTask(int fd, uint64_t tasks_obj){
+  struct rknpu_submit submit = {
+     .flags = RKNPU_JOB_PC | RKNPU_JOB_BLOCK | RKNPU_JOB_PINGPONG,
+     .timeout = 6000,
+     .task_start = 0,
+     .task_number = 1,
+     .task_counter = 0,
+     .priority = 0,
+     .task_obj_addr = tasks_obj,
+     .regcfg_obj_addr = 0,
+     .task_base_addr = 0,
+     .user_data = 0,
+     .core_mask = 1,
+     .fence_fd = -1,
+     .subcore_task = { // Only use core 1, nothing for core 2/3
+     {
+        .task_start = 0,
+        .task_number = 1,
+     }, { 1, 0}, {2, 0}
+     },
+  };
+  return ioctl(fd, DRM_IOCTL_RKNPU_SUBMIT, &submit);
+}
 
 int main(int argc, char **argv) {
-    if (argc < 3 || argc > 5) {
-      printf("Invalid number of args %d, needs to supply M K N [type] ie matmul <M> <K> <N> [fp16|fp16_fp16|int8]\n",argc);
-      printf("  fp16: FP16 input, FP32 output (default)\n");
-      printf("  fp16_fp16: FP16 input, FP16 output\n");
-      printf("  int8: INT8 input, INT32 output\n");
-      return -1;
-    }
+  unsigned int M, K, N;
+  M = 32; K = 32; N=32;
+  printf("M=%d, K=%d, N=%d\n", M, K, N);
 
-    int ret=0;
-    unsigned int M = atoi(argv[1]);
-    unsigned int K = atoi(argv[2]);
-    unsigned int N = atoi(argv[3]);
+  // npu open
+  int fd = open("/dev/dri/card1", O_RDWR);
+  printf("fd=%d\n", fd);
 
-    // Parse operation type (default: fp16)
-    const char* op_type = (argc == 5) ? argv[4] : "fp16";
-    int is_fp16_fp16 = 0;
-    int is_int8 = 0;
-
-    if (strcmp(op_type, "fp16") == 0) {
-        printf("Using FP16 input, FP32 output mode\n");
-        printf("Operation type limits - MAX_M: %d, MAX_K: %d, MAX_N: %d\n", MAX_M_FP16, MAX_K_FP16, MAX_N_FP16);
-        is_fp16_fp16 = 0;
-        is_int8 = 0;
-    } else if (strcmp(op_type, "fp16_fp16") == 0) {
-        printf("Using FP16 input, FP16 output mode\n");
-        printf("Operation type limits - MAX_M: %d, MAX_K: %d, MAX_N: %d\n", MAX_M_FP16, MAX_K_FP16, MAX_N_FP16);
-        is_fp16_fp16 = 1;
-        is_int8 = 0;
-    } else if (strcmp(op_type, "int8") == 0) {
-        printf("Using INT8 input, INT32 output mode\n");
-        printf("Operation type limits - MAX_M: %d, MAX_K: %d, MAX_N: %d\n", MAX_M_INT8, MAX_K_INT8, MAX_N_INT8);
-        is_fp16_fp16 = 0;
-        is_int8 = 1;
-    } else {
-        printf("Invalid operation type: %s\n", op_type);
-        printf("Supported types: fp16, fp16_fp16, int8\n");
-        return -1;
-    }
-
-    uint64_t regcmd_dma, regcmd_obj, tasks_dma, tasks_obj, input_dma, input_obj, weights_dma, weights_obj, output_dma, output_obj;
-    uint32_t regcmd_handle, tasks_handle, input_handle, weights_handle, output_handle;
-    uint32_t regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink;
-
-    // check matric dimensin
-    if (M<=0 || M>MAX_M || ((M%4)!=0 && M!=1) || K<=0 || K>MAX_K || (K%32)!=0 || N<=0 || N>MAX_N || (N%16)!=0) {
-        printf("Invalid matrix dimensions: M=%d (must be >0, <=%d, multiple of 4 or 1), K=%d (must be >0, <=%d, multiple of 32), N=%d (must be >0, <=%d, multiple of 16)\n", M, MAX_M, K, MAX_K, N, MAX_N);
-        return -1;
-    }
-
-    // allocate mem
-    int fd = npu_open();
-    uint64_t *regcmd         = mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle);
-    struct rknpu_task *tasks = mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
-
-    // Allocate memory based on operation type
-    size_t input_size, weights_size, output_size;
-    if (is_int8) {
-        input_size = M*K*sizeof(int8_t);
-        weights_size = N*K*sizeof(int8_t);
-        output_size = M*N*sizeof(int32_t);
-    } else {
-        input_size = M*K*sizeof(__fp16);
-        weights_size = N*K*sizeof(__fp16);
-        output_size = M*N*(is_fp16_fp16 ? sizeof(__fp16) : sizeof(float));
-    }
-
-    void *input              = mem_allocate(fd, input_size, &input_dma, &input_obj, 0, &input_handle);
-    void *weights            = mem_allocate(fd, weights_size, &weights_dma, &weights_obj, 0, &weights_handle);
-    void *output             = mem_allocate(fd, output_size, &output_dma, &output_obj, 0, &output_handle);
-    printf("input dma is %lx, output dma is %lx, weights dma is %lx\n", input_dma, output_dma, weights_dma);
-    if ((regcmd == NULL) || (tasks == NULL) || (input == NULL) || (weights == NULL) || (output == NULL)) {
-      printf("Failed to allocate memory \n");
-      exit(1);
-    }
-    
-    if (create_flink_name(fd, regcmd_handle, &regcmd_flink) < 0 ||
-        create_flink_name(fd, tasks_handle, &tasks_flink) < 0 ||
-        create_flink_name(fd, input_handle, &input_flink) < 0 ||
-        create_flink_name(fd, weights_handle, &weights_flink) < 0 ||
-        create_flink_name(fd, output_handle, &output_flink) < 0) {
-        printf("Failed to create flink name for one or more GEM objects\n");
-        goto cleanup;
-    }
-    printf("Created flink names: regcmd=%u, tasks=%u, input=%u, weights=%u, output=%u\n",
-           regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink);
+  uint64_t regcmd_dma, regcmd_obj, tasks_dma, tasks_obj, input_dma, input_obj, weights_dma, weights_obj, output_dma, output_obj;
+  uint32_t regcmd_handle, tasks_handle, input_handle, weights_handle, output_handle;
+  uint32_t regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink;
+  int input_size = M*K*sizeof(__fp16);
+  int weights_size = N*K*sizeof(__fp16);
+  int output_size = M*N*(sizeof(float));
+  printf("input_size=%d, weights_size=%d, output_size=%d\n", input_size, weights_size, output_size);
   
-    npu_reset(fd);
+  uint64_t *regcmd         = mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle);
+  struct rknpu_task *tasks = mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
+  void *input              = mem_allocate(fd, input_size, &input_dma, &input_obj, 0, &input_handle);
+  void *weights            = mem_allocate(fd, weights_size, &weights_dma, &weights_obj, 0, &weights_handle);
+  void *output             = mem_allocate(fd, output_size, &output_dma, &output_obj, 0, &output_handle);
+  printf("regcmd_dma=%lx, regcmd_obj=%lx, tasks_dma=%lx, tasks_obj=%lx\n", regcmd_dma, regcmd_obj, tasks_dma, tasks_obj);
+  printf("input_dma=%lx, input_obj=%lx, weights_dma=%lx, weights_obj=%lx, output_dma=%lx, output_obj=%lx\n\n", input_dma, input_obj, weights_dma, weights_obj, output_dma, output_obj);
   
-    matmul_params_t params;
-    params.m = M;
-    params.k = K;
-    params.n = N;
-    params.input_dma = input_dma;
-    params.weights_dma = weights_dma;
-    params.output_dma = output_dma;
-    params.tasks = (uint64_t *) &npu_regs;
-    params.fp32tofp16 = is_fp16_fp16 ? 1 : 0;
-
-    // Choose appropriate generation function based on operation type
-    if (is_int8) {
-        ret = gen_matmul_int8(&params);
-        if (ret !=0) {
-            printf("gen_matmul_int8 failed %d\n",ret);
-            goto cleanup;
-        }
-    } else {
-        ret = gen_matmul_fp16(&params);
-        if (ret !=0) {
-            printf("gen_matmul_fp16 failed %d\n",ret);
-            goto cleanup;
-        }
-    }
-    
-    memcpy(regcmd,npu_regs,sizeof(npu_regs));
-  
-    tasks[0].flags  = 0;
-    tasks[0].op_idx = 0;
-    tasks[0].enable_mask = 0xd;
-    tasks[0].int_mask = 0x300; // wait for DPU to finish
-    tasks[0].int_clear = 0x1ffff;
-    tasks[0].int_status =0;
-    tasks[0].regcfg_amount = sizeof(npu_regs)/sizeof(uint64_t)-(RKNPU_PC_DATA_EXTRA_AMOUNT+4);
-    tasks[0].regcfg_offset = 0;
-    tasks[0].regcmd_addr = regcmd_dma;
-  
-    // Initialize matrices and data based on operation type
-    srand(time(NULL));
-
-    if (is_int8) {
-        // INT8 mode: int8_t input, int32_t output
-        memset((void *)input, 0, M*K*sizeof(int8_t));
-        memset((void *)weights, 0, K*N*sizeof(int8_t));
-        memset((void *)output, 0, M*N*sizeof(int32_t));
-
-        int8_t *matrixA_int8 = (int8_t *)&matrixA;
-        int8_t *matrixB_int8 = (int8_t *)&matrixB;
-        int32_t *expected_int32 = (int32_t *)&expected_result;
-
-        // Initialize matrices with random values
-        for (int i = 0; i < M*K; i++) {
-            matrixA_int8[i] = (int8_t)((rand() % 255) + 1);
-        }
-        for (int i = 0; i < N*K; i++) {
-            matrixB_int8[i] = (int8_t)((rand() % 255) + 1);
-        }
-
-        // Copy weights data
-        int8_t *weights_int8 = weights;
-        for(int n=1; n<=N; n++) {
-            for(int k=1; k<=K; k++) {
-                weights_int8[weight_int8(K,n,k)] = matrixB_int8[((n-1)*K)+(k-1)];
-            }
-        }
-
-        // Copy input data
-        int8_t *feature_data_int8 = (int8_t*) input;
-        for (int m=1; m<=M; m++) {
-            for (int k=1; k<=K; k++) {
-                feature_data_int8[feature_data(K,M,1,16,k,m,1)] = matrixA_int8[((m-1)*K)+(k-1)];
-            }
-        }
-
-        // Calculate expected result for INT8
-        for (int m = 0; m < M; m++) {
-            for (int n = 0; n < N; n++) {
-                float sum = 0;
-                for (int k = 0; k < K; k++) {
-                    sum += (int32_t)(matrixA_int8[m*K + k] * matrixB_int8[n*K + k]);
-                }
-                expected_int32[m*N + n] = sum;
-            }
-        }
-    } else {
-        // FP16 mode: _Float16 input, _Float16 or float output
-        memset((void *)input, 0, M*K*sizeof(_Float16));
-        memset((void *)weights, 0, K*N*sizeof(_Float16));
-        memset((void *)output, 0, M*N*(is_fp16_fp16 ? sizeof(_Float16) : sizeof(float)));
-
-        // Initialize matrices with random values
-        for (int i = 0; i < M*K; i++) {
-            matrixA[i] = (int)(10.0*rand_float());
-        }
-        for (int i = 0; i < N*K; i++) {
-            matrixB[i] = (int)(10.0*rand_float());
-        }
-
-        // Copy weights data
-        _Float16 *weights_fp16 = weights;
-        for(int n=1; n<=N; n++) {
-            for(int k=1; k<=K; k++) {
-                weights_fp16[weight_fp16(K,n,k)] = matrixB[((n-1)*K)+(k-1)];
-            }
-        }
-
-        // Copy input data
-        _Float16 *feature_data_fp16 = (_Float16*) input;
-        for (int m=1; m<=M; m++) {
-            for (int k=1; k<=K; k++) {
-                feature_data_fp16[feature_data(K,M,1,8,k,m,1)] = matrixA[((m-1)*K)+(k-1)];
-            }
-        }
-
-        // Calculate expected result for FP16
-        if (is_fp16_fp16) {
-            _Float16 *expected_fp16 = (_Float16 *)&expected_result;
-            for (int m = 0; m < M; m++) {
-                for (int n = 0; n < N; n++) {
-                    float sum = 0;
-                    for (int k = 0; k < K; k++) {
-                        sum += matrixA[m*K + k] * matrixB[n*K + k];
-                    }
-                    expected_fp16[m*N + n] = sum;
-                }
-            }
-        } else {
-            matmul_fp32(M, K, N, (_Float16 *)&matrixA, (_Float16 *)&matrixB, (float *)&expected_result);
-        }
-    }
-  
-    struct rknpu_submit submit = {
-      .flags = RKNPU_JOB_PC | RKNPU_JOB_BLOCK | RKNPU_JOB_PINGPONG,
-      .timeout = 6000,
-      .task_start = 0,
-      .task_number = 1,
-      .task_counter = 0,
-      .priority = 0,
-      .task_obj_addr = tasks_obj,
-      .regcfg_obj_addr = 0,
-      .task_base_addr = 0,
-      .user_data = 0,
-      .core_mask = 1,
-      .fence_fd = -1,
-      .subcore_task = { // Only use core 1, nothing for core 2/3
-        {
-          .task_start = 0,
-          .task_number = 1,
-        }, { 1, 0}, {2, 0}, {0,0}, {0,0}
-      },
-    };
-    ret = ioctl(fd, DRM_IOCTL_RKNPU_SUBMIT, &submit);
-    printf("RKNPU_SUBMIT returned %d\n", ret);
-    if (ret <0) {
-      return ret;
-    }
-  
-    printf("=========================================================================================================\n");
-
-        // Verify results based on operation type
-    if (is_int8) {
-        int32_t *output_data_int32 = (int32_t*) output;
-        int32_t *expected_int32 = (int32_t *)&expected_result;
-
-        for (int m=1; m<=M; m++) {
-            for (int n=1; n<N; n++) {
-                int32_t actual = output_data_int32[feature_data(N, M, 1, 4, n, m, 1)];
-                int32_t expected = expected_int32[((m-1)*N)+(n-1)];
-                if (actual != expected) {
-                    printf("mismatch m:%d n:%d  expected:%d actual:%d\n", m, n, expected, actual);
-                    ret = -1;
-                }
-            }
-        }
-    } else if (is_fp16_fp16) {
-        _Float16 *output_data_fp16 = (_Float16*) output;
-        _Float16 *expected_fp16 = (_Float16 *)&expected_result;
-
-        for (int m=1; m<=M; m++) {
-            for (int n=1; n<=N; n++) {
-                _Float16 actual = output_data_fp16[feature_data(N, M, 1, 8, n, m, 1)];
-                _Float16 expected = expected_fp16[((m-1)*N)+(n-1)];
-                int16_t *e, *a;
-                e = (int16_t *)&expected;
-                a = (int16_t *)&actual;
-                if (actual != expected) {
-                    printf("\nmismatch m:%d n:%d  expected:%f actual:%f %x %x\n", m, n, (float)expected, (float)actual, *e, *a);
-                    ret = -1;
-                }
-            }
-        }
-    } else {
-        // FP16 with FP32 output (original behavior)
-        float *output_data_float = (float*) output;
-
-        for (int m=1; m<=M; m++) {
-            for (int n=1; n<=N; n++) {
-                float actual = output_data_float[feature_data(N, M, 1, 4, n, m, 1)];
-                float expected = expected_result[((m-1)*N)+(n-1)];
-                int32_t *e, *a;
-                e = (int32_t *)&expected;
-                a = (int32_t *)&actual;
-                if (actual != expected) {
-                    printf("\nmismatch m:%d n:%d  expected:%6.5f actual:%6.5f %x %x\n", m, n, expected, actual, *e, *a);
-                    ret = -1;
-                }
-            }
-        }
-    }
-
-    if (ret == 0) {
-        printf("Multiplication of [%d,%d] x [%d,%d] successful\n", M, K, K, N);
-    }
-    printf("=========================================================================================================\n");
-  
-    // Demonstrate how to use flink names to access the GEM objects
-    printf("\n=== Demonstrating GEM FLINK functionality ===\n");
-    printf("These flink names can be used by other processes to access the same memory:\n");
-    printf("regcmd: %u, tasks: %u, input: %u, weights: %u, output: %u\n",
-           regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink);
-    
-    // Example: Open the output GEM object using its flink name
-    uint32_t reopened_handle;
-    uint64_t reopened_size;
-    if (open_gem_by_flink(fd, output_flink, &reopened_handle, &reopened_size) == 0) {
-      printf("Successfully reopened output GEM object via flink name %u\n", output_flink);
-      printf("Reopened handle: %u, size: %lu\n", reopened_handle, reopened_size);
-      
-      // Map the reopened GEM object
-      struct rknpu_mem_map mem_map = { .handle = reopened_handle, .offset = 0 };
-      int map_ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, &mem_map);
-      if (map_ret >= 0) {
-        void *reopened_map = mmap(NULL, reopened_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mem_map.offset);
-        if (reopened_map != MAP_FAILED) {
-          printf("Successfully mapped reopened GEM object at %p\n", reopened_map);
-          
-          // Verify the data is accessible
-          float *reopened_output = (float*)reopened_map;
-          printf("First few values from reopened output: %f, %f, %f\n", 
-                 reopened_output[0], reopened_output[1], reopened_output[2]);
-          
-          munmap(reopened_map, reopened_size);
-        }
-      }
-    }
-  
-  cleanup:
-    munmap(regcmd,1024);
-    munmap(tasks,1024);
-
-    // Unmap memory based on operation type
-    if (is_int8) {
-        munmap(input, M*K*sizeof(int8_t));
-        munmap(weights, N*K*sizeof(int8_t));
-        munmap(output, M*N*sizeof(int32_t));
-    } else {
-        munmap(input, M*K*sizeof(_Float16));
-        munmap(weights, N*K*sizeof(_Float16));
-        munmap(output, M*N*(is_fp16_fp16 ? sizeof(_Float16) : sizeof(float)));
-    }
-  
-    mem_destroy(fd, regcmd_handle, regcmd_obj);
-    mem_destroy(fd, tasks_handle, tasks_obj );
-    mem_destroy(fd, input_handle, input_obj);
-    mem_destroy(fd, weights_handle, weights_obj);
-    mem_destroy(fd, output_handle, output_obj);
-  
-    npu_close(fd);
-    return ret;
+  if (create_flink_name(fd, regcmd_handle, &regcmd_flink) < 0 ||
+      create_flink_name(fd, tasks_handle, &tasks_flink) < 0 ||
+      create_flink_name(fd, input_handle, &input_flink) < 0 ||
+      create_flink_name(fd, weights_handle, &weights_flink) < 0 ||
+      create_flink_name(fd, output_handle, &output_flink) < 0) {
+    printf("Failed to create flink name for one or more GEM objects\n");
   }
+
+  // npu reset
+  struct rknpu_action act = { .flags = RKNPU_ACT_RESET };
+  ioctl(fd, DRM_IOCTL_RKNPU_ACTION, &act);	
+
+  // generate matmul task
+  uint64_t npu_regs[112];
+  int is_fp16_fp16 = 0;
+
+  matmul_params_t params;
+  params.m = M;
+  params.k = K;
+  params.n = N;
+  params.input_dma = input_dma;
+  params.weights_dma = weights_dma;
+  params.output_dma = output_dma;
+  params.tasks = (uint64_t *) &npu_regs;
+  params.fp32tofp16 = is_fp16_fp16 ? 1 : 0;
+  printf("params.m=%d, params.k=%d, params.n=%d\n", params.m, params.k, params.n);
+  printf("params.input_dma=%x, params.weights_dma=%x, params.output_dma=%x\n", params.input_dma, params.weights_dma, params.output_dma);
+  printf("params.tasks=%ln, params.fp32tofp16=%d\n\n", params.tasks, params.fp32tofp16);
+
+  int ret = gen_matmul_fp16(&params);
+  printf("gen_matmul_fp16 returned %d\n\n", ret);
+
+  memcpy(regcmd,npu_regs,sizeof(npu_regs));
+  tasks[0].flags  = 0;
+  tasks[0].op_idx = 0;
+  tasks[0].enable_mask = 0xd;
+  tasks[0].int_mask = 0x300; // wait for DPU to finish
+  tasks[0].int_clear = 0x1ffff;
+  tasks[0].int_status =0;
+  tasks[0].regcfg_amount = sizeof(npu_regs)/sizeof(uint64_t)-(RKNPU_PC_DATA_EXTRA_AMOUNT+4);
+  printf("tasks[0].regcfg_amount %d\n", tasks[0].regcfg_amount) ;
+  tasks[0].regcfg_offset = 0;
+  tasks[0].regcmd_addr = regcmd_dma;
+
+  
+  _Float16 matrixA[(32*32)];
+  _Float16 matrixB[(32*32)];
+  _Float16 *weights_fp16 = weights;
+  _Float16 *feature_data_fp16 = (_Float16*) input;
+  memset((void *)input, 0, M*K*sizeof(_Float16));
+  memset((void *)weights, 0, K*N*sizeof(_Float16));
+  memset((void *)output, 0, M*N*(is_fp16_fp16 ? sizeof(_Float16) : sizeof(float)));
+
+  for (int i = 0; i < M*K; i++) { matrixA[i] = (int)(2.0f); }
+  for (int i = 0; i < N*K; i++) { matrixB[i] = (int)(3.0f); }
+  for(int n=1; n<=N; n++) {
+      for(int k=1; k<=K; k++) {
+          weights_fp16[weight_fp16(K,n,k)] = matrixB[((n-1)*K)+(k-1)];
+          // _Float16 is not directly supported by %f in printf, so cast to double for printing
+          // printf("weights_fp16[%d]=%f\n", weight_fp16(K,n,k), (double)matrixB[((n-1)*K)+(k-1)]);
+      }
+  }
+  for (int m=1; m<=M; m++) {
+      for (int k=1; k<=K; k++) {
+          feature_data_fp16[feature_data(K,M,1,8,k,m,1)] = matrixA[((m-1)*K)+(k-1)];
+          // printf("feature_data_fp16[%d]=%f\n", feature_data(K,M,1,8,k,m,1), (double)matrixA[((m-1)*K)+(k-1)]);
+      }
+  }
+
+  ret = submitTask(fd, tasks_obj);
+  printf("RKNPU_SUBMIT returned %d\n", ret);
+
+  float *output_data_fp16 = (float*) output;
+  for (int m=1; m<=3; m++) {
+    for (int n=1; n<=3; n++) {
+      _Float16 actual = output_data_fp16[feature_data(N, M, 1, 8, n, m, 1)];
+      printf("actual=%f\n", (double)actual);
+    }
+  }
+  return 0;
+}
