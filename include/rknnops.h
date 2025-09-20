@@ -139,6 +139,17 @@ emit(uint32_t reg, uint64_t value)
 
 #define EMIT(offset, value) emit(offset, value);
 
+// static inline uint64_t EMIT(uint32_t reg, uint32_t value){
+//    uint32_t target = rkt_get_target(reg) + 0x1;
+ 
+//    uint64_t packed_value = 0;
+//    packed_value = ((uint64_t)target) << 48;
+//    packed_value |= ((uint64_t)value) << 16;
+//    packed_value |= (uint64_t)reg;
+ 
+//    return packed_value;
+// }
+
 struct MemHandles {
    void* input;
    void* weights;
@@ -225,6 +236,30 @@ int getDeviceFd()
    return fd;  
 }
 
+int npu_reset(int fd) {
+   struct rknpu_action act = {
+     .flags = RKNPU_ACT_RESET,
+   };
+   return ioctl(fd, DRM_IOCTL_RKNPU_ACTION, &act);	
+ }
+
+int weight_fp16(int C, int k, int c) {
+   int dst =0;
+   int kpg = ((k-1)/16);
+   int cpg = ((c-1)/32);
+   dst = ((cpg*32)*16)+ (kpg*16*C);
+   dst = dst + ((c-1)%32) + (((k-1)%16)*32);
+   return dst;
+ }
+ 
+int feature_data(int C, int H, int W, int C2, int c, int h, int w) {
+   int plane = (c-1)/C2;
+   int src = plane * H * W * C2;
+   int offset = (c-1) % C2;
+   int pos = src + C2 * ((h-1) * W + (w-1)) + offset;
+   return pos;
+ }
+
 void regcmd_helper(input_dma, weights_dma, output_dma){
    struct {
       int dst_base_addr_offset;         // REG_DPU_DST_BASE_ADDR
@@ -240,7 +275,125 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
       // width = (rdma_data_cube_width + 1) * 8
   };
    for (int i = 0; i < 1; ++i) {
-      if (current_alu_algorithm == 10) {
+      // matmul
+      if (current_alu_algorithm == 11) {
+         EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+         EMIT(REG_CNA_CONV_CON1, CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+         EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(33));
+         EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+         EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH(1) | CNA_DATA_SIZE0_DATAIN_HEIGHT(32));
+         EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(31) | CNA_DATA_SIZE1_DATAIN_CHANNEL(32));
+         EMIT(REG_CNA_DATA_SIZE2, CNA_DATA_SIZE2_DATAOUT_WIDTH(1));
+         EMIT(REG_CNA_DATA_SIZE3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(32));
+         EMIT(REG_CNA_WEIGHT_SIZE0, 0x00000800);
+         EMIT(REG_CNA_WEIGHT_SIZE1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(64));
+         EMIT(REG_CNA_WEIGHT_SIZE2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(1) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(1) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(32));
+         EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+         EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES(1));
+         EMIT(REG_CNA_CVT_CON0, CNA_CVT_CON0_DATA_SIGN(1) | CNA_CVT_CON0_CVT_TYPE(1) | CNA_CVT_CON0_CVT_BYPASS(1));
+         EMIT(REG_CNA_CVT_CON1, CNA_CVT_CON1_CVT_SCALE0(1));
+         EMIT(REG_CNA_CVT_CON2, CNA_CVT_CON2_CVT_SCALE1(1));
+         EMIT(REG_CNA_CVT_CON3, CNA_CVT_CON3_CVT_SCALE2(1));
+         EMIT(REG_CNA_CVT_CON4, CNA_CVT_CON4_CVT_SCALE3(1));
+         EMIT(REG_CNA_FC_CON0, 0x00000000);
+         EMIT(REG_CNA_FC_CON1, 0x00000000);
+         EMIT(REG_CNA_PAD_CON0, 0x00000000);
+         EMIT(REG_CNA_FEATURE_DATA_ADDR, CNA_FEATURE_DATA_ADDR_FEATURE_BASE_ADDR(input_dma));
+         EMIT(REG_CNA_FC_CON2, 0x00000000);
+         EMIT(REG_CNA_DMA_CON0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+         EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(4));
+         EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(28));
+         EMIT(REG_CNA_FC_DATA_SIZE0, CNA_FC_DATA_SIZE0_DMA_WIDTH(1) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(32));
+         EMIT(REG_CNA_FC_DATA_SIZE1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(32));
+         EMIT(REG_CNA_DCOMP_CTRL, 0x00000000);
+         EMIT(REG_CNA_DCOMP_REGNUM, 0x00000000);
+         EMIT(REG_CNA_DCOMP_ADDR0, CNA_DCOMP_ADDR0_DECOMPRESS_ADDR0(weights_dma));
+         EMIT(REG_CNA_DCOMP_AMOUNT0, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT1, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT2, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT3, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT4, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT5, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT6, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT7, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT8, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT9, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT10, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT11, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT12, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT13, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT14, 0x00000000);
+         EMIT(REG_CNA_DCOMP_AMOUNT15, 0x00000000);
+         EMIT(REG_CNA_CVT_CON5, 0x00000000);
+         EMIT(REG_CNA_PAD_CON1, 0x00000000);
+         EMIT(REG_CORE_MISC_CFG, CORE_MISC_CFG_PROC_PRECISION(2) | CORE_MISC_CFG_QD_EN(1));
+         EMIT(REG_CORE_DATAOUT_SIZE_0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(31));
+         EMIT(REG_CORE_DATAOUT_SIZE_1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(31));
+         EMIT(REG_CORE_CLIP_TRUNCATE, 0x00000000);
+         // [ffef01a8] lsb 0801000000003030 - CORE Unknown
+         emit_raw(&regs, CORE | 0x1, 0x3030, 0);
+
+         EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+         EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(5) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+         EMIT(REG_DPU_OFFSET_PEND, 0x00000000);
+         EMIT(REG_DPU_DST_BASE_ADDR, DPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma));
+         EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(32));
+         EMIT(REG_DPU_DATA_CUBE_WIDTH, 0x00000000);
+         EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT(31));
+         EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, 0x00000000);
+         EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(31) | DPU_DATA_CUBE_CHANNEL_CHANNEL(31));
+         EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+         EMIT(REG_DPU_BS_ALU_CFG, 0x00000000);
+         EMIT(REG_DPU_BS_MUL_CFG, 0x00000000);
+         EMIT(REG_DPU_BS_RELUX_CMP_VALUE, 0x00000000);
+         EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_SIZE_E_2(3) | DPU_BS_OW_CFG_SIZE_E_1(3) | DPU_BS_OW_CFG_SIZE_E_0(3) | DPU_BS_OW_CFG_OD_BYPASS(1));
+         EMIT(REG_DPU_BS_OW_OP, 0x00000000);
+         EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(31));
+         EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(31));
+         EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+         EMIT(REG_DPU_BN_ALU_CFG, 0x00000000);
+         EMIT(REG_DPU_BN_MUL_CFG, 0x00000000);
+         EMIT(REG_DPU_BN_RELUX_CMP_VALUE, 0x00000000);
+         EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+         EMIT(REG_DPU_EW_CVT_OFFSET_VALUE, 0x00000000);
+         EMIT(REG_DPU_EW_CVT_SCALE_VALUE, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+         EMIT(REG_DPU_EW_RELUX_CMP_VALUE, 0x00000000);
+         EMIT(REG_DPU_OUT_CVT_OFFSET, 0x00000000);
+         EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+         EMIT(REG_DPU_OUT_CVT_SHIFT, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_0, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_1, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_2, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_3, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_4, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_5, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_6, 0x00000000);
+         EMIT(REG_DPU_EW_OP_VALUE_7, 0x00000000);
+         EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(128));
+         // [ffef02d8] lsb 00010000000040c4 - noone Unknown
+         emit_raw(&regs, 0x0 | 0x1, 0x40c4, 0);
+
+         EMIT(REG_DPU_LUT_ACCESS_CFG, 0x00000000);
+         EMIT(REG_DPU_LUT_ACCESS_DATA, 0x00000000);
+         EMIT(REG_DPU_LUT_CFG, 0x00000000);
+         EMIT(REG_DPU_LUT_INFO, 0x00000000);
+         EMIT(REG_DPU_LUT_LE_START, 0x00000000);
+         EMIT(REG_DPU_LUT_LE_END, 0x00000000);
+         EMIT(REG_DPU_LUT_LO_START, 0x00000000);
+         EMIT(REG_DPU_LUT_LO_END, 0x00000000);
+         EMIT(REG_DPU_LUT_LE_SLOPE_SCALE, 0x00000000);
+         EMIT(REG_DPU_LUT_LE_SLOPE_SHIFT, 0x00000000);
+         EMIT(REG_DPU_LUT_LO_SLOPE_SCALE, 0x00000000);
+         EMIT(REG_DPU_LUT_LO_SLOPE_SHIFT, 0x00000000);
+         EMIT(REG_PC_VERSION, 0x00000000);
+         EMIT(REG_PC_REGISTER_AMOUNTS, 0x00000000);
+         EMIT(REG_PC_VERSION, 0x00000000);
+         // EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1)); 
+         emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+
+      }
+      // RELU
+      else if (current_alu_algorithm == 10) {
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_RDMA_RDMA_S_POINTER, DPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | DPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | DPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2) | DPU_FEATURE_MODE_CFG_FLYING_MODE(1));
@@ -315,7 +468,7 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
    
          if (current_alu_algorithm == 9){
             // EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(0) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1) | DPU_EW_CFG_EW_OP_TYPE(1))
-            EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1) | DPU_EW_CFG_EW_OP_TYPE(1))
+            EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1) | DPU_EW_CFG_EW_OP_TYPE(1));
          }
          else if(current_alu_algorithm == 3 ){
             // swap input and weights for DIV
@@ -340,29 +493,38 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
    }
 }
 
-struct MemHandles createRegCmd(int fd, int type_size, uint32_t alu_algorithm)
+float rand_float() {
+   return rand()/(float)RAND_MAX;
+}
+
+struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, size_t output_size, uint32_t alu_algorithm)
 {
-   // Set the ALU algorithm for this operation
    set_alu_algorithm(alu_algorithm);
-   uint64_t tasks_dma, tasks_obj;
-   uint32_t tasks_handle;
-   struct rknpu_task *tasks = (struct rknpu_task *)mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
 
    uint64_t regcmd_dma, regcmd_obj;
    uint32_t regcmd_handle;
-   uint64_t *regcmd = (uint64_t *)(mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle));
-
+   
+   uint64_t tasks_dma, tasks_obj;
+   uint32_t tasks_handle;
    uint64_t input_dma, input_obj;
    uint32_t input_handle;
-   void *input = mem_allocate(fd, type_size, &input_dma, &input_obj, 0, &input_handle);  
-
    uint64_t weights_dma, weights_obj;
    uint32_t weights_handle;
-   void *weights = mem_allocate(fd, type_size, &weights_dma, &weights_obj, 0, &weights_handle);
-
    uint64_t output_dma, output_obj;
    uint32_t output_handle;
-   void *output = mem_allocate(fd, type_size, &output_dma, &output_obj, 0, &output_handle);
+   
+   // uint64_t *regcmd = (uint64_t *)(mem_allocate(fd, 4096, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle));
+   // struct rknpu_task *tasks = (rknpu_task *)mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
+   uint64_t *regcmd         = mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle);
+   struct rknpu_task *tasks = mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
+   // void *input = mem_allocate(fd, input_size, &input_dma, &input_obj, 0, &input_handle);  
+   // void *weights = mem_allocate(fd, weights_size, &weights_dma, &weights_obj, 0, &weights_handle);
+   // void *output = mem_allocate(fd, output_size, &output_dma, &output_obj, 0, &output_handle);
+   printf("%d %d %d\n", input_size, weights_size, output_size);
+   void *input              = mem_allocate(fd, input_size, &input_dma, &input_obj, 0, &input_handle);
+   void *weights            = mem_allocate(fd, weights_size, &weights_dma, &weights_obj, 0, &weights_handle);
+   void *output             = mem_allocate(fd, output_size, &output_dma, &output_obj, 0, &output_handle);
+
 
    uint32_t regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink;
 
@@ -375,27 +537,28 @@ struct MemHandles createRegCmd(int fd, int type_size, uint32_t alu_algorithm)
    }
    printf("Created flink names: regcmd=%u, tasks=%u, input=%u, weights=%u, output=%u\n",
       regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink);
-
-   // To return input, weights, and output, you can use output parameters or a struct.
-   // Example: define a struct to hold them and return it.
-   // Set input, weights and output physical memory locations. Note limited to 
-   // a 32 bit address size (4GB)
-      
+   npu_reset(fd);
+   
    regcmd_helper(input_dma, weights_dma, output_dma);
 
-   uint64_t npu_regs_a[regs.size];
-   memcpy(npu_regs_a, regs.data, regs.size * sizeof(uint64_t));  // Copy elements to array
-   memcpy(regcmd,npu_regs_a,sizeof(npu_regs_a));
+   printf("regs.size %d\n", regs.size);
+   // uint64_t npu_regs_a[regs.size];
+   uint64_t npu_regs_a[112];
+   memset(npu_regs_a, 0, sizeof(npu_regs_a));
+   
+   memcpy(npu_regs_a, regs.data, regs.size * sizeof(uint64_t));
+   memcpy(regcmd, npu_regs_a, sizeof(npu_regs_a));
 
    tasks[0].flags  = 0;
-   // tasks[0].op_idx = 4;
    tasks[0].op_idx = 0;
-   // tasks[0].enable_mask = 0x18;
    tasks[0].enable_mask = 0xd;
-   tasks[0].int_mask = 0x300; // wait for DPU to finish
+   tasks[0].int_mask = 0x300;
    tasks[0].int_clear = 0x1ffff;
    tasks[0].int_status = 0;
-   tasks[0].regcfg_amount = sizeof(npu_regs_a)/sizeof(uint64_t); //nInstrs - 1;
+   tasks[0].regcfg_amount = sizeof(npu_regs_a)/sizeof(uint64_t);
+   // hardcoded for matmul test
+   // tasks[0].regcfg_amount = 104;
+   printf("tasks[0].regcfg_amount %d", tasks[0].regcfg_amount) ;
    tasks[0].regcfg_offset = 0;
    tasks[0].regcmd_addr = regcmd_dma;
 
@@ -437,21 +600,57 @@ int submitTask(int fd, uint64_t tasks_obj){
    return ioctl(fd, DRM_IOCTL_RKNPU_SUBMIT, &submit);
 }
 
+__fp16* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int N, int K)
+{
+   int fd = getDeviceFd();
+   npu_reset(fd);
+   rknn_tensor_type dtype = RKNN_TENSOR_FLOAT16;
+
+   size_t input_size   = (size_t)M * K * sizeof(__fp16);
+   size_t weights_size = (size_t)N * K * sizeof(__fp16);
+   size_t output_size  = (size_t)M * N * sizeof(float);
+
+   struct MemHandles handles = createRegCmd(fd, input_size, weights_size, output_size, alu_algorithm);
+   __fp16 *weights_fp16 = (__fp16*)(handles.weights);
+   __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
+   __fp16 *output_data = (__fp16*)(handles.output);
+   memset((void *)weights_fp16,      0, weights_size);
+   memset((void *)feature_data_fp16, 0, input_size);
+   memset((void *)output_data,       0, output_size);
+
+   for(int n=1; n<=N; n++) {
+       for(int k=1; k<=K; k++) {
+           weights_fp16[weight_fp16(K,n,k)] = b[((n-1)*K)+(k-1)];
+       }
+   }
+   for (int m=1; m<=M; m++) {
+       for (int k=1; k<=K; k++) {
+           feature_data_fp16[feature_data(K,M,1,8,k,m,1)] = a[((m-1)*K)+(k-1)];
+       }
+   }
+
+   int ret = submitTask(fd, handles.tasks_obj);
+   if(ret < 0) {
+      printf("RKNPU_SUBMIT failed %d\n",ret);
+      return NULL;
+   }
+   return output_data;
+}
+
 __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
 {
    int fd = getDeviceFd();
-   printf("fd: %d\n", fd);
+   npu_reset(fd);
    rknn_tensor_type dtype = RKNN_TENSOR_FLOAT16;
 
-   struct MemHandles handles = createRegCmd(fd, get_type_size(dtype), alu_algorithm);
+   size_t bytes = (size_t)size * get_type_size(dtype);
+   struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
    __fp16 *weights_fp16 = (__fp16*)(handles.weights);
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
    
-   memcpy(weights_fp16,      a, size * get_type_size(dtype));
-   memcpy(feature_data_fp16, b, size * get_type_size(dtype));
-   // memcpy(weights_fp16, a, 2*get_type_size(dtype));
-   // memcpy(feature_data_fp16, b, 2*get_type_size(dtype));
+   memcpy(weights_fp16,      a, bytes);
+   memcpy(feature_data_fp16, b, bytes);
 
    int ret = submitTask(fd, handles.tasks_obj);
    if(ret < 0) {
@@ -464,17 +663,17 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
 int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)
 {
    int fd = getDeviceFd();
-   printf("fd: %d\n", fd);
-
+   npu_reset(fd);
    rknn_tensor_type dtype = RKNN_TENSOR_INT16;
 
-   struct MemHandles handles = createRegCmd(fd, get_type_size(dtype), alu_algorithm);
+   size_t bytes = get_type_size(dtype);
+   struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
    int16_t *weights_int16 = (int16_t*)(handles.weights);
    int16_t *feature_data_int16 = (int16_t*)(handles.input);
    int16_t *output_data = (int16_t*)(handles.output);
 
-   memcpy(weights_int16, a, get_type_size(dtype));
-   memcpy(feature_data_int16, b, get_type_size(dtype));
+   memcpy(weights_int16, a, bytes);
+   memcpy(feature_data_int16, b, bytes);
 
    int ret = submitTask(fd, handles.tasks_obj);
    if(ret < 0) {
@@ -482,26 +681,23 @@ int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)
          return NULL;
    }
    return output_data;
-}
-
-int16_t* int16_add_op(int16_t* a, int16_t* b)
-{
-   return int16_alu_op(a, b, 2); // ALU algorithm 2 = Add
 }
 
 int8_t* int8_alu_op(int8_t* a, int8_t* b, uint32_t alu_algorithm)
 {
    int fd = getDeviceFd();
-   rknn_tensor_type dtype = RKNN_TENSOR_INT8;
-   initArray(&regs, 1024);
+   npu_reset(fd);
 
-   struct MemHandles handles = createRegCmd(fd, get_type_size(dtype), alu_algorithm);
+   rknn_tensor_type dtype = RKNN_TENSOR_INT8;
+
+   size_t bytes = get_type_size(dtype);
+   struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
    int8_t *weights_int8 = (int8_t*)(handles.weights);
    int8_t *feature_data_int8 = (int8_t*)(handles.input);
    int8_t *output_data = (int8_t*)(handles.output);
 
-   memcpy(weights_int8, a, get_type_size(dtype));
-   memcpy(feature_data_int8, b, get_type_size(dtype));
+   memcpy(weights_int8, a, bytes);
+   memcpy(feature_data_int8, b, bytes);
 
    int ret = submitTask(fd, handles.tasks_obj);
    if(ret < 0) {
@@ -509,11 +705,6 @@ int8_t* int8_alu_op(int8_t* a, int8_t* b, uint32_t alu_algorithm)
          return NULL;
    }
    return output_data;
-}
-
-int8_t* int8_add_op(int8_t* a, int8_t* b)
-{
-   return int8_alu_op(a, b, 2); // ALU algorithm 2 = Add
 }
 
 #ifdef __cplusplus
