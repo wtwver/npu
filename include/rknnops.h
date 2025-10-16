@@ -373,21 +373,7 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
          // [ffef02d8] lsb 00010000000040c4 - noone Unknown
          emit_raw(&regs, 0x0 | 0x1, 0x40c4, 0);
 
-         EMIT(REG_DPU_LUT_ACCESS_CFG, 0x00000000);
-         EMIT(REG_DPU_LUT_ACCESS_DATA, 0x00000000);
-         EMIT(REG_DPU_LUT_CFG, 0x00000000);
-         EMIT(REG_DPU_LUT_INFO, 0x00000000);
-         EMIT(REG_DPU_LUT_LE_START, 0x00000000);
-         EMIT(REG_DPU_LUT_LE_END, 0x00000000);
-         EMIT(REG_DPU_LUT_LO_START, 0x00000000);
-         EMIT(REG_DPU_LUT_LO_END, 0x00000000);
-         EMIT(REG_DPU_LUT_LE_SLOPE_SCALE, 0x00000000);
-         EMIT(REG_DPU_LUT_LE_SLOPE_SHIFT, 0x00000000);
-         EMIT(REG_DPU_LUT_LO_SLOPE_SCALE, 0x00000000);
-         EMIT(REG_DPU_LUT_LO_SLOPE_SHIFT, 0x00000000);
-         EMIT(REG_PC_VERSION, 0x00000000);
-         EMIT(REG_PC_REGISTER_AMOUNTS, 0x00000000);
-         EMIT(REG_PC_VERSION, 0x00000000);
+
          // EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1)); 
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
 
@@ -427,7 +413,7 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_RDMA_RDMA_S_POINTER, DPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | DPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | DPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2) | DPU_FEATURE_MODE_CFG_FLYING_MODE(1));
-         EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+         EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(5) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
          EMIT(REG_DPU_DST_BASE_ADDR, DPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma)+ params[i].dst_base_addr_offset);
          EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(1));
          EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH(params[i].data_cube_width));
@@ -456,7 +442,8 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
          EMIT(REG_DPU_RDMA_RDMA_WEIGHT, DPU_RDMA_RDMA_WEIGHT_E_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_N_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_B_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_M_WEIGHT(1));
          EMIT(REG_DPU_RDMA_RDMA_EW_SURF_NOTCH, DPU_RDMA_RDMA_EW_SURF_NOTCH_EW_SURF_NOTCH(params[i].rdma_ew_surf_notch));
          // EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12));
-   
+         
+         // MIN MAX
          if (current_alu_algorithm == 0 || current_alu_algorithm == 1){
             // EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH(params[i].data_cube_width));
             // EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_MINMAX_CTL(1) | DPU_DATA_CUBE_HEIGHT_HEIGHT(0));
@@ -466,10 +453,12 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
             // EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_BINARY_EN(1) | DPU_EW_CFG_EW_ALU_ALGO(current_alu_algorithm) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1));
          }
    
+         // MUL
          if (current_alu_algorithm == 9){
             // EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(0) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1) | DPU_EW_CFG_EW_OP_TYPE(1))
             EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_DATA_MODE(1) | DPU_EW_CFG_EDATA_SIZE(2) | DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_SRC(1) | DPU_EW_CFG_EW_OP_TYPE(1));
          }
+         // DIV
          else if(current_alu_algorithm == 3 ){
             // swap input and weights for DIV
             EMIT(REG_DPU_RDMA_RDMA_SRC_BASE_ADDR, DPU_RDMA_RDMA_SRC_BASE_ADDR_SRC_BASE_ADDR(weights_dma)+ params[i].rdma_src_base_addr_offset);
@@ -483,8 +472,6 @@ void regcmd_helper(input_dma, weights_dma, output_dma){
             // EMIT(REG_DPU_OUT_CVT_OFFSET, 0x0000000);
             // EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(0) );
             // EMIT(REG_DPU_OUT_CVT_SHIFT, DPU_OUT_CVT_SHIFT_CVT_ROUND(0));
-         } else if (current_alu_algorithm == 1 || current_alu_algorithm == 5 || current_alu_algorithm == 6 ){
-            EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(0));
          }
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12) | PC_OPERATION_ENABLE_OP_EN(0));
          EMIT(REG_PC_VERSION, 0x00020000);
@@ -648,7 +635,8 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
    __fp16 *weights_fp16 = (__fp16*)(handles.weights);
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
-   
+   // float* output_data_float = (float*)(handles.output);
+
    memcpy(weights_fp16,      a, bytes);
    memcpy(feature_data_fp16, b, bytes);
 
@@ -657,6 +645,15 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
       printf("RKNPU_SUBMIT failed %d\n",ret);
       return NULL;
    }
+
+   // __fp16 *output_data_fp16 = (__fp16*)(handles.output);
+   // printf("\nMethod 1 - Correct fp16 casting: fp16=%f fp32=%f\n", 
+         //  output_data_fp16[0], (float)output_data_fp16[0]);
+
+   float* output_data_float = (float*)(handles.output);
+   printf("\nMethod 2 - Wrong float casting: fp16=%f fp32=%f\n", 
+          (__fp16)output_data_float[0], output_data_float[0]);
+
    return output_data;
 }
 

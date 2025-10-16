@@ -104,28 +104,28 @@ int main(int argc, char* argv[]) {
     // Initialize inputs with sample values
     for (int i = 0; i < size; i++) {
         // input0[i] = static_cast<__fp16>(i + 1.1);  // 1.1, 2.1, 3.1, ...
-        input0[i] = static_cast<__fp16>(-85.1f);  // 1.1, 2.1, 3.1, ...
-        input1[i] = static_cast<__fp16>(68.2f);      // All 2s
+        input0[i] = static_cast<__fp16>(-85.0);  // 1.1, 2.1, 3.1, ...
+        input1[i] = static_cast<__fp16>(68.0);      // All 2s
     }
     
     // Record start time
     auto start = std::chrono::high_resolution_clock::now();
     
-        rknn_input inputs[2];
-        memset(inputs, 0, 2 * sizeof(rknn_input));
+        rknn_input inputs[1];
+        memset(inputs, 0, 1 * sizeof(rknn_input));
         inputs[0].index = 0;
         inputs[0].type = RKNN_TENSOR_FLOAT16;
         inputs[0].fmt = RKNN_TENSOR_NCHW;
         inputs[0].buf = input0.data();
         inputs[0].size = size * sizeof(__fp16);
         
-        inputs[1].index = 1;
-        inputs[1].type = RKNN_TENSOR_FLOAT16;
-        inputs[1].fmt = RKNN_TENSOR_NCHW;
-        inputs[1].buf = input1.data();
-        inputs[1].size = size * sizeof(__fp16);
+        // inputs[1].index = 1;
+        // inputs[1].type = RKNN_TENSOR_FLOAT16;
+        // inputs[1].fmt = RKNN_TENSOR_NCHW;
+        // inputs[1].buf = input1.data();
+        // inputs[1].size = size * sizeof(__fp16);
         
-        ret = rknn_inputs_set(ctx, 2, inputs);
+        ret = rknn_inputs_set(ctx, 1, inputs);
         if (ret < 0) {
             std::cerr << "rknn_inputs_set failed! ret=" << ret << std::endl;
             rknn_destroy(ctx);

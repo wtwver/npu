@@ -7,13 +7,17 @@ class Model(torch.nn.Module):
         super(Model, self).__init__()
 
     def forward(self, x, y):
-        return torch.floor_divide(x, y)
+        # return x+y
+        x = x.to(torch.float32)
+        y = y.to(torch.float32)
+        # Perform addition in FP32
+        return x + y
 
-size = 1
+size = 2
 if sys.argv[1:]:
     size = int(sys.argv[1])
 dtype = torch.float16
-ops = "floor"
+ops = "add"
 model_path = f"models/{ops}_float16_1x{size}.onnx"
 
 x = torch.full((1, size), 2, dtype=dtype)

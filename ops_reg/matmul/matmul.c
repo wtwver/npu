@@ -80,162 +80,358 @@ static inline uint64_t EMIT(uint32_t reg, uint32_t value){
   return packed_value;
 }
 
-void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_desc, npu_dpu_desc *dpu_desc) {
+int gen_matmul_task(uint64_t *ops, uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma) {
+  ops[0] =  EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+  ops[1] =  EMIT(REG_CNA_CONV_CON1, CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+  ops[2] =  EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(33));
+  ops[3] =  EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+  ops[4] =  EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH(1) | CNA_DATA_SIZE0_DATAIN_HEIGHT(32));
+  ops[5] =  EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(31) | CNA_DATA_SIZE1_DATAIN_CHANNEL(32));
+  ops[6] =  EMIT(REG_CNA_DATA_SIZE2, CNA_DATA_SIZE2_DATAOUT_WIDTH(1));
+  ops[7] =  EMIT(REG_CNA_DATA_SIZE3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(32));
+  ops[8] =  EMIT(REG_CNA_WEIGHT_SIZE0, 0x00000800);
+  ops[9] =  EMIT(REG_CNA_WEIGHT_SIZE1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(64));
+  ops[10] =  EMIT(REG_CNA_WEIGHT_SIZE2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(1) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(1) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(32));
+  ops[11] =  EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+  ops[12] =  EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES(1));
+  ops[13] =  EMIT(REG_CNA_CVT_CON0, CNA_CVT_CON0_DATA_SIGN(1) | CNA_CVT_CON0_CVT_TYPE(1) | CNA_CVT_CON0_CVT_BYPASS(1));
+  ops[14] =  EMIT(REG_CNA_CVT_CON1, CNA_CVT_CON1_CVT_SCALE0(1));
+  ops[15] =  EMIT(REG_CNA_CVT_CON2, CNA_CVT_CON2_CVT_SCALE1(1));
+  ops[16] =  EMIT(REG_CNA_CVT_CON3, CNA_CVT_CON3_CVT_SCALE2(1));
+  ops[17] =  EMIT(REG_CNA_CVT_CON4, CNA_CVT_CON4_CVT_SCALE3(1));
+  ops[18] =  EMIT(REG_CNA_FC_CON0, 0x00000000);
+  ops[19] =  EMIT(REG_CNA_FC_CON1, 0x00000000);
+  ops[20] =  EMIT(REG_CNA_PAD_CON0, 0x00000000);
+  ops[21] =  EMIT(REG_CNA_FEATURE_DATA_ADDR, input_dma);
+  ops[22] =  EMIT(REG_CNA_FC_CON2, 0x00000000);
+  ops[23] =  EMIT(REG_CNA_DMA_CON0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+  ops[24] =  EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(4));
+  ops[25] =  EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(28));
+  ops[26] =  EMIT(REG_CNA_FC_DATA_SIZE0, CNA_FC_DATA_SIZE0_DMA_WIDTH(1) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(32));
+  ops[27] =  EMIT(REG_CNA_FC_DATA_SIZE1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(32));
+  ops[28] =  EMIT(REG_CNA_DCOMP_CTRL, 0x00000000);
+  ops[29] =  EMIT(REG_CNA_DCOMP_REGNUM, 0x00000000);
+  ops[30] =  EMIT(REG_CNA_DCOMP_ADDR0, weights_dma);
+  ops[31] =  EMIT(REG_CNA_DCOMP_AMOUNT0, 0x00000000);
+  ops[32] =  EMIT(REG_CNA_DCOMP_AMOUNT1, 0x00000000);
+  ops[33] =  EMIT(REG_CNA_DCOMP_AMOUNT2, 0x00000000);
+  ops[34] =  EMIT(REG_CNA_DCOMP_AMOUNT3, 0x00000000);
+  ops[35] =  EMIT(REG_CNA_DCOMP_AMOUNT4, 0x00000000);
+  ops[36] =  EMIT(REG_CNA_DCOMP_AMOUNT5, 0x00000000);
+  ops[37] =  EMIT(REG_CNA_DCOMP_AMOUNT6, 0x00000000);
+  ops[38] =  EMIT(REG_CNA_DCOMP_AMOUNT7, 0x00000000);
+  ops[39] =  EMIT(REG_CNA_DCOMP_AMOUNT8, 0x00000000);
+  ops[40] =  EMIT(REG_CNA_DCOMP_AMOUNT9, 0x00000000);
+  ops[41] =  EMIT(REG_CNA_DCOMP_AMOUNT10, 0x00000000);
+  ops[42] =  EMIT(REG_CNA_DCOMP_AMOUNT11, 0x00000000);
+  ops[43] =  EMIT(REG_CNA_DCOMP_AMOUNT12, 0x00000000);
+  ops[44] =  EMIT(REG_CNA_DCOMP_AMOUNT13, 0x00000000);
+  ops[45] =  EMIT(REG_CNA_DCOMP_AMOUNT14, 0x00000000);
+  ops[46] =  EMIT(REG_CNA_DCOMP_AMOUNT15, 0x00000000);
+  ops[47] =  EMIT(REG_CNA_CVT_CON5, 0x00000000);
+  ops[48] =  EMIT(REG_CNA_PAD_CON1, 0x00000000);
+  ops[49] =  EMIT(REG_CORE_MISC_CFG, CORE_MISC_CFG_PROC_PRECISION(2) | CORE_MISC_CFG_QD_EN(1));
+  ops[50] =  EMIT(REG_CORE_DATAOUT_SIZE_0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(31));
+  ops[51] =  EMIT(REG_CORE_DATAOUT_SIZE_1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(31));
+  ops[52] =  EMIT(REG_CORE_CLIP_TRUNCATE, 0x00000000);
+  // ops[53] =  emit_raw(&regs, CORE | 0x1, 0x3030, 0);
+  ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
+
+  ops[54] =  EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+  ops[55] =  EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(5) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+  ops[56] =  EMIT(REG_DPU_OFFSET_PEND, 0x00000000);
+  ops[57] =  EMIT(REG_DPU_DST_BASE_ADDR, 0xffeba000);
+  ops[58] =  EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(32));
+  ops[59] =  EMIT(REG_DPU_DATA_CUBE_WIDTH, 0x00000000);
+  ops[60] =  EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT(31));
+  ops[61] =  EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, 0x00000000);
+  ops[62] =  EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(31) | DPU_DATA_CUBE_CHANNEL_CHANNEL(31));
+  ops[63] =  EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+  ops[64] =  EMIT(REG_DPU_BS_ALU_CFG, 0x00000000);
+  ops[65] =  EMIT(REG_DPU_BS_MUL_CFG, 0x00000000);
+  ops[66] =  EMIT(REG_DPU_BS_RELUX_CMP_VALUE, 0x00000000);
+  ops[67] =  EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_SIZE_E_2(3) | DPU_BS_OW_CFG_SIZE_E_1(3) | DPU_BS_OW_CFG_SIZE_E_0(3) | DPU_BS_OW_CFG_OD_BYPASS(1));
+  ops[68] =  EMIT(REG_DPU_BS_OW_OP, 0x00000000);
+  ops[69] =  EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(31));
+  ops[70] =  EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(31));
+  ops[71] =  EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+  ops[72] =  EMIT(REG_DPU_BN_ALU_CFG, 0x00000000);
+  ops[73] =  EMIT(REG_DPU_BN_MUL_CFG, 0x00000000);
+  ops[74] =  EMIT(REG_DPU_BN_RELUX_CMP_VALUE, 0x00000000);
+  ops[75] =  EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+  ops[76] =  EMIT(REG_DPU_EW_CVT_OFFSET_VALUE, 0x00000000);
+  ops[77] =  EMIT(REG_DPU_EW_CVT_SCALE_VALUE, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+  ops[78] =  EMIT(REG_DPU_EW_RELUX_CMP_VALUE, 0x00000000);
+  ops[79] =  EMIT(REG_DPU_OUT_CVT_OFFSET, 0x00000000);
+  ops[80] =  EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+  ops[81] =  EMIT(REG_DPU_OUT_CVT_SHIFT, 0x00000000);
+  ops[82] =  EMIT(REG_DPU_EW_OP_VALUE_0, 0x00000000);
+  ops[83] =  EMIT(REG_DPU_EW_OP_VALUE_1, 0x00000000);
+  ops[84] =  EMIT(REG_DPU_EW_OP_VALUE_2, 0x00000000);
+  ops[85] =  EMIT(REG_DPU_EW_OP_VALUE_3, 0x00000000);
+  ops[86] =  EMIT(REG_DPU_EW_OP_VALUE_4, 0x00000000);
+  ops[87] =  EMIT(REG_DPU_EW_OP_VALUE_5, 0x00000000);
+  ops[88] =  EMIT(REG_DPU_EW_OP_VALUE_6, 0x00000000);
+  ops[89] =  EMIT(REG_DPU_EW_OP_VALUE_7, 0x00000000);
+  ops[90] =  EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(128));
+  // ops[91] =  emit_raw(&regs, 0x0 | 0x1, 0x40c4, 0);
+  ops[91] = EMIT(DPU_40C4, 0x0);
+
+  ops[92] =  EMIT(REG_DPU_LUT_ACCESS_CFG, 0x00000000);
+  ops[93] =  EMIT(REG_DPU_LUT_ACCESS_DATA, 0x00000000);
+  ops[94] =  EMIT(REG_DPU_LUT_CFG, 0x00000000);
+  ops[95] =  EMIT(REG_DPU_LUT_INFO, 0x00000000);
+  ops[96] =  EMIT(REG_DPU_LUT_LE_START, 0x00000000);
+  ops[97] =  EMIT(REG_DPU_LUT_LE_END, 0x00000000);
+  ops[98] =  EMIT(REG_DPU_LUT_LO_START, 0x00000000);
+  ops[99] =  EMIT(REG_DPU_LUT_LO_END, 0x00000000);
+  ops[100] =  EMIT(REG_DPU_LUT_LE_SLOPE_SCALE, 0x00000000);
+  ops[101] =  EMIT(REG_DPU_LUT_LE_SLOPE_SHIFT, 0x00000000);
+  ops[102] =  EMIT(REG_DPU_LUT_LO_SLOPE_SCALE, 0x00000000);
+  ops[103] =  EMIT(REG_DPU_LUT_LO_SLOPE_SHIFT, 0x00000000);
+  ops[104] =  EMIT(REG_PC_VERSION, 0x00000000);
+  ops[105] =  EMIT(REG_PC_REGISTER_AMOUNTS, 0x00000000);
+  ops[106] =  EMIT(REG_PC_VERSION, 0x00000000);
+  // ops[107] =  emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+  ops[107] = NPUOP(OP_ENABLE, (PC_ENABLE_DPU | PC_ENABLE_CNA | PC_ENABLE), REG_PC_OPERATION_ENABLE);
+  return 0;
+}
+
+void gen_matmul_task2(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_desc, npu_dpu_desc *dpu_desc, uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma) {
   uint32_t value;
 
   // printf("DEBUG: cna_desc->datain_channel=%u, cna_desc->weight_kernels=%u\n", 
         //  cna_desc->datain_channel, cna_desc->weight_kernels);
 
-  ops[0] = EMIT(REG_DPU_S_POINTER, 
-      DPU_S_POINTER_POINTER_PP_MODE(1) | 
-      DPU_S_POINTER_EXECUTER_PP_EN(1) | 
-      DPU_S_POINTER_POINTER_PP_EN(1)
-    );
-    
-  ops[1] = EMIT(REG_CNA_CONV_CON1, 
-      CNA_CONV_CON1_PROC_PRECISION(cna_desc->proc_precision) | 
-      CNA_CONV_CON1_IN_PRECISION(cna_desc->in_precision) |
-      CNA_CONV_CON1_CONV_MODE(cna_desc->conv_mode)
-    );
-  ops[2] = EMIT(REG_CNA_CONV_CON2,
-      CNA_CONV_CON2_KERNEL_GROUP(cna_desc->kernel_groups) |
-      CNA_CONV_CON2_FEATURE_GRAINS(cna_desc->feature_grains)
-    );
-  ops[3] = EMIT(REG_CNA_CONV_CON3, 
-      CNA_CONV_CON3_CONV_Y_STRIDE(cna_desc->conv_y_stride) | 
-      CNA_CONV_CON3_CONV_X_STRIDE(cna_desc->conv_x_stride)
-    );
-  ops[4] = EMIT(REG_CNA_DATA_SIZE0, 
-      CNA_DATA_SIZE0_DATAIN_WIDTH(cna_desc->datain_width) | 
-      CNA_DATA_SIZE0_DATAIN_HEIGHT(cna_desc->datain_height)
-    );
-  ops[5] = EMIT(REG_CNA_DATA_SIZE1, 
-      CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(cna_desc->datain_channel - 1) | 
-      CNA_DATA_SIZE1_DATAIN_CHANNEL(cna_desc->datain_channel)
-    );
-  ops[6] = EMIT(REG_CNA_DATA_SIZE2, 
-      CNA_DATA_SIZE2_DATAOUT_WIDTH(cna_desc->dataout_width)
-    );
-  ops[7] = EMIT(REG_CNA_DATA_SIZE3, 
-      CNA_DATA_SIZE3_DATAOUT_ATOMICS(cna_desc->dataout_atomics)
-    );
-  ops[8] = EMIT(REG_CNA_WEIGHT_SIZE0, 
-      CNA_WEIGHT_SIZE0_WEIGHT_BYTES(cna_desc->weight_bytes)
-    );
-  ops[9] = EMIT(REG_CNA_WEIGHT_SIZE1, 
-      CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(cna_desc->weight_bytes_per_kernel)
-    );
-  ops[10] = EMIT(REG_CNA_WEIGHT_SIZE2, 
-      CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(cna_desc->weight_width) | 
-      CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(cna_desc->weight_height) |
-      CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(cna_desc->weight_kernels)
-    );
-  ops[11] = EMIT(REG_CNA_CBUF_CON0, 
-      CNA_CBUF_CON0_WEIGHT_BANK(cna_desc->weight_bank) | 
-      CNA_CBUF_CON0_DATA_BANK(cna_desc->data_bank)
-    );
-  ops[12] = EMIT(REG_CNA_CBUF_CON1, 
-      CNA_CBUF_CON1_DATA_ENTRIES(cna_desc->data_entries)
-    );
-  ops[13] = EMIT(REG_CNA_CVT_CON0, 
-      CNA_CVT_CON0_DATA_SIGN(cna_desc->data_sign) | 
-      CNA_CVT_CON0_CVT_TYPE(cna_desc->cvt_type) | 
-      CNA_CVT_CON0_CVT_BYPASS(cna_desc->cvt_bypass)
-    );
-  ops[14] = EMIT(REG_CNA_CVT_CON1, 
-      CNA_CVT_CON1_CVT_SCALE0(cna_desc->cvt_scale0)
-    );
-  ops[15] = EMIT(REG_CNA_CVT_CON2, 
-      CNA_CVT_CON2_CVT_SCALE1(cna_desc->cvt_scale1)
-    );
-  ops[16] = EMIT(REG_CNA_CVT_CON3, 
-      CNA_CVT_CON3_CVT_SCALE2(cna_desc->cvt_scale2)
-    );
-  ops[17] = EMIT(REG_CNA_CVT_CON4, 
-      CNA_CVT_CON4_CVT_SCALE3(cna_desc->cvt_scale3)
-    );
-  ops[18] = EMIT(REG_CNA_FC_CON0, 
-      CNA_FC_CON0_FC_SKIP_EN(cna_desc->fc_skip_en)
-    );
-  ops[19] = EMIT(REG_CNA_FC_CON1, 
-      CNA_FC_CON1_DATA_OFFSET(cna_desc->data_offset)
-    ); 
-  ops[20] = EMIT(REG_CNA_PAD_CON0, 
-      CNA_PAD_CON0_PAD_LEFT(cna_desc->pad_left) | 
-      CNA_PAD_CON0_PAD_TOP(cna_desc->pad_top)
-    );
-
-  ops[21] = EMIT(REG_CNA_FEATURE_DATA_ADDR, cna_desc->feature_base_addr);
-  ops[22] = EMIT(REG_CNA_FC_CON2, 
-      CNA_FC_CON2_WEIGHT_OFFSET(cna_desc->weight_offset)
-    );
-  ops[23] = EMIT(REG_CNA_DMA_CON0, 
-      CNA_DMA_CON0_WEIGHT_BURST_LEN(cna_desc->weight_burst_len) | 
-      CNA_DMA_CON0_DATA_BURST_LEN(cna_desc->data_burst_len)
-    );
-  ops[24] = EMIT(REG_CNA_DMA_CON1, 
-      CNA_DMA_CON1_LINE_STRIDE(cna_desc->line_stride)
-    );
-  ops[25] = EMIT(REG_CNA_DMA_CON2, 
-      CNA_DMA_CON2_SURF_STRIDE(cna_desc->surf_stride)
-    );
-  ops[26] = EMIT(REG_CNA_FC_DATA_SIZE0, 
-      CNA_FC_DATA_SIZE0_DMA_WIDTH(cna_desc->dma_width) | 
-      CNA_FC_DATA_SIZE0_DMA_HEIGHT(cna_desc->dma_height)
-    );
-  ops[27] = EMIT(REG_CNA_FC_DATA_SIZE1, 
-      CNA_FC_DATA_SIZE1_DMA_CHANNEL(cna_desc->dma_channel)
-    );
-  ops[28] = EMIT(REG_CNA_DCOMP_CTRL, 0x0);
-  ops[29] = EMIT(REG_CNA_DCOMP_REGNUM, 0x0);
-  ops[30] = EMIT(REG_CNA_DCOMP_ADDR0, cna_desc->decompress_addr0);
-  ops[31] = EMIT(REG_CNA_DCOMP_AMOUNT0, 0x0);
-  ops[32] = EMIT(REG_CNA_DCOMP_AMOUNT1, 0x0);
-  ops[33] = EMIT(REG_CNA_DCOMP_AMOUNT2, 0x0);
-  ops[34] = EMIT(REG_CNA_DCOMP_AMOUNT3, 0x0);
-  ops[35] = EMIT(REG_CNA_DCOMP_AMOUNT4, 0x0);
-  ops[36] = EMIT(REG_CNA_DCOMP_AMOUNT5, 0x0);
-  ops[37] = EMIT(REG_CNA_DCOMP_AMOUNT6, 0x0);
-  ops[38] = EMIT(REG_CNA_DCOMP_AMOUNT7, 0x0);
-  ops[39] = EMIT(REG_CNA_DCOMP_AMOUNT8, 0x0);
-  ops[40] = EMIT(REG_CNA_DCOMP_AMOUNT9, 0x0);
-  ops[41] = EMIT(REG_CNA_DCOMP_AMOUNT10, 0x0);
-  ops[42] = EMIT(REG_CNA_DCOMP_AMOUNT11, 0x0);
-  ops[43] = EMIT(REG_CNA_DCOMP_AMOUNT12, 0x0);
-  ops[44] = EMIT(REG_CNA_DCOMP_AMOUNT13, 0x0);
-  ops[45] = EMIT(REG_CNA_DCOMP_AMOUNT14, 0x0);
-  ops[46] = EMIT(REG_CNA_DCOMP_AMOUNT15, 0x0);
-  ops[47] = EMIT(REG_CNA_CVT_CON5, 0x0);
-  ops[48] = EMIT(REG_CNA_PAD_CON1, 0x0);
-  ops[49] = EMIT(REG_CORE_MISC_CFG, 
-      CORE_MISC_CFG_PROC_PRECISION(core_desc->proc_precision) | 
-      CORE_MISC_CFG_QD_EN(core_desc->qd_en)
-    );
-  ops[50] = EMIT(REG_CORE_DATAOUT_SIZE_0, 
-      CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(core_desc->dataout_height) | 
-      CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(core_desc->dataout_width)
-    );
-  ops[51] = EMIT(REG_CORE_DATAOUT_SIZE_1, 
-      CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(core_desc->dataout_channel)
-    );
-  ops[52] = EMIT(REG_CORE_CLIP_TRUNCATE, 0x0);
-  
-  // 801 3030 0
-  // ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
+  ops[0] =  EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+  ops[1] =  EMIT(REG_CNA_CONV_CON1, CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+  ops[2] =  EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(33));
+  ops[3] =  EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+  ops[4] =  EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH(1) | CNA_DATA_SIZE0_DATAIN_HEIGHT(32));
+  ops[5] =  EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(31) | CNA_DATA_SIZE1_DATAIN_CHANNEL(32));
+  ops[6] =  EMIT(REG_CNA_DATA_SIZE2, CNA_DATA_SIZE2_DATAOUT_WIDTH(1));
+  ops[7] =  EMIT(REG_CNA_DATA_SIZE3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(32));
+  ops[8] =  EMIT(REG_CNA_WEIGHT_SIZE0, 0x00000800);
+  ops[9] =  EMIT(REG_CNA_WEIGHT_SIZE1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(64));
+  ops[10] =  EMIT(REG_CNA_WEIGHT_SIZE2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(1) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(1) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(32));
+  ops[11] =  EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+  ops[12] =  EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES(1));
+  ops[13] =  EMIT(REG_CNA_CVT_CON0, CNA_CVT_CON0_DATA_SIGN(1) | CNA_CVT_CON0_CVT_TYPE(1) | CNA_CVT_CON0_CVT_BYPASS(1));
+  ops[14] =  EMIT(REG_CNA_CVT_CON1, CNA_CVT_CON1_CVT_SCALE0(1));
+  ops[15] =  EMIT(REG_CNA_CVT_CON2, CNA_CVT_CON2_CVT_SCALE1(1));
+  ops[16] =  EMIT(REG_CNA_CVT_CON3, CNA_CVT_CON3_CVT_SCALE2(1));
+  ops[17] =  EMIT(REG_CNA_CVT_CON4, CNA_CVT_CON4_CVT_SCALE3(1));
+  ops[18] =  EMIT(REG_CNA_FC_CON0, 0x00000000);
+  ops[19] =  EMIT(REG_CNA_FC_CON1, 0x00000000);
+  ops[20] =  EMIT(REG_CNA_PAD_CON0, 0x00000000);
+  ops[21] =  EMIT(REG_CNA_FEATURE_DATA_ADDR, input_dma);
+  ops[22] =  EMIT(REG_CNA_FC_CON2, 0x00000000);
+  ops[23] =  EMIT(REG_CNA_DMA_CON0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+  ops[24] =  EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(4));
+  ops[25] =  EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(28));
+  ops[26] =  EMIT(REG_CNA_FC_DATA_SIZE0, CNA_FC_DATA_SIZE0_DMA_WIDTH(1) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(32));
+  ops[27] =  EMIT(REG_CNA_FC_DATA_SIZE1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(32));
+  ops[28] =  EMIT(REG_CNA_DCOMP_CTRL, 0x00000000);
+  ops[29] =  EMIT(REG_CNA_DCOMP_REGNUM, 0x00000000);
+  ops[30] =  EMIT(REG_CNA_DCOMP_ADDR0, weights_dma);
+  ops[31] =  EMIT(REG_CNA_DCOMP_AMOUNT0, 0x00000000);
+  ops[32] =  EMIT(REG_CNA_DCOMP_AMOUNT1, 0x00000000);
+  ops[33] =  EMIT(REG_CNA_DCOMP_AMOUNT2, 0x00000000);
+  ops[34] =  EMIT(REG_CNA_DCOMP_AMOUNT3, 0x00000000);
+  ops[35] =  EMIT(REG_CNA_DCOMP_AMOUNT4, 0x00000000);
+  ops[36] =  EMIT(REG_CNA_DCOMP_AMOUNT5, 0x00000000);
+  ops[37] =  EMIT(REG_CNA_DCOMP_AMOUNT6, 0x00000000);
+  ops[38] =  EMIT(REG_CNA_DCOMP_AMOUNT7, 0x00000000);
+  ops[39] =  EMIT(REG_CNA_DCOMP_AMOUNT8, 0x00000000);
+  ops[40] =  EMIT(REG_CNA_DCOMP_AMOUNT9, 0x00000000);
+  ops[41] =  EMIT(REG_CNA_DCOMP_AMOUNT10, 0x00000000);
+  ops[42] =  EMIT(REG_CNA_DCOMP_AMOUNT11, 0x00000000);
+  ops[43] =  EMIT(REG_CNA_DCOMP_AMOUNT12, 0x00000000);
+  ops[44] =  EMIT(REG_CNA_DCOMP_AMOUNT13, 0x00000000);
+  ops[45] =  EMIT(REG_CNA_DCOMP_AMOUNT14, 0x00000000);
+  ops[46] =  EMIT(REG_CNA_DCOMP_AMOUNT15, 0x00000000);
+  ops[47] =  EMIT(REG_CNA_CVT_CON5, 0x00000000);
+  ops[48] =  EMIT(REG_CNA_PAD_CON1, 0x00000000);
+  ops[49] =  EMIT(REG_CORE_MISC_CFG, CORE_MISC_CFG_PROC_PRECISION(2) | CORE_MISC_CFG_QD_EN(1));
+  ops[50] =  EMIT(REG_CORE_DATAOUT_SIZE_0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(31));
+  ops[51] =  EMIT(REG_CORE_DATAOUT_SIZE_1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(31));
+  ops[52] =  EMIT(REG_CORE_CLIP_TRUNCATE, 0x00000000);
+  // ops[53] =  emit_raw(&regs, CORE | 0x1, 0x3030, 0);
   ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
+  ops[54] =  EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+  ops[55] =  EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(5) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+  ops[56] =  EMIT(REG_DPU_OFFSET_PEND, 0x00000000);
+  ops[57] =  EMIT(REG_DPU_DST_BASE_ADDR, 0xffeba000);
+  ops[58] =  EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(32));
+  ops[59] =  EMIT(REG_DPU_DATA_CUBE_WIDTH, 0x00000000);
+  ops[60] =  EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT(31));
+  // ops[61] =  EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, 0x00000000);
+  // ops[62] =  EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(31) | DPU_DATA_CUBE_CHANNEL_CHANNEL(31));
+  // ops[63] =  EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+  // ops[64] =  EMIT(REG_DPU_BS_ALU_CFG, 0x00000000);
+  // ops[65] =  EMIT(REG_DPU_BS_MUL_CFG, 0x00000000);
+  // ops[66] =  EMIT(REG_DPU_BS_RELUX_CMP_VALUE, 0x00000000);
+  // ops[67] =  EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_SIZE_E_2(3) | DPU_BS_OW_CFG_SIZE_E_1(3) | DPU_BS_OW_CFG_SIZE_E_0(3) | DPU_BS_OW_CFG_OD_BYPASS(1));
+  // ops[68] =  EMIT(REG_DPU_BS_OW_OP, 0x00000000);
+  // ops[69] =  EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(31));
+  // ops[70] =  EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(31));
+  // ops[71] =  EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+  // ops[72] =  EMIT(REG_DPU_BN_ALU_CFG, 0x00000000);
+  // ops[73] =  EMIT(REG_DPU_BN_MUL_CFG, 0x00000000);
+  // ops[74] =  EMIT(REG_DPU_BN_RELUX_CMP_VALUE, 0x00000000);
+  // ops[75] =  EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+
+
+  // ops[0] = EMIT(REG_DPU_S_POINTER, 
+  //     DPU_S_POINTER_POINTER_PP_MODE(1) | 
+  //     DPU_S_POINTER_EXECUTER_PP_EN(1) | 
+  //     DPU_S_POINTER_POINTER_PP_EN(1)
+  //   );
+    
+  // ops[1] = EMIT(REG_CNA_CONV_CON1, 
+  //     CNA_CONV_CON1_PROC_PRECISION(cna_desc->proc_precision) | 
+  //     CNA_CONV_CON1_IN_PRECISION(cna_desc->in_precision) |
+  //     CNA_CONV_CON1_CONV_MODE(cna_desc->conv_mode)
+  //   );
+  // ops[2] = EMIT(REG_CNA_CONV_CON2,
+  //     CNA_CONV_CON2_KERNEL_GROUP(cna_desc->kernel_groups) |
+  //     CNA_CONV_CON2_FEATURE_GRAINS(cna_desc->feature_grains)
+  //   );
+  // ops[3] = EMIT(REG_CNA_CONV_CON3, 
+  //     CNA_CONV_CON3_CONV_Y_STRIDE(cna_desc->conv_y_stride) | 
+  //     CNA_CONV_CON3_CONV_X_STRIDE(cna_desc->conv_x_stride)
+  //   );
+  // ops[4] = EMIT(REG_CNA_DATA_SIZE0, 
+  //     CNA_DATA_SIZE0_DATAIN_WIDTH(cna_desc->datain_width) | 
+  //     CNA_DATA_SIZE0_DATAIN_HEIGHT(cna_desc->datain_height)
+  //   );
+  // ops[5] = EMIT(REG_CNA_DATA_SIZE1, 
+  //     CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(cna_desc->datain_channel - 1) | 
+  //     CNA_DATA_SIZE1_DATAIN_CHANNEL(cna_desc->datain_channel)
+  //   );
+  // ops[6] = EMIT(REG_CNA_DATA_SIZE2, 
+  //     CNA_DATA_SIZE2_DATAOUT_WIDTH(cna_desc->dataout_width)
+  //   );
+  // ops[7] = EMIT(REG_CNA_DATA_SIZE3, 
+  //     CNA_DATA_SIZE3_DATAOUT_ATOMICS(cna_desc->dataout_atomics)
+  //   );
+  // ops[8] = EMIT(REG_CNA_WEIGHT_SIZE0, 
+  //     CNA_WEIGHT_SIZE0_WEIGHT_BYTES(cna_desc->weight_bytes)
+  //   );
+  // ops[9] = EMIT(REG_CNA_WEIGHT_SIZE1, 
+  //     CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(cna_desc->weight_bytes_per_kernel)
+  //   );
+  // ops[10] = EMIT(REG_CNA_WEIGHT_SIZE2, 
+  //     CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(cna_desc->weight_width) | 
+  //     CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(cna_desc->weight_height) |
+  //     CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(cna_desc->weight_kernels)
+  //   );
+  // ops[11] = EMIT(REG_CNA_CBUF_CON0, 
+  //     CNA_CBUF_CON0_WEIGHT_BANK(cna_desc->weight_bank) | 
+  //     CNA_CBUF_CON0_DATA_BANK(cna_desc->data_bank)
+  //   );
+  // ops[12] = EMIT(REG_CNA_CBUF_CON1, 
+  //     CNA_CBUF_CON1_DATA_ENTRIES(cna_desc->data_entries)
+  //   );
+  // ops[13] = EMIT(REG_CNA_CVT_CON0, 
+  //     CNA_CVT_CON0_DATA_SIGN(cna_desc->data_sign) | 
+  //     CNA_CVT_CON0_CVT_TYPE(cna_desc->cvt_type) | 
+  //     CNA_CVT_CON0_CVT_BYPASS(cna_desc->cvt_bypass)
+  //   );
+  // ops[14] = EMIT(REG_CNA_CVT_CON1, 
+  //     CNA_CVT_CON1_CVT_SCALE0(cna_desc->cvt_scale0)
+  //   );
+  // ops[15] = EMIT(REG_CNA_CVT_CON2, 
+  //     CNA_CVT_CON2_CVT_SCALE1(cna_desc->cvt_scale1)
+  //   );
+  // ops[16] = EMIT(REG_CNA_CVT_CON3, 
+  //     CNA_CVT_CON3_CVT_SCALE2(cna_desc->cvt_scale2)
+  //   );
+  // ops[17] = EMIT(REG_CNA_CVT_CON4, 
+  //     CNA_CVT_CON4_CVT_SCALE3(cna_desc->cvt_scale3)
+  //   );
+  // ops[18] = EMIT(REG_CNA_FC_CON0, 
+  //     CNA_FC_CON0_FC_SKIP_EN(cna_desc->fc_skip_en)
+  //   );
+  // ops[19] = EMIT(REG_CNA_FC_CON1, 
+  //     CNA_FC_CON1_DATA_OFFSET(cna_desc->data_offset)
+  //   ); 
+  // ops[20] = EMIT(REG_CNA_PAD_CON0, 
+  //     CNA_PAD_CON0_PAD_LEFT(cna_desc->pad_left) | 
+  //     CNA_PAD_CON0_PAD_TOP(cna_desc->pad_top)
+  //   );
+
+  // ops[21] = EMIT(REG_CNA_FEATURE_DATA_ADDR, cna_desc->feature_base_addr);
+  // ops[22] = EMIT(REG_CNA_FC_CON2, 
+  //     CNA_FC_CON2_WEIGHT_OFFSET(cna_desc->weight_offset)
+  //   );
+  // ops[23] = EMIT(REG_CNA_DMA_CON0, 
+  //     CNA_DMA_CON0_WEIGHT_BURST_LEN(cna_desc->weight_burst_len) | 
+  //     CNA_DMA_CON0_DATA_BURST_LEN(cna_desc->data_burst_len)
+  //   );
+  // ops[24] = EMIT(REG_CNA_DMA_CON1, 
+  //     CNA_DMA_CON1_LINE_STRIDE(cna_desc->line_stride)
+  //   );
+  // ops[25] = EMIT(REG_CNA_DMA_CON2, 
+  //     CNA_DMA_CON2_SURF_STRIDE(cna_desc->surf_stride)
+  //   );
+  // ops[26] = EMIT(REG_CNA_FC_DATA_SIZE0, 
+  //     CNA_FC_DATA_SIZE0_DMA_WIDTH(cna_desc->dma_width) | 
+  //     CNA_FC_DATA_SIZE0_DMA_HEIGHT(cna_desc->dma_height)
+  //   );
+  // ops[27] = EMIT(REG_CNA_FC_DATA_SIZE1, 
+  //     CNA_FC_DATA_SIZE1_DMA_CHANNEL(cna_desc->dma_channel)
+  //   );
+  // ops[28] = EMIT(REG_CNA_DCOMP_CTRL, 0x0);
+  // ops[29] = EMIT(REG_CNA_DCOMP_REGNUM, 0x0);
+  // ops[30] = EMIT(REG_CNA_DCOMP_ADDR0, cna_desc->decompress_addr0);
+  // ops[31] = EMIT(REG_CNA_DCOMP_AMOUNT0, 0x0);
+  // ops[32] = EMIT(REG_CNA_DCOMP_AMOUNT1, 0x0);
+  // ops[33] = EMIT(REG_CNA_DCOMP_AMOUNT2, 0x0);
+  // ops[34] = EMIT(REG_CNA_DCOMP_AMOUNT3, 0x0);
+  // ops[35] = EMIT(REG_CNA_DCOMP_AMOUNT4, 0x0);
+  // ops[36] = EMIT(REG_CNA_DCOMP_AMOUNT5, 0x0);
+  // ops[37] = EMIT(REG_CNA_DCOMP_AMOUNT6, 0x0);
+  // ops[38] = EMIT(REG_CNA_DCOMP_AMOUNT7, 0x0);
+  // ops[39] = EMIT(REG_CNA_DCOMP_AMOUNT8, 0x0);
+  // ops[40] = EMIT(REG_CNA_DCOMP_AMOUNT9, 0x0);
+  // ops[41] = EMIT(REG_CNA_DCOMP_AMOUNT10, 0x0);
+  // ops[42] = EMIT(REG_CNA_DCOMP_AMOUNT11, 0x0);
+  // ops[43] = EMIT(REG_CNA_DCOMP_AMOUNT12, 0x0);
+  // ops[44] = EMIT(REG_CNA_DCOMP_AMOUNT13, 0x0);
+  // ops[45] = EMIT(REG_CNA_DCOMP_AMOUNT14, 0x0);
+  // ops[46] = EMIT(REG_CNA_DCOMP_AMOUNT15, 0x0);
+  // ops[47] = EMIT(REG_CNA_CVT_CON5, 0x0);
+  // ops[48] = EMIT(REG_CNA_PAD_CON1, 0x0);
+  // ops[49] = EMIT(REG_CORE_MISC_CFG, 
+  //     CORE_MISC_CFG_PROC_PRECISION(core_desc->proc_precision) | 
+  //     CORE_MISC_CFG_QD_EN(core_desc->qd_en)
+  //   );
+  // ops[50] = EMIT(REG_CORE_DATAOUT_SIZE_0, 
+  //     CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(core_desc->dataout_height) | 
+  //     CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(core_desc->dataout_width)
+  //   );
+  // ops[51] = EMIT(REG_CORE_DATAOUT_SIZE_1, 
+  //     CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(core_desc->dataout_channel)
+  //   );
+  // ops[52] = EMIT(REG_CORE_CLIP_TRUNCATE, 0x0);
   
-  ops[54] = EMIT(REG_DPU_FEATURE_MODE_CFG, 
-      DPU_FEATURE_MODE_CFG_BURST_LEN(dpu_desc->burst_len) | 
-      DPU_FEATURE_MODE_CFG_CONV_MODE(dpu_desc->conv_mode) |
-      DPU_FEATURE_MODE_CFG_OUTPUT_MODE(dpu_desc->output_mode) | 
-      DPU_FEATURE_MODE_CFG_FLYING_MODE(dpu_desc->flying_mode)
-    );
-  ops[55] = EMIT(REG_DPU_DATA_FORMAT, 
-      DPU_DATA_FORMAT_OUT_PRECISION(dpu_desc->out_precision) |
-      DPU_DATA_FORMAT_IN_PRECISION(dpu_desc->in_precision) |
-      DPU_DATA_FORMAT_PROC_PRECISION(dpu_desc->proc_precision)
-    );
-  ops[56] = EMIT(REG_DPU_OFFSET_PEND, 0x0);
+  // // 801 3030 0
+  // // ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
+  // ops[53] = NPUOP(OP_REG_CORE, 0x0, CORE_3030);
+  
+  // ops[54] = EMIT(REG_DPU_FEATURE_MODE_CFG, 
+  //     DPU_FEATURE_MODE_CFG_BURST_LEN(dpu_desc->burst_len) | 
+  //     DPU_FEATURE_MODE_CFG_CONV_MODE(dpu_desc->conv_mode) |
+  //     DPU_FEATURE_MODE_CFG_OUTPUT_MODE(dpu_desc->output_mode) | 
+  //     DPU_FEATURE_MODE_CFG_FLYING_MODE(dpu_desc->flying_mode)
+  //   );
+  // ops[55] = EMIT(REG_DPU_DATA_FORMAT, 
+  //     DPU_DATA_FORMAT_OUT_PRECISION(dpu_desc->out_precision) |
+  //     DPU_DATA_FORMAT_IN_PRECISION(dpu_desc->in_precision) |
+  //     DPU_DATA_FORMAT_PROC_PRECISION(dpu_desc->proc_precision)
+  //   );
+  // ops[56] = EMIT(REG_DPU_OFFSET_PEND, 0x0);
   ops[57] = EMIT(REG_DPU_DST_BASE_ADDR, dpu_desc->dst_base_addr);
   ops[58] = EMIT(REG_DPU_DST_SURF_STRIDE, 
       DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(dpu_desc->dst_surf_stride)
@@ -332,7 +528,7 @@ void gen_matmul_task(uint64_t *ops, npu_cna_desc *cna_desc, npu_core_desc *core_
   int mismatch = total_ops - expected_regcfg;
 }
 
-int gen_matmul_fp16(matmul_params_t *params) {
+int gen_matmul_fp16(matmul_params_t *params, uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma) {
 
   npu_cna_desc cna_desc;
   npu_core_desc core_desc;
@@ -477,7 +673,7 @@ int gen_matmul_fp16(matmul_params_t *params) {
   dpu_desc.channel_wdma = core_desc.dataout_channel;
   dpu_desc.surf_add = (!params->fp32tofp16) ? dpu_desc.dst_surf_stride * 4 : dpu_desc.dst_surf_stride * 2;
 
-  gen_matmul_task(params->tasks,&cna_desc,&core_desc,&dpu_desc);
+  gen_matmul_task2(params->tasks,&cna_desc,&core_desc,&dpu_desc, input_dma, weights_dma, output_dma);
 
   return 0;
 }
@@ -577,8 +773,12 @@ int main(int argc, char **argv) {
   printf("params.input_dma=%x, params.weights_dma=%x, params.output_dma=%x\n", params.input_dma, params.weights_dma, params.output_dma);
   printf("params.tasks=%ln, params.fp32tofp16=%d\n\n", params.tasks, params.fp32tofp16);
 
-  int ret = gen_matmul_fp16(&params);
+  int ret = gen_matmul_fp16(&params, input_dma, weights_dma, output_dma);
   printf("gen_matmul_fp16 returned %d\n\n", ret);
+
+  // int ret = gen_matmul_task(&params, input_dma, weights_dma, output_dma);
+  // printf("gen_matmul_task returned %d\n\n", ret);
+
 
   memcpy(regcmd,npu_regs,sizeof(npu_regs));
   tasks[0].flags  = 0;

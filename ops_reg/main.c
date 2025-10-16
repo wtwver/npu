@@ -20,10 +20,15 @@ int test_alu(int argc, char **argv) {
     // 4'd3: Div; # overflow issue
     // 4'd4: Minus;
     // CUSTOM 9: MUL
-    __fp16* result = float16_alu_op(a, b, 10, size);
+    // __fp16* result = float16_alu_op(a, b, 2, size);
+    float* result = (float*)float16_alu_op(a, b, 2, size);
+    
     printf("Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", a[i]); printf("\n");
     printf("Input1: "); for (size_t i = 0; i < size; i++) printf("%f ", b[i]); printf("\n");
-    printf("Result/Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", result[i]); printf("\n");
+    printf("Result/Input0: "); for (size_t i = 0; i < size; i++) printf("fp16: %f fp32: %f \n", (__fp16)result[i], result[i]); printf("\n");
+    
+    free(a);
+    free(b);
     return 0;
 }
 
@@ -54,7 +59,10 @@ int test_matmul(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-    // test_alu(argc, argv);
-    test_matmul(argc, argv);
+    int fd = getDeviceFd();
+    npu_reset(fd);
+
+    test_alu(argc, argv);
+    // test_matmul(argc, argv);
     return 0;
 }
