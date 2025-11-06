@@ -5,19 +5,16 @@ from rknn.api import RKNN
 class Model(torch.nn.Module):
     def __init__(self):
         super(Model, self).__init__()
+        self.conv1 = torch.nn.Conv2d(in_channels=1, out_channels=16, kernel_size=2, padding=0)
 
     def forward(self, x, y):
-        # return x+y
-        x = x.to(torch.float32)
-        y = y.to(torch.float32)
-        # Perform addition in FP32
-        return x + y
+        return self.conv1(x)
 
 size = 2
 if sys.argv[1:]:
     size = int(sys.argv[1])
 dtype = torch.float16
-ops = "add"
+ops = "conv"
 model_path = f"models/{ops}_float16_1x{size}.onnx"
 
 x = torch.full((1, size), 2, dtype=dtype)
@@ -40,6 +37,7 @@ torch.onnx.export(m, (x, y), model_path,
 #                   output_names=['output'])
 
 # ONNX to RKNN
+model_path = "/home/orangepi/tinygrad/npu/ops_rknn/conv2d_simple.onnx"
 rknn = RKNN()
 rknn.config(target_platform='rk3588')
 rknn.load_onnx(model=model_path)

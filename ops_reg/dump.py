@@ -1,4 +1,4 @@
-import sys, os, fcntl, mmap, ctypes, struct, argparse, re, xml.parsers.expat, collections
+import sys, os, fcntl, mmap, ctypes, struct, argparse, re, xml.parsers.expat, collections, subprocess
 
 class Error(Exception):
     def __init__(self, message):
@@ -297,6 +297,219 @@ class Colors:
         text = re.sub(r'(lsb\s+[0-9a-fA-F]+)', f'{Colors.W}\\1{Colors.RESET}', text)
         return text
 
+TASK_STRUCT = struct.Struct("<8IQ")
+TASK_FIELD_NAMES = (
+    "flags",
+    "op_idx",
+    "enable_mask",
+    "int_mask",
+    "int_clear",
+    "int_status",
+    "regcfg_amount",
+    "regcfg_offset",
+    "regcmd_addr",
+)
+_TASK_ZERO_CHUNK = b"\x00" * TASK_STRUCT.size
+
+_TASK_REGCMDS = []
+_DMA_LOG_CACHE = None
+_DMA_LOG_COUNTER = 0
+
+def _add_task_entry(flink, offset, regcfg_amount, regcmd_addr):
+    for entry in _TASK_REGCMDS:
+        if entry["flink"] == flink and entry["offset"] == offset:
+            entry["regcfg_amount"] = regcfg_amount
+            entry["regcmd_addr"] = regcmd_addr
+            entry.setdefault("used", False)
+            return
+    _TASK_REGCMDS.append({
+        "flink": flink,
+        "offset": offset,
+        "regcfg_amount": regcfg_amount,
+        "regcmd_addr": regcmd_addr,
+        "used": False,
+    })
+
+def _parse_dma_log_text(text, cache):
+    global _DMA_LOG_COUNTER
+    if not text:
+        return
+    pattern = re.compile(r"dma addr:\s*(0x[0-9a-fA-F]+).*gem name:\s*(\d+)", re.IGNORECASE)
+    ts_pattern = re.compile(r"\[(\d{2}):(\d{2}):(\d{2})[.:](\d+)\]")
+    for line in text.splitlines():
+        m = pattern.search(line)
+        if not m:
+            continue
+        addr = int(m.group(1), 16)
+        flink = int(m.group(2))
+        ts_match = ts_pattern.search(line)
+        if ts_match:
+            h, mi, s, frac = ts_match.groups()
+            try:
+                seconds = int(h) * 3600 + int(mi) * 60 + int(s) + float(f"0.{frac}")
+            except Exception:
+                seconds = 0.0
+        else:
+            seconds = 0.0
+        _DMA_LOG_COUNTER += 1
+        cache[flink].append((seconds, _DMA_LOG_COUNTER, addr))
+
+def _populate_dma_cache(force=False):
+    global _DMA_LOG_CACHE
+    if _DMA_LOG_CACHE is None or force:
+        cache = collections.defaultdict(list)
+        # Try kernel ring buffer
+        try:
+            dm = subprocess.run(["dmesg"], capture_output=True, text=True, timeout=1.0)
+            if dm.returncode == 0:
+                _parse_dma_log_text(dm.stdout, cache)
+        except Exception:
+            pass
+
+        # Try local log files that may capture RKNN output
+        search_dirs = []
+        cwd = os.getcwd()
+        for _ in range(4):
+            if cwd and cwd not in search_dirs:
+                search_dirs.append(cwd)
+            parent = os.path.dirname(cwd)
+            if parent == cwd or not parent:
+                break
+            cwd = parent
+
+        extra_dirs = [
+            os.path.join(os.path.expanduser("~"), "npu", "ops_rknn"),
+            os.path.join(os.path.expanduser("~"), "npu"),
+        ]
+        for directory in extra_dirs:
+            if directory and directory not in search_dirs:
+                search_dirs.append(directory)
+
+        for directory in search_dirs:
+            for name in ("run_output.txt", "output.txt"):
+                path = os.path.join(directory, name)
+                try:
+                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                        _parse_dma_log_text(f.read(), cache)
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    pass
+
+        _DMA_LOG_CACHE = cache
+    return _DMA_LOG_CACHE
+
+def lookup_dma_addr_from_logs(flink):
+    cache = _populate_dma_cache(force=True)
+    if flink not in cache or not cache[flink]:
+        return None
+    seconds, counter, addr = max(cache[flink], key=lambda x: (x[0], x[1]))
+    return addr
+
+def ensure_task_regcmds_loaded(target_flink=None):
+    needs_load = True
+    if target_flink is not None:
+        for entry in _TASK_REGCMDS:
+            if entry["flink"] == target_flink:
+                needs_load = False
+                break
+    else:
+        needs_load = not _TASK_REGCMDS
+
+    if not needs_load:
+        return
+
+    if not os.path.isdir("dump"):
+        return
+
+    for fname in sorted(os.listdir("dump")):
+        if not fname.endswith("_tasks.txt"):
+            continue
+        m = re.match(r"gem(\d+)_tasks\.txt$", fname)
+        if not m:
+            continue
+        flink = int(m.group(1))
+        path = os.path.join("dump", fname)
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                current_offset = None
+                current_amount = None
+                current_addr = None
+                for raw in f:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    m_offset = re.match(r"Task\s+\d+\s+@\s+offset\s+0x([0-9a-fA-F]+)", line)
+                    if m_offset:
+                        if current_offset is not None and current_amount is not None and current_addr is not None:
+                            _add_task_entry(flink, current_offset, current_amount, current_addr)
+                        current_offset = int(m_offset.group(1), 16)
+                        current_amount = None
+                        current_addr = None
+                        continue
+                    m_amount = re.search(r"regcfg_amount:\s*(\d+)", line)
+                    if m_amount:
+                        current_amount = int(m_amount.group(1))
+                        continue
+                    m_addr = re.search(r"regcmd_addr\s*:\s*(0x[0-9a-fA-F]+)", line)
+                    if m_addr:
+                        current_addr = int(m_addr.group(1), 16)
+                if current_offset is not None and current_amount is not None and current_addr is not None:
+                    _add_task_entry(flink, current_offset, current_amount, current_addr)
+        except FileNotFoundError:
+            continue
+
+def decode_tasks_from_buffer(buf, gem_size, flink=None):
+    tasks = []
+    regcmd_addrs = []
+    for offset in range(0, gem_size, TASK_STRUCT.size):
+        chunk = buf[offset: offset + TASK_STRUCT.size]
+        if len(chunk) < TASK_STRUCT.size:
+            break
+        if chunk == _TASK_ZERO_CHUNK:
+            continue
+        values = TASK_STRUCT.unpack(chunk)
+        flags, op_idx, enable_mask, int_mask, int_clear, int_status, regcfg_amount, regcfg_offset, regcmd_addr = values
+        if regcfg_amount == 0 or regcmd_addr == 0:
+            continue
+        if regcfg_amount > 0x10000:
+            continue
+        if regcmd_addr & 0xf:
+            continue
+        tasks.append((offset, values))
+        if regcmd_addr:
+            regcmd_addrs.append(regcmd_addr)
+            _add_task_entry(flink, offset, regcfg_amount, regcmd_addr)
+    return tasks
+
+def _format_task_value(name, value):
+    if name == "regcmd_addr":
+        return f"0x{value:016x}"
+    if name == "regcfg_amount":
+        return f"{value} entries (0x{value:08x})"
+    if name == "op_idx":
+        return f"{value} (0x{value:08x})"
+    return f"0x{value:08x}"
+
+def emit_task_report(tasks, flink):
+    if not tasks:
+        return
+    print(f"\n{'='*50}\nDecoded rknpu_task entries for GEM {flink}\n{'='*50}")
+    output_path = f"dump/gem{flink}_tasks.txt"
+    with open(output_path, "w") as tf:
+        for idx, (offset, values) in enumerate(tasks):
+            header = f"Task {idx} @ offset 0x{offset:04x}"
+            print(Colors.highlight(header))
+            tf.write(f"{header}\n")
+            for name, value in zip(TASK_FIELD_NAMES, values):
+                formatted = _format_task_value(name, value)
+                line = f"  {name:<13}: {formatted}"
+                print(Colors.highlight(line))
+                tf.write(f"{line}\n")
+            print()
+            tf.write("\n")
+    print(Colors.highlight(f"Decoded {len(tasks)} task entries to {output_path}"))
+
 class drm_version(ctypes.Structure):
     _fields_ = [("version_major", ctypes.c_int), ("version_minor", ctypes.c_int), ("version_patchlevel", ctypes.c_int),
                 ("name_len", ctypes.c_size_t), ("name", ctypes.POINTER(ctypes.c_char)), ("date_len", ctypes.c_size_t),
@@ -337,41 +550,46 @@ def dump_gem(fd, flink):
         os.makedirs("dump", exist_ok=True)
         with open(f"dump/gem{flink}-dump", "wb") as f: f.write(instr)
 
-        # Process blocks, grouping consecutive zero blocks together
-        i = 0
-        while i < g.size:
-            block = instr[i : i + 16]
-            here = struct.unpack("<4I", block)
+        # # Process blocks, grouping consecutive zero blocks together
+        # i = 0
+        # while i < g.size:
+        #     block = instr[i : i + 16]
+        #     here = struct.unpack("<4I", block)
             
-            # Check if current block is all zeros
-            if all(x == 0 for x in here):
-                # Count how many consecutive zero blocks there are starting from this point
-                zero_start = i
-                zero_blocks = 0
+        #     # Check if current block is all zeros
+        #     if all(x == 0 for x in here):
+        #         # Count how many consecutive zero blocks there are starting from this point
+        #         zero_start = i
+        #         zero_blocks = 0
                 
-                # Count all consecutive zero blocks
-                j = i
-                while j < g.size:
-                    block = instr[j : j + 16]
-                    here = struct.unpack("<4I", block)
-                    if all(x == 0 for x in here):
-                        zero_blocks += 1
-                        j += 16
-                    else:
-                        break
+        #         # Count all consecutive zero blocks
+        #         j = i
+        #         while j < g.size:
+        #             block = instr[j : j + 16]
+        #             here = struct.unpack("<4I", block)
+        #             if all(x == 0 for x in here):
+        #                 zero_blocks += 1
+        #                 j += 16
+        #             else:
+        #                 break
                 
-                # Only print the first zero block if there are many consecutive ones
-                if zero_blocks > 1:
-                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
-                    print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
-                else:
-                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+        #         # Only print the first zero block if there are many consecutive ones
+        #         if zero_blocks > 1:
+        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+        #             print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
+        #         else:
+        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
                 
-                i = j  # Move to the next non-zero block
-            else:
-                print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
-                i += 16
+        #         i = j  # Move to the next non-zero block
+        #     else:
+        #         print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
+        #         i += 16
 
+        if flink == 1:
+            tasks = decode_tasks_from_buffer(instr, g.size, flink=flink)
+            emit_task_report(tasks, flink)
+            instr.close()
+            return
         instr.close()
     except: pass
 
@@ -387,8 +605,9 @@ def dump_gem(fd, flink):
         ret = fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, m)
         print(f"memmap returned", ret, hex(m.offset))
 
-        instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=m.offset)
-        print(f"mmap returned {instr}", m.offset)
+        phys_base = m.offset
+        instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=phys_base)
+        print(f"mmap returned {instr}", phys_base)
 
         # Initialize parser for XML register definitions
         regs, domains = {}, {}
@@ -407,11 +626,47 @@ def dump_gem(fd, flink):
                 print(f"DEBUG: XML parsing failed: {ex}")
                 pass
 
+        commands = []
+        for i in range(g.size // 8):
+            v = struct.unpack("<Q", instr[i*8:(i+1)*8])[0]
+            if v == 0:
+                continue
+            commands.append((i, v))
+
+        if not commands:
+            print(Colors.highlight("No register commands found in this GEM; skipping decode."))
+            instr.close()
+            return
+
+        ensure_task_regcmds_loaded(flink)
+
+        base_addr = phys_base
+        dma_base = lookup_dma_addr_from_logs(flink)
+        if dma_base is not None:
+            base_addr = dma_base
+        best_entry = None
+        best_diff = None
+        for entry in _TASK_REGCMDS:
+            if entry["regcfg_amount"] <= 0:
+                continue
+            diff = abs(entry["regcfg_amount"] - len(commands))
+            if best_entry is None or diff < best_diff or (diff == best_diff and entry["used"] is False and best_entry.get("used", False)):
+                best_entry = entry
+                best_diff = diff
+
+        task_base = None
+        if best_entry and (best_diff == 0 or best_entry["used"] is False):
+            task_base = best_entry["regcmd_addr"]
+            if dma_base is not None and dma_base != task_base:
+                print(f"DEBUG: overriding dma base 0x{dma_base:x} with task base 0x{task_base:x} for GEM {flink}")
+            base_addr = task_base
+            best_entry["used"] = True
+
+        print(f"DEBUG: base selection for GEM {flink}: dma_base={dma_base} phys_base=0x{phys_base:x} task_base={task_base} chosen=0x{base_addr:x} commands={len(commands)}")
+
         with open(f"dump/gem{flink}_regdump.bin", "wb") as df:
             print(Colors.highlight(f"Successfully created dump/gem{flink}_regdump.bin"))
-            for i in range(g.size // 8):
-                v = struct.unpack("<Q", instr[i*8:(i+1)*8])[0]
-                if v == 0: continue
+            for i, v in commands:
                 val = (v >> 16) & 0xffffffff
                 low = v & 0xffff
                 tgt = 0
@@ -424,6 +679,7 @@ def dump_gem(fd, flink):
                 elif (v >> 62) & 1: tgt, dst = 0x4000, "PPU"
                 elif (v >> 63) & 1: tgt, dst = 0x8000, "PPU_RDMA"
 
+                addr = base_addr + i * 8
                 if low in regs:
                     reg = regs[low]
                     emit_str = f"EMIT(REG_{regs[low].full_name.upper()}, "
@@ -444,18 +700,18 @@ def dump_gem(fd, flink):
                                     emit_str += f"{reg.full_name.upper()}_{field.name.upper()}({field_value})"
                                     first = False
                     emit_str += ");"
-                    reg_info = f"[{8 * i + 0xffef0000:x}] lsb {v:016x} - {dst}"
+                    reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst}"
                     spacing = " " * max(1, 50 - len(reg_info))
                     print(Colors.highlight(f"{reg_info}{spacing}{emit_str}"))
                 else:
-                    reg_info = f"[{8 * i + 0xffef0000:x}] lsb {v:016x} - {dst} Unknown"
+                    reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst} Unknown"
                     print(Colors.highlight(reg_info))
                     if i < 5:  # Only show first few mismatches
                         print(f"DEBUG: Looking for offset 0x{low:x}, available offsets: {sorted(regs.keys())[:10]}")
 
                 df.write(struct.pack("<hIh", low if low <= 32767 else low - 65536, val, tgt if tgt <= 32767 else tgt - 65536))
 
-        print(Colors.highlight(f"Dumped {g.size // 8} register commands to dump/gem{flink}_regdump.bin"))
+        print(Colors.highlight(f"Dumped {len(commands)} register commands to dump/gem{flink}_regdump.bin"))
         instr.close()
     except: pass
 

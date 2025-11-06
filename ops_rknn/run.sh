@@ -4,4 +4,12 @@
 
 
 # g++ -o conv1d_simple conv1d_simple.cpp -I../include -lrknnrt -std=c++11 && gdb -x ops.gdb ./conv1d_simple 
-g++ -o conv2d_simple conv2d_simple.cpp -I../include -lrknnrt -std=c++11 &&  gdb -x ops.gdb ./conv2d_simple 
+# g++ -o conv2d_simple conv2d_simple.cpp -I../include -lrknnrt -std=c++11 &&  gdb -x ops.gdb ./conv2d_simple 
+g++ -o conv2d_multi conv2d_multi.cpp -I../include -lrknnrt -std=c++11 &&  gdb -x ops.gdb ./conv2d_multi | tee run_output.txt
+
+#  conv2d with input shape (1,3,5,7), weight shape (6,3,2,3)
+#  conv2d with input shape (1,3,5,7), weight shape (6,3,2,5)
+#  conv2d with input shape (1,3,5,7), weight shape (6,3,3,1)
+#  conv2d with input shape (1,3,5,7), weight shape (6,3,3,3)
+#  conv2d with input shape (1,3,5,7), weight shape (6,1,3,3)
+#  conv2d with input shape (1,3,5,7), weight shape (6,3,3,5)

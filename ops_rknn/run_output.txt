@@ -1,0 +1,1057 @@
+GNU gdb (Ubuntu 12.1-0ubuntu1~22.04.2) 12.1
+Copyright (C) 2022 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "aarch64-linux-gnu".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<https://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+    <http://www.gnu.org/software/gdb/documentation/>.
+
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from ./conv2d_multi...
+(No debugging symbols found in ./conv2d_multi)
+Breakpoint 1 at 0x1c24
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/aarch64-linux-gnu/libthread_db.so.1".
+
+################################################################################
+Conv2D Multi-Test Suite
+Testing 1 different convolution shapes
+################################################################################
+
+================================================================================
+TEST: conv2d with input shape (1,3,5,7), weight shape (6,3,2,3)
+  Weight shape: (6,3,2,3)
+================================================================================
+I RKNN: [22:34:31.815] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)
+I RKNN: [22:34:31.815] RKNN Driver Information, version: 0.9.2
+I RKNN: [22:34:31.815] RKNN Model Information, version: 6, toolkit version: 2.3.2(compiler version: 2.3.2 (@2025-04-03T08:26:16)), target: RKNPU v2, target platform: rk3588, framework name: ONNX, framework layout: NCHW, model inference type: static_shape
+D RKNN: [22:34:31.816] allocated memory, name: task, virt addr: 0x7ff7ff6000, dma addr: 0xffead000, obj addr: 0xffffff810fa99c00, size: 440, aligned size: 4096, fd: 4, handle: 1, flags: 0x40b, gem name: 1, iommu domain id: 0
+D RKNN: [22:34:31.816] allocated memory, name: weight, virt addr: 0x7ff7ff3000, dma addr: 0xffea8000, obj addr: 0xffffff810fa98000, size: 9728, aligned size: 12288, fd: 5, handle: 2, flags: 0x403, gem name: 2, iommu domain id: 0
+D RKNN: [22:34:31.816] subgraph0 regcmdbuffer size: 6656, taskbuffer size: 440
+D RKNN: [22:34:31.817] allocated memory, name: internal, virt addr: 0x7ff7ff2000, dma addr: 0xffea7000, obj addr: 0xffffff810fa99000, size: 896, aligned size: 4096, fd: 6, handle: 3, flags: 0x403, gem name: 3, iommu domain id: 0
+D RKNN: [22:34:31.817] ---------------------------------------------------------------------------------------------------------------
+D RKNN: [22:34:31.817]                                      Feature Tensor Information Table                       
+D RKNN: [22:34:31.817] -----------------------------------------------------------------------------+---------------------------------
+D RKNN: [22:34:31.817] ID  User           Tensor   DataType  DataFormat   OrigShape    NativeShape  |     [Start       End)       Size
+D RKNN: [22:34:31.817] -----------------------------------------------------------------------------+---------------------------------
+D RKNN: [22:34:31.817] 1   Conv           input    FLOAT16   NC1HWC2      (1,3,5,7)    (1,4,5,7,3)  | 0xffea7000 0xffea70f0 0x000000f0
+D RKNN: [22:34:31.817] 2   OutputOperator output   FLOAT16   NC1HWC2      (1,6,4,5)    (1,8,4,5,8)  | 0xffea7100*0xffea7380 0x00000280
+D RKNN: [22:34:31.817] -----------------------------------------------------------------------------+---------------------------------
+D RKNN: [22:34:31.817] ------------------------------------------------------------------------------
+D RKNN: [22:34:31.817]                           Const Tensor Information Table         
+D RKNN: [22:34:31.817] --------------------------------------------+---------------------------------
+D RKNN: [22:34:31.817] ID  User Tensor      DataType  OrigShape    |     [Start       End)       Size
+D RKNN: [22:34:31.817] --------------------------------------------+---------------------------------
+D RKNN: [22:34:31.817] 1   Conv conv.weight FLOAT16   (6,3,2,3)    | 0xffea8000 0xffea8240 0x00000240
+D RKNN: [22:34:31.817] --------------------------------------------+---------------------------------
+D RKNN: [22:34:31.817] ----------------------------------------
+D RKNN: [22:34:31.817] Total Internal Memory Size: 0.875KB
+D RKNN: [22:34:31.817] Total Weight Memory Size: 2.5625KB
+D RKNN: [22:34:31.817] ----------------------------------------
+D RKNN: [22:34:31.818] The RKNN_FLAG_EXECUTE_FALLBACK_PRIOR_DEVICE_GPU is not set and without GPU op in Graphs, OpenCL will not be initialized
+  Native input type: FP16, format: NHWC
+  Native input dims: 1 5 7 3
+  Native input size: 210, size_with_stride: 240, w_stride: 8
+  Native output type: FP16, format: NC1HWC2
+  Native output dims: 1 2 4 5 8
+  Native output size: 640, size_with_stride: 640, w_stride: 0
+D RKNN: [22:34:31.818] allocated memory, name: external, virt addr: 0x7ff7ff1000, dma addr: 0xffea6000, obj addr: 0xffffff810fa9c000, size: 640, aligned size: 4096, fd: 7, handle: 4, flags: 0x403, gem name: 4, iommu domain id: 0
+D RKNN: [22:34:31.818] import memory, fd: 7, refcount: 2
+  Input tensor (NCHW)
+    n=0
+      c=0
+        h=0: 0.609863 1.24023 2.28906 3.75977 5.64844 7.96094 10.6875 
+        h=1: 1.50977 2.14062 3.18945 4.66016 6.55078 8.85938 11.5938 
+        h=2: 3.00977 3.64062 4.69141 6.16016 8.04688 10.3594 13.0938 
+        h=3: 5.10938 5.73828 6.78906 8.25781 10.1484 12.4609 15.1875 
+        h=4: 7.80859 8.4375 9.49219 10.9609 12.8516 15.1562 17.8906 
+      c=1
+        h=0: 1.12012 2.38086 4.48047 7.42188 11.2031 15.8203 21.2812 
+        h=1: 2.91992 4.17969 6.28125 9.21875 13 17.625 23.0781 
+        h=2: 5.92188 7.17969 9.28125 12.2188 16 20.625 26.0781 
+        h=3: 10.1172 11.3828 13.4766 16.4219 20.2031 24.8125 30.2812 
+        h=4: 15.5234 16.7812 18.875 21.8125 25.5938 30.2188 35.6875 
+      c=2
+        h=0: 1.62988 3.51953 6.67188 11.0781 16.75 23.6875 31.875 
+        h=1: 4.32812 6.21875 9.36719 13.7812 19.4531 26.375 34.5625 
+        h=2: 8.82812 10.7188 13.8672 18.2812 23.9531 30.875 39.0625 
+        h=3: 15.1328 17.0156 20.1719 24.5781 30.25 37.1875 45.375 
+        h=4: 23.2344 25.125 28.2656 32.6875 38.3438 45.2812 53.4688 
+
+Breakpoint 1, 0x0000007ff790c060 in rknn_run () from /lib/librknnrt.so
+"============"drm name is rknpu - 20231018 - RKNPU driver
+du is 
+Dumping specified GEM objects...
+
+=== Processing GEM 1 ===
+
+==================================================
+Processing GEM Flink 1
+==================================================
+gem flink 1: ret=0 handle=1 size=4096
+DRM_IOCTL_RKNPU_MEM_MAP returned 0 0x100000000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294967296>
+
+==================================================
+Decoded rknpu_task entries for GEM 1
+==================================================
+Task 0 @ offset [96m0x0000[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x0000000d[0m
+  int_mask     : [96m0x00000300[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 108 entries ([96m0x0000006c[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea8a40[0m
+
+Task 1 @ offset [96m0x0028[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x0000000d[0m
+  int_mask     : [96m0x00000300[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 104 entries ([96m0x00000068[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea8dc0[0m
+
+Task 2 @ offset [96m0x0050[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x00000060[0m
+  int_mask     : [96m0x00000c00[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 26 entries ([96m0x0000001a[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea9140[0m
+
+Task 3 @ offset [96m0x0078[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x0000000d[0m
+  int_mask     : [96m0x00000300[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 104 entries ([96m0x00000068[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea9240[0m
+
+Task 4 @ offset [96m0x00a0[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x00000060[0m
+  int_mask     : [96m0x00000c00[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 26 entries ([96m0x0000001a[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea95c0[0m
+
+Task 5 @ offset [96m0x00c8[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x0000000d[0m
+  int_mask     : [96m0x00000300[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 104 entries ([96m0x00000068[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea96c0[0m
+
+Task 6 @ offset [96m0x00f0[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x00000060[0m
+  int_mask     : [96m0x00000c00[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 26 entries ([96m0x0000001a[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea9a40[0m
+
+Task 7 @ offset [96m0x0118[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x0000000d[0m
+  int_mask     : [96m0x00000300[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 104 entries ([96m0x00000068[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea9b40[0m
+
+Task 8 @ offset [96m0x0140[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x00000060[0m
+  int_mask     : [96m0x00000c00[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 26 entries ([96m0x0000001a[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea9ec0[0m
+
+Task 9 @ offset [96m0x0168[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x0000000d[0m
+  int_mask     : [96m0x00000300[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 104 entries ([96m0x00000068[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffea9fc0[0m
+
+Task 10 @ offset [96m0x0190[0m
+  flags        : [96m0x00000000[0m
+  op_idx       : 1 ([96m0x00000001[0m)
+  enable_mask  : [96m0x00000060[0m
+  int_mask     : [96m0x00000c00[0m
+  int_clear    : [96m0x0001ffff[0m
+  int_status   : [96m0x00000000[0m
+  regcfg_amount: 26 entries ([96m0x0000001a[0m)
+  regcfg_offset: [96m0x00000000[0m
+  regcmd_addr  : [96m0x00000000ffeaa340[0m
+
+Decoded 11 task entries to dump/gem1_tasks.txt
+drm name is rknpu - 20231018 - RKNPU driver
+du is 
+Dumping specified GEM objects...
+
+=== Processing GEM 2 ===
+
+==================================================
+Processing GEM Flink 2
+==================================================
+gem flink 2: ret=0 handle=1 size=12288
+DRM_IOCTL_RKNPU_MEM_MAP returned 0 0x100001000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=12288, pos=0, offset=4294971392>
+
+==================================================
+Processing GEM Flink 2 for Register Decode
+==================================================
+Successfully opened GEM via flink 2
+memmap returned 0 0x100001000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=12288, pos=0, offset=4294971392> 4294971392
+DEBUG: Found 199 registers in XML
+DEBUG: Loaded 199 register definitions
+DEBUG: base selection for GEM 2: dma_base=4293558272 phys_base=0x100001000 task_base=None chosen=0xffea8000 commands=1013
+Successfully created dump/gem2_regdump.bin
+[96m[[96m0xffea8000[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+DEBUG: Looking for offset 0x3c00, available offsets: [0, 4, 8, 16, 20, 32, 36, 40, 44, 48]
+[96m[[96m0xffea8010[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+DEBUG: Looking for offset 0xbc00, available offsets: [0, 4, 8, 16, 20, 32, 36, 40, 44, 48]
+[96m[[96m0xffea8030[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8040[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8060[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8080[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8090[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea80b0[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea80d0[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea80e0[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8100[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8110[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8120[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8140[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8150[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8170[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8190[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea81a0[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea81c0[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea81d0[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea81e0[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea81f0[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8210[0m][0m [97mlsb 00003c003c003c00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8220[0m][0m [97mlsb 0000bc00bc00bc00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8240[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8248[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8250[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8258[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8260[0m][0m [97mlsb 00000055967894c8[0m - noone [93mUnknown[0m
+[96m[[96m0xffea82e0[0m][0m [97mlsb 00000055967894a0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea82e8[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea82f0[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea82f8[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8328[0m][0m [97mlsb 0000000700000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00070000[0m);
+[96m[[96m0xffea8330[0m][0m [97mlsb 7468676965772e01[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0xffea8338[0m][0m [97mlsb 0000000000000441[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8340[0m][0m [97mlsb 000000559677ea40[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8348[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8368[0m][0m [97mlsb 0000000400000004[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION_NUM[0m, [96m0x00040000[0m);
+[96m[[96m0xffea8370[0m][0m [97mlsb 0000005596789478[0m - noone [93mUnknown[0m
+[96m[[96m0xffea83f0[0m][0m [97mlsb 0000005596789450[0m - noone [93mUnknown[0m
+[96m[[96m0xffea83f8[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8400[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8408[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8438[0m][0m [97mlsb 0000000700000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00070000[0m);
+[96m[[96m0xffea8448[0m][0m [97mlsb 0000000000000331[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8450[0m][0m [97mlsb 000000559677ea40[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8458[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8460[0m][0m [97mlsb 0000000000000401[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8478[0m][0m [97mlsb 0000000400000002[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8480[0m][0m [97mlsb 00000055967893f8[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8500[0m][0m [97mlsb 00000055967893d0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8508[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8510[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8518[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8548[0m][0m [97mlsb 0000000700000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00070000[0m);
+[96m[[96m0xffea8558[0m][0m [97mlsb 0000000000000221[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8560[0m][0m [97mlsb 000000559677ea40[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8568[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8570[0m][0m [97mlsb 0000000000000501[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8610[0m][0m [97mlsb 0000005596789380[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8618[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8620[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8628[0m][0m [97mlsb 0000007f71be7290[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8640[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8648[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8650[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8658[0m][0m [97mlsb 0101010101010101[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8660[0m][0m [97mlsb 00000000ffffffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8668[0m][0m [97mlsb 715f74757074756f[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0xffea8670[0m][0m [97mlsb 78616d5f746e6175[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0xffea8680[0m][0m [97mlsb 000000559673dc80[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8688[0m][0m [97mlsb 0000000000000241[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8690[0m][0m [97mlsb 0000007fad430ce0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8698[0m][0m [97mlsb 0000005596772a00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86b0[0m][0m [97mlsb 00000055932e4d6d[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86c0[0m][0m [97mlsb 0000000000000003[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86c8[0m][0m [97mlsb 000000559673df30[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86d0[0m][0m [97mlsb 000000559673df50[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86d8[0m][0m [97mlsb 00000000000001f1[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86e0[0m][0m [97mlsb 00000055967726d0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86e8[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86f0[0m][0m [97mlsb 0000000000000003[0m - noone [93mUnknown[0m
+[96m[[96m0xffea86f8[0m][0m [97mlsb 0000005596772cc0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8700[0m][0m [97mlsb 0000005596772b00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8708[0m][0m [97mlsb 0000000000000041[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8710[0m][0m [97mlsb 000000559673dd60[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8718[0m][0m [97mlsb 000000559673dc70[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8728[0m][0m [97mlsb 0000000000000021[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8730[0m][0m [97mlsb 000000559673dd60[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8738[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8740[0m][0m [97mlsb 0000000000000070[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8750[0m][0m [97mlsb 00000055932abbad[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8760[0m][0m [97mlsb 0000000000000003[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8768[0m][0m [97mlsb 000000559673df70[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8770[0m][0m [97mlsb 000000559673dde0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8778[0m][0m [97mlsb 0000000000000151[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8780[0m][0m [97mlsb 00000055967726d0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8788[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8798[0m][0m [97mlsb 0000000000000021[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87a0[0m][0m [97mlsb 0000005596772c90[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87a8[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87b0[0m][0m [97mlsb 0000000000000040[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87c0[0m][0m [97mlsb 00000055932aba0d[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87d0[0m][0m [97mlsb 0000000000000003[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87d8[0m][0m [97mlsb 0000005596772ce0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87e0[0m][0m [97mlsb 000000559673dc20[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87e8[0m][0m [97mlsb 00000000000000e1[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87f0[0m][0m [97mlsb 000000559673dcc0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea87f8[0m][0m [97mlsb 00000055967726d0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8810[0m][0m [97mlsb 000000559321630d[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8820[0m][0m [97mlsb 0000000000000040[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8830[0m][0m [97mlsb 00000055932e41ed[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8840[0m][0m [97mlsb 0000000000000003[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8848[0m][0m [97mlsb 000000559673dd70[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8850[0m][0m [97mlsb 000000559673dd90[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8858[0m][0m [97mlsb 0000000000000071[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8860[0m][0m [97mlsb 0000005596772750[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8868[0m][0m [97mlsb 00000055967728a0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8878[0m][0m [97mlsb 0000000000000021[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8880[0m][0m [97mlsb 000000559673df00[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8888[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8890[0m][0m [97mlsb 0000000000000040[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88a0[0m][0m [97mlsb 00000055932e4e2d[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88b0[0m][0m [97mlsb 0000000000000003[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88b8[0m][0m [97mlsb 0000005596772ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88c0[0m][0m [97mlsb 00000000000002a0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88c8[0m][0m [97mlsb 0000000000000050[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88d0[0m][0m [97mlsb 00000055932ddc9d[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88d8[0m][0m [97mlsb 00000055967758d0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88e0[0m][0m [97mlsb 0000005596780550[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88e8[0m][0m [97mlsb 00000055967804a0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88f0[0m][0m [97mlsb 0000005596780410[0m - noone [93mUnknown[0m
+[96m[[96m0xffea88f8[0m][0m [97mlsb 000000559674b770[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8900[0m][0m [97mlsb 0000005596775530[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8908[0m][0m [97mlsb 0000005596749970[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8910[0m][0m [97mlsb 000000559661ddb0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8918[0m][0m [97mlsb 00000000000001a1[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8920[0m][0m [97mlsb 0000007fad430c40[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8928[0m][0m [97mlsb 0000007fad430c40[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8938[0m][0m [97mlsb 0000000000000181[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8940[0m][0m [97mlsb 000000559673ddd0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8948[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8958[0m][0m [97mlsb 0000000000000161[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8960[0m][0m [97mlsb 000000559673ddd0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8968[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8978[0m][0m [97mlsb 0000000000000141[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8980[0m][0m [97mlsb 000000559673ddd0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8988[0m][0m [97mlsb 0000007fad430ab0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8998[0m][0m [97mlsb 0000000000000121[0m - noone [93mUnknown[0m
+[96m[[96m0xffea89a0[0m][0m [97mlsb 0000005596781930[0m - noone [93mUnknown[0m
+[96m[[96m0xffea89a8[0m][0m [97mlsb 000000559675d6c0[0m - noone [93mUnknown[0m
+[96m[[96m0xffea89b0[0m][0m [97mlsb 0000000000000401[0m - noone [93mUnknown[0m
+[96m[[96m0xffea89c8[0m][0m [97mlsb 0000000400000002[0m - noone [93mUnknown[0m
+[96m[[96m0xffea89d0[0m][0m [97mlsb 000000559662a428[0m - noone [93mUnknown[0m
+[96m[[96m0xffea8a40[0m][0m [97mlsb 0201000000b11040[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+[96m[[96m0xffea8a58[0m][0m [97mlsb 02016000a120100c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+[96m[[96m0xffea8a60[0m][0m [97mlsb 10010000000e4004[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_S_POINTER[0m, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea8a68[0m][0m [97mlsb 02016000a120100c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+[96m[[96m0xffea8a70[0m][0m [97mlsb 0201000000701010[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m2, CNA_CONV_CON2_FEATURE_GRAINS(7));
+[96m[[96m0xffea8a78[0m][0m [97mlsb 0201000000091014[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+[96m[[96m0xffea8a80[0m][0m [97mlsb 0201000800051020[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m0, CNA_DATA_SIZE0_DATAIN_WIDTH(8) | CNA_DATA_SIZE0_DATAIN_HEIGHT(5));
+[96m[[96m0xffea8a88[0m][0m [97mlsb 0201000200081024[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(2) | CNA_DATA_SIZE1_DATAIN_CHANNEL(8));
+[96m[[96m0xffea8a90[0m][0m [97mlsb 0201000000051028[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m2, CNA_DATA_SIZE2_DATAOUT_WIDTH(5));
+[96m[[96m0xffea8a98[0m][0m [97mlsb 020100000014102c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(20));
+[96m[[96m0xffea8aa0[0m][0m [97mlsb 0201000002401030[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m0, [96m0x00000240[0m);
+[96m[[96m0xffea8aa8[0m][0m [97mlsb 0201000000601034[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(96));
+[96m[[96m0xffea8ab0[0m][0m [97mlsb 0201030200061038[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(3) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(2) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(6));
+[96m[[96m0xffea8ab8[0m][0m [97mlsb 0201000000b11040[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+[96m[[96m0xffea8ac0[0m][0m [97mlsb 0201000000281044[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m1, CNA_CBUF_CON1_DATA_ENTRIES(40));
+[96m[[96m0xffea8ac8[0m][0m [97mlsb 020100000001104c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m0, CNA_CVT_CON0_CVT_BYPASS(1));
+[96m[[96m0xffea8ad0[0m][0m [97mlsb 0201000100001050[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m1, CNA_CVT_CON1_CVT_SCALE0(1));
+[96m[[96m0xffea8ad8[0m][0m [97mlsb 0201000100001054[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m2, CNA_CVT_CON2_CVT_SCALE1(1));
+[96m[[96m0xffea8ae0[0m][0m [97mlsb 0201000100001058[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m3, CNA_CVT_CON3_CVT_SCALE2(1));
+[96m[[96m0xffea8ae8[0m][0m [97mlsb 020100010000105c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m4, CNA_CVT_CON4_CVT_SCALE3(1));
+[96m[[96m0xffea8b08[0m][0m [97mlsb 0201ffea50001070[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FEATURE_DATA_ADDR[0m, [96m0xffea5000[0m);
+[96m[[96m0xffea8b18[0m][0m [97mlsb 0201000f000f1078[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+[96m[[96m0xffea8b20[0m][0m [97mlsb 020100000008107c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m1, CNA_DMA_CON1_LINE_STRIDE(8));
+[96m[[96m0xffea8b28[0m][0m [97mlsb 0201000000201080[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m2, CNA_DMA_CON2_SURF_STRIDE(32));
+[96m[[96m0xffea8b30[0m][0m [97mlsb 0201000700051084[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m0, CNA_FC_DATA_SIZE0_DMA_WIDTH(7) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(5));
+[96m[[96m0xffea8b38[0m][0m [97mlsb 0201000000081088[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(8));
+[96m[[96m0xffea8b50[0m][0m [97mlsb 0201ffea80001110[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DCOMP_ADDR[0m0, [96m0xffea8000[0m);
+[96m[[96m0xffea8bd8[0m][0m [97mlsb 020100000fff1180[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m5, [96m0x00000fff[0m);
+[96m[[96m0xffea8be8[0m][0m [97mlsb 0801000002003010[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_MISC_CFG[0m, CORE_MISC_CFG_PROC_PRECISION(2));
+[96m[[96m0xffea8bf0[0m][0m [97mlsb 0801000300043014[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(3) | CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(4));
+[96m[[96m0xffea8bf8[0m][0m [97mlsb 08010000000f3018[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(15));
+[96m[[96m0xffea8c08[0m][0m [97mlsb 0801000000003030[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0xffea8c10[0m][0m [97mlsb 1001000001e4400c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_FEATURE_MODE_CFG[0m, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+[96m[[96m0xffea8c18[0m][0m [97mlsb 1001480000024010[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_FORMAT[0m, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+[96m[[96m0xffea8c28[0m][0m [97mlsb 1001ffea40004020[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_BASE_ADDR[0m, [96m0xffea4000[0m);
+[96m[[96m0xffea8c30[0m][0m [97mlsb 1001000001404024[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_SURF_STRIDE[0m, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(20));
+[96m[[96m0xffea8c38[0m][0m [97mlsb 1001000000044030[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_WIDTH[0m, DPU_DATA_CUBE_WIDTH_WIDTH(4));
+[96m[[96m0xffea8c40[0m][0m [97mlsb 1001000000034034[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_HEIGHT[0m, DPU_DATA_CUBE_HEIGHT_HEIGHT(3));
+[96m[[96m0xffea8c50[0m][0m [97mlsb 10010005000f403c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_CHANNEL[0m, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(5) | DPU_DATA_CUBE_CHANNEL_CHANNEL(15));
+[96m[[96m0xffea8c58[0m][0m [97mlsb 1001000000534040[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_CFG[0m, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+[96m[[96m0xffea8c78[0m][0m [97mlsb 1001000001264050[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_OW_CFG[0m, DPU_BS_OW_CFG_SIZE_E_2(1) | DPU_BS_OW_CFG_SIZE_E_1(1) | DPU_BS_OW_CFG_SIZE_E_0(1) | DPU_BS_OW_CFG_OD_BYPASS(1));
+[96m[[96m0xffea8c88[0m][0m [97mlsb 10010000000f4058[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(15));
+[96m[[96m0xffea8c90[0m][0m [97mlsb 100100030004405c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(3) | DPU_WDMA_SIZE_1_WIDTH_WDMA(4));
+[96m[[96m0xffea8c98[0m][0m [97mlsb 1001000000534060[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BN_CFG[0m, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+[96m[[96m0xffea8cb8[0m][0m [97mlsb 1001000003834070[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CFG[0m, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+[96m[[96m0xffea8cc8[0m][0m [97mlsb 1001000000014078[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CVT_SCALE_VALUE[0m, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+[96m[[96m0xffea8ce0[0m][0m [97mlsb 1001000100014084[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_OUT_CVT_SCALE[0m, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+[96m[[96m0xffea8d30[0m][0m [97mlsb 10010000028040c0[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_SURFACE_ADD[0m, DPU_SURFACE_ADD_SURF_ADD(40));
+[96m[[96m0xffea8d38[0m][0m [97mlsb 10010000000040c4[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0xffea8db8[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea8dc0[0m][0m [97mlsb 10010000000e4004[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_S_POINTER[0m, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea8dc8[0m][0m [97mlsb 02016000a120100c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+[96m[[96m0xffea8dd0[0m][0m [97mlsb 0201100000501010[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m2, CNA_CONV_CON2_RESERVED_0(16) | CNA_CONV_CON2_FEATURE_GRAINS(5));
+[96m[[96m0xffea8dd8[0m][0m [97mlsb 0201000000091014[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+[96m[[96m0xffea8de0[0m][0m [97mlsb 0201000800031020[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m0, CNA_DATA_SIZE0_DATAIN_WIDTH(8) | CNA_DATA_SIZE0_DATAIN_HEIGHT(3));
+[96m[[96m0xffea8de8[0m][0m [97mlsb 0201000200081024[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(2) | CNA_DATA_SIZE1_DATAIN_CHANNEL(8));
+[96m[[96m0xffea8df0[0m][0m [97mlsb 0201000000051028[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m2, CNA_DATA_SIZE2_DATAOUT_WIDTH(5));
+[96m[[96m0xffea8df8[0m][0m [97mlsb 02010000000a102c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(10));
+[96m[[96m0xffea8e00[0m][0m [97mlsb 0201000002401030[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m0, [96m0x00000240[0m);
+[96m[[96m0xffea8e08[0m][0m [97mlsb 0201000000601034[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(96));
+[96m[[96m0xffea8e10[0m][0m [97mlsb 0201030200061038[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(3) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(2) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(6));
+[96m[[96m0xffea8e18[0m][0m [97mlsb 0201000000b11040[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+[96m[[96m0xffea8e20[0m][0m [97mlsb 0201000000181044[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m1, CNA_CBUF_CON1_DATA_ENTRIES(24));
+[96m[[96m0xffea8e28[0m][0m [97mlsb 020100000001104c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m0, CNA_CVT_CON0_CVT_BYPASS(1));
+[96m[[96m0xffea8e30[0m][0m [97mlsb 0201000100001050[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m1, CNA_CVT_CON1_CVT_SCALE0(1));
+[96m[[96m0xffea8e38[0m][0m [97mlsb 0201000100001054[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m2, CNA_CVT_CON2_CVT_SCALE1(1));
+[96m[[96m0xffea8e40[0m][0m [97mlsb 0201000100001058[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m3, CNA_CVT_CON3_CVT_SCALE2(1));
+[96m[[96m0xffea8e48[0m][0m [97mlsb 020100010000105c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m4, CNA_CVT_CON4_CVT_SCALE3(1));
+[96m[[96m0xffea8e68[0m][0m [97mlsb 0201ffea50001070[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FEATURE_DATA_ADDR[0m, [96m0xffea5000[0m);
+[96m[[96m0xffea8e78[0m][0m [97mlsb 0201000f000f1078[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+[96m[[96m0xffea8e80[0m][0m [97mlsb 020100000008107c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m1, CNA_DMA_CON1_LINE_STRIDE(8));
+[96m[[96m0xffea8e88[0m][0m [97mlsb 0201000000201080[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m2, CNA_DMA_CON2_SURF_STRIDE(32));
+[96m[[96m0xffea8e90[0m][0m [97mlsb 0201000700031084[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m0, CNA_FC_DATA_SIZE0_DMA_WIDTH(7) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(3));
+[96m[[96m0xffea8e98[0m][0m [97mlsb 0201000000081088[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(8));
+[96m[[96m0xffea8eb0[0m][0m [97mlsb 0201ffea80001110[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DCOMP_ADDR[0m0, [96m0xffea8000[0m);
+[96m[[96m0xffea8f38[0m][0m [97mlsb 020100000fff1180[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m5, [96m0x00000fff[0m);
+[96m[[96m0xffea8f48[0m][0m [97mlsb 0801000002003010[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_MISC_CFG[0m, CORE_MISC_CFG_PROC_PRECISION(2));
+[96m[[96m0xffea8f50[0m][0m [97mlsb 0801000100043014[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(1) | CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(4));
+[96m[[96m0xffea8f58[0m][0m [97mlsb 08010000000f3018[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(15));
+[96m[[96m0xffea8f68[0m][0m [97mlsb 0801000000003030[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0xffea8f70[0m][0m [97mlsb 1001000001e4400c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_FEATURE_MODE_CFG[0m, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+[96m[[96m0xffea8f78[0m][0m [97mlsb 1001480000024010[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_FORMAT[0m, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+[96m[[96m0xffea8f88[0m][0m [97mlsb 1001ffea40004020[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_BASE_ADDR[0m, [96m0xffea4000[0m);
+[96m[[96m0xffea8f90[0m][0m [97mlsb 1001000001404024[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_SURF_STRIDE[0m, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(20));
+[96m[[96m0xffea8f98[0m][0m [97mlsb 1001000000044030[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_WIDTH[0m, DPU_DATA_CUBE_WIDTH_WIDTH(4));
+[96m[[96m0xffea8fa0[0m][0m [97mlsb 1001000000014034[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_HEIGHT[0m, DPU_DATA_CUBE_HEIGHT_HEIGHT(1));
+[96m[[96m0xffea8fb0[0m][0m [97mlsb 10010005000f403c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_CHANNEL[0m, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(5) | DPU_DATA_CUBE_CHANNEL_CHANNEL(15));
+[96m[[96m0xffea8fb8[0m][0m [97mlsb 1001000000534040[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_CFG[0m, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+[96m[[96m0xffea8fd8[0m][0m [97mlsb 1001000001264050[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_OW_CFG[0m, DPU_BS_OW_CFG_SIZE_E_2(1) | DPU_BS_OW_CFG_SIZE_E_1(1) | DPU_BS_OW_CFG_SIZE_E_0(1) | DPU_BS_OW_CFG_OD_BYPASS(1));
+[96m[[96m0xffea8fe8[0m][0m [97mlsb 10010000000f4058[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(15));
+[96m[[96m0xffea8ff0[0m][0m [97mlsb 100100010004405c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(1) | DPU_WDMA_SIZE_1_WIDTH_WDMA(4));
+[96m[[96m0xffea8ff8[0m][0m [97mlsb 1001000000534060[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BN_CFG[0m, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+[96m[[96m0xffea9018[0m][0m [97mlsb 1001000003834070[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CFG[0m, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+[96m[[96m0xffea9028[0m][0m [97mlsb 1001000000014078[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CVT_SCALE_VALUE[0m, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+[96m[[96m0xffea9040[0m][0m [97mlsb 1001000100014084[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_OUT_CVT_SCALE[0m, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+[96m[[96m0xffea9090[0m][0m [97mlsb 10010000028040c0[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_SURFACE_ADD[0m, DPU_SURFACE_ADD_SURF_ADD(40));
+[96m[[96m0xffea9098[0m][0m [97mlsb 10010000000040c4[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0xffea9100[0m][0m [97mlsb 0101ffea91400010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347668));
+[96m[[96m0xffea9108[0m][0m [97mlsb 01010001000e0014[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_REGISTER_AMOUNTS[0m, PC_REGISTER_AMOUNTS_RESERVED_0(1) | PC_REGISTER_AMOUNTS_PC_DATA_AMOUNT(14));
+[96m[[96m0xffea9118[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea9140[0m][0m [97mlsb 40010000000e6004[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_S_POINTER[0m, PPU_S_POINTER_POINTER_PP_MODE(1) | PPU_S_POINTER_EXECUTER_PP_EN(1) | PPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9148[0m][0m [97mlsb 80010000000e7004[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_S_POINTER[0m, PPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | PPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | PPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9160[0m][0m [97mlsb 40010000001f6014[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_IN_CHANNEL[0m, PPU_DATA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea9178[0m][0m [97mlsb 40010000001f6020[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_OUT_CHANNEL[0m, PPU_DATA_CUBE_OUT_CHANNEL_CUBE_OUT_CHANNEL(31));
+[96m[[96m0xffea9180[0m][0m [97mlsb 4001000000116024[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_OPERATION_MODE_CFG[0m, PPU_OPERATION_MODE_CFG_FLYING_MODE(1) | PPU_OPERATION_MODE_CFG_POOLING_METHOD(1));
+[96m[[96m0xffea91b8[0m][0m [97mlsb 4001ffea82406070[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_BASE_ADDR[0m, PPU_DST_BASE_ADDR_DST_BASE_ADDR(268347428));
+[96m[[96m0xffea91c0[0m][0m [97mlsb 400100000010607c[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_SURF_STRIDE[0m, PPU_DST_SURF_STRIDE_DST_SURF_STRIDE(1));
+[96m[[96m0xffea91c8[0m][0m [97mlsb 4001000000106084[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_FORMAT[0m, PPU_DATA_FORMAT_INDEX_ADD(1));
+[96m[[96m0xffea91d0[0m][0m [97mlsb 40010000000360dc[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_MISC_CTRL[0m, PPU_MISC_CTRL_BURST_LEN(3));
+[96m[[96m0xffea91e8[0m][0m [97mlsb 80010000001f7014[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_CUBE_IN_CHANNEL[0m, PPU_RDMA_RDMA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea91f0[0m][0m [97mlsb 8001ffea8640701c[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_BASE_ADDR[0m, [96m0xffea8640[0m);
+[96m[[96m0xffea91f8[0m][0m [97mlsb 8001000000107024[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_LINE_STRIDE[0m, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(1));
+[96m[[96m0xffea9200[0m][0m [97mlsb 8001000000107028[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_SURF_STRIDE[0m, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(1));
+[96m[[96m0xffea9208[0m][0m [97mlsb 8001000000017030[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_DATA_FORMAT[0m, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(1));
+[96m[[96m0xffea9228[0m][0m [97mlsb 0081000000600008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(48));
+[96m[[96m0xffea9240[0m][0m [97mlsb 10010000000e4004[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_S_POINTER[0m, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9248[0m][0m [97mlsb 02016000a120100c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+[96m[[96m0xffea9250[0m][0m [97mlsb 0201100000501010[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m2, CNA_CONV_CON2_RESERVED_0(16) | CNA_CONV_CON2_FEATURE_GRAINS(5));
+[96m[[96m0xffea9258[0m][0m [97mlsb 0201000000091014[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+[96m[[96m0xffea9260[0m][0m [97mlsb 0201000800031020[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m0, CNA_DATA_SIZE0_DATAIN_WIDTH(8) | CNA_DATA_SIZE0_DATAIN_HEIGHT(3));
+[96m[[96m0xffea9268[0m][0m [97mlsb 0201000200081024[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(2) | CNA_DATA_SIZE1_DATAIN_CHANNEL(8));
+[96m[[96m0xffea9270[0m][0m [97mlsb 0201000000051028[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m2, CNA_DATA_SIZE2_DATAOUT_WIDTH(5));
+[96m[[96m0xffea9278[0m][0m [97mlsb 02010000000a102c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(10));
+[96m[[96m0xffea9280[0m][0m [97mlsb 0201000002401030[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m0, [96m0x00000240[0m);
+[96m[[96m0xffea9288[0m][0m [97mlsb 0201000000601034[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(96));
+[96m[[96m0xffea9290[0m][0m [97mlsb 0201030200061038[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(3) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(2) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(6));
+[96m[[96m0xffea9298[0m][0m [97mlsb 0201000000b11040[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+[96m[[96m0xffea92a0[0m][0m [97mlsb 0201000000181044[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m1, CNA_CBUF_CON1_DATA_ENTRIES(24));
+[96m[[96m0xffea92a8[0m][0m [97mlsb 020100000001104c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m0, CNA_CVT_CON0_CVT_BYPASS(1));
+[96m[[96m0xffea92b0[0m][0m [97mlsb 0201000100001050[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m1, CNA_CVT_CON1_CVT_SCALE0(1));
+[96m[[96m0xffea92b8[0m][0m [97mlsb 0201000100001054[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m2, CNA_CVT_CON2_CVT_SCALE1(1));
+[96m[[96m0xffea92c0[0m][0m [97mlsb 0201000100001058[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m3, CNA_CVT_CON3_CVT_SCALE2(1));
+[96m[[96m0xffea92c8[0m][0m [97mlsb 020100010000105c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m4, CNA_CVT_CON4_CVT_SCALE3(1));
+[96m[[96m0xffea92e8[0m][0m [97mlsb 0201ffea50601070[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FEATURE_DATA_ADDR[0m, [96m0xffea5060[0m);
+[96m[[96m0xffea92f8[0m][0m [97mlsb 0201000f000f1078[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+[96m[[96m0xffea9300[0m][0m [97mlsb 020100000008107c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m1, CNA_DMA_CON1_LINE_STRIDE(8));
+[96m[[96m0xffea9308[0m][0m [97mlsb 0201000000201080[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m2, CNA_DMA_CON2_SURF_STRIDE(32));
+[96m[[96m0xffea9310[0m][0m [97mlsb 0201000700031084[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m0, CNA_FC_DATA_SIZE0_DMA_WIDTH(7) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(3));
+[96m[[96m0xffea9318[0m][0m [97mlsb 0201000000081088[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(8));
+[96m[[96m0xffea9330[0m][0m [97mlsb 0201ffea80001110[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DCOMP_ADDR[0m0, [96m0xffea8000[0m);
+[96m[[96m0xffea93b8[0m][0m [97mlsb 020100000fff1180[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m5, [96m0x00000fff[0m);
+[96m[[96m0xffea93c8[0m][0m [97mlsb 0801000002003010[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_MISC_CFG[0m, CORE_MISC_CFG_PROC_PRECISION(2));
+[96m[[96m0xffea93d0[0m][0m [97mlsb 0801000100043014[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(1) | CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(4));
+[96m[[96m0xffea93d8[0m][0m [97mlsb 08010000000f3018[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(15));
+[96m[[96m0xffea93e8[0m][0m [97mlsb 0801000000003030[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0xffea93f0[0m][0m [97mlsb 1001000001e4400c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_FEATURE_MODE_CFG[0m, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+[96m[[96m0xffea93f8[0m][0m [97mlsb 1001480000024010[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_FORMAT[0m, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+[96m[[96m0xffea9408[0m][0m [97mlsb 1001ffea40a04020[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_BASE_ADDR[0m, [96m0xffea40a0[0m);
+[96m[[96m0xffea9410[0m][0m [97mlsb 1001000001404024[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_SURF_STRIDE[0m, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(20));
+[96m[[96m0xffea9418[0m][0m [97mlsb 1001000000044030[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_WIDTH[0m, DPU_DATA_CUBE_WIDTH_WIDTH(4));
+[96m[[96m0xffea9420[0m][0m [97mlsb 1001000000014034[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_HEIGHT[0m, DPU_DATA_CUBE_HEIGHT_HEIGHT(1));
+[96m[[96m0xffea9430[0m][0m [97mlsb 10010005000f403c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_CHANNEL[0m, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(5) | DPU_DATA_CUBE_CHANNEL_CHANNEL(15));
+[96m[[96m0xffea9438[0m][0m [97mlsb 1001000000534040[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_CFG[0m, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+[96m[[96m0xffea9458[0m][0m [97mlsb 1001000001264050[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_OW_CFG[0m, DPU_BS_OW_CFG_SIZE_E_2(1) | DPU_BS_OW_CFG_SIZE_E_1(1) | DPU_BS_OW_CFG_SIZE_E_0(1) | DPU_BS_OW_CFG_OD_BYPASS(1));
+[96m[[96m0xffea9468[0m][0m [97mlsb 10010000000f4058[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(15));
+[96m[[96m0xffea9470[0m][0m [97mlsb 100100010004405c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(1) | DPU_WDMA_SIZE_1_WIDTH_WDMA(4));
+[96m[[96m0xffea9478[0m][0m [97mlsb 1001000000534060[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BN_CFG[0m, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+[96m[[96m0xffea9498[0m][0m [97mlsb 1001000003834070[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CFG[0m, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+[96m[[96m0xffea94a8[0m][0m [97mlsb 1001000000014078[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CVT_SCALE_VALUE[0m, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+[96m[[96m0xffea94c0[0m][0m [97mlsb 1001000100014084[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_OUT_CVT_SCALE[0m, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+[96m[[96m0xffea9510[0m][0m [97mlsb 10010000028040c0[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_SURFACE_ADD[0m, DPU_SURFACE_ADD_SURF_ADD(40));
+[96m[[96m0xffea9518[0m][0m [97mlsb 10010000000040c4[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0xffea9580[0m][0m [97mlsb 0101ffea95c00010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347740));
+[96m[[96m0xffea9588[0m][0m [97mlsb 01010001000e0014[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_REGISTER_AMOUNTS[0m, PC_REGISTER_AMOUNTS_RESERVED_0(1) | PC_REGISTER_AMOUNTS_PC_DATA_AMOUNT(14));
+[96m[[96m0xffea9598[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea95c0[0m][0m [97mlsb 40010000000e6004[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_S_POINTER[0m, PPU_S_POINTER_POINTER_PP_MODE(1) | PPU_S_POINTER_EXECUTER_PP_EN(1) | PPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea95c8[0m][0m [97mlsb 80010000000e7004[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_S_POINTER[0m, PPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | PPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | PPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea95e0[0m][0m [97mlsb 40010000001f6014[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_IN_CHANNEL[0m, PPU_DATA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea95f8[0m][0m [97mlsb 40010000001f6020[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_OUT_CHANNEL[0m, PPU_DATA_CUBE_OUT_CHANNEL_CUBE_OUT_CHANNEL(31));
+[96m[[96m0xffea9600[0m][0m [97mlsb 4001000000116024[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_OPERATION_MODE_CFG[0m, PPU_OPERATION_MODE_CFG_FLYING_MODE(1) | PPU_OPERATION_MODE_CFG_POOLING_METHOD(1));
+[96m[[96m0xffea9638[0m][0m [97mlsb 4001ffea82406070[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_BASE_ADDR[0m, PPU_DST_BASE_ADDR_DST_BASE_ADDR(268347428));
+[96m[[96m0xffea9640[0m][0m [97mlsb 400100000010607c[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_SURF_STRIDE[0m, PPU_DST_SURF_STRIDE_DST_SURF_STRIDE(1));
+[96m[[96m0xffea9648[0m][0m [97mlsb 4001000000106084[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_FORMAT[0m, PPU_DATA_FORMAT_INDEX_ADD(1));
+[96m[[96m0xffea9650[0m][0m [97mlsb 40010000000360dc[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_MISC_CTRL[0m, PPU_MISC_CTRL_BURST_LEN(3));
+[96m[[96m0xffea9668[0m][0m [97mlsb 80010000001f7014[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_CUBE_IN_CHANNEL[0m, PPU_RDMA_RDMA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea9670[0m][0m [97mlsb 8001ffea8640701c[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_BASE_ADDR[0m, [96m0xffea8640[0m);
+[96m[[96m0xffea9678[0m][0m [97mlsb 8001000000107024[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_LINE_STRIDE[0m, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(1));
+[96m[[96m0xffea9680[0m][0m [97mlsb 8001000000107028[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_SURF_STRIDE[0m, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(1));
+[96m[[96m0xffea9688[0m][0m [97mlsb 8001000000017030[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_DATA_FORMAT[0m, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(1));
+[96m[[96m0xffea96a8[0m][0m [97mlsb 0081000000600008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(48));
+[96m[[96m0xffea96c0[0m][0m [97mlsb 10010000000e4004[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_S_POINTER[0m, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea96c8[0m][0m [97mlsb 02016000a120100c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+[96m[[96m0xffea96d0[0m][0m [97mlsb 0201200000501010[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m2, CNA_CONV_CON2_RESERVED_0(32) | CNA_CONV_CON2_FEATURE_GRAINS(5));
+[96m[[96m0xffea96d8[0m][0m [97mlsb 0201000000091014[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+[96m[[96m0xffea96e0[0m][0m [97mlsb 0201000800031020[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m0, CNA_DATA_SIZE0_DATAIN_WIDTH(8) | CNA_DATA_SIZE0_DATAIN_HEIGHT(3));
+[96m[[96m0xffea96e8[0m][0m [97mlsb 0201000200081024[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(2) | CNA_DATA_SIZE1_DATAIN_CHANNEL(8));
+[96m[[96m0xffea96f0[0m][0m [97mlsb 0201000000051028[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m2, CNA_DATA_SIZE2_DATAOUT_WIDTH(5));
+[96m[[96m0xffea96f8[0m][0m [97mlsb 02010000000a102c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(10));
+[96m[[96m0xffea9700[0m][0m [97mlsb 0201000002401030[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m0, [96m0x00000240[0m);
+[96m[[96m0xffea9708[0m][0m [97mlsb 0201000000601034[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(96));
+[96m[[96m0xffea9710[0m][0m [97mlsb 0201030200061038[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(3) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(2) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(6));
+[96m[[96m0xffea9718[0m][0m [97mlsb 0201000000b11040[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+[96m[[96m0xffea9720[0m][0m [97mlsb 0201000000181044[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m1, CNA_CBUF_CON1_DATA_ENTRIES(24));
+[96m[[96m0xffea9728[0m][0m [97mlsb 020100000001104c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m0, CNA_CVT_CON0_CVT_BYPASS(1));
+[96m[[96m0xffea9730[0m][0m [97mlsb 0201000100001050[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m1, CNA_CVT_CON1_CVT_SCALE0(1));
+[96m[[96m0xffea9738[0m][0m [97mlsb 0201000100001054[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m2, CNA_CVT_CON2_CVT_SCALE1(1));
+[96m[[96m0xffea9740[0m][0m [97mlsb 0201000100001058[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m3, CNA_CVT_CON3_CVT_SCALE2(1));
+[96m[[96m0xffea9748[0m][0m [97mlsb 020100010000105c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m4, CNA_CVT_CON4_CVT_SCALE3(1));
+[96m[[96m0xffea9768[0m][0m [97mlsb 0201ffea50001070[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FEATURE_DATA_ADDR[0m, [96m0xffea5000[0m);
+[96m[[96m0xffea9778[0m][0m [97mlsb 0201000f000f1078[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+[96m[[96m0xffea9780[0m][0m [97mlsb 020100000008107c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m1, CNA_DMA_CON1_LINE_STRIDE(8));
+[96m[[96m0xffea9788[0m][0m [97mlsb 0201000000201080[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m2, CNA_DMA_CON2_SURF_STRIDE(32));
+[96m[[96m0xffea9790[0m][0m [97mlsb 0201000700031084[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m0, CNA_FC_DATA_SIZE0_DMA_WIDTH(7) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(3));
+[96m[[96m0xffea9798[0m][0m [97mlsb 0201000000081088[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(8));
+[96m[[96m0xffea97b0[0m][0m [97mlsb 0201ffea80001110[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DCOMP_ADDR[0m0, [96m0xffea8000[0m);
+[96m[[96m0xffea9838[0m][0m [97mlsb 020100000fff1180[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m5, [96m0x00000fff[0m);
+[96m[[96m0xffea9848[0m][0m [97mlsb 0801000002003010[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_MISC_CFG[0m, CORE_MISC_CFG_PROC_PRECISION(2));
+[96m[[96m0xffea9850[0m][0m [97mlsb 0801000100043014[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(1) | CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(4));
+[96m[[96m0xffea9858[0m][0m [97mlsb 08010000000f3018[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(15));
+[96m[[96m0xffea9868[0m][0m [97mlsb 0801000000003030[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0xffea9870[0m][0m [97mlsb 1001000001e4400c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_FEATURE_MODE_CFG[0m, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+[96m[[96m0xffea9878[0m][0m [97mlsb 1001480000024010[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_FORMAT[0m, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+[96m[[96m0xffea9888[0m][0m [97mlsb 1001ffea40004020[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_BASE_ADDR[0m, [96m0xffea4000[0m);
+[96m[[96m0xffea9890[0m][0m [97mlsb 1001000001404024[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_SURF_STRIDE[0m, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(20));
+[96m[[96m0xffea9898[0m][0m [97mlsb 1001000000044030[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_WIDTH[0m, DPU_DATA_CUBE_WIDTH_WIDTH(4));
+[96m[[96m0xffea98a0[0m][0m [97mlsb 1001000000014034[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_HEIGHT[0m, DPU_DATA_CUBE_HEIGHT_HEIGHT(1));
+[96m[[96m0xffea98b0[0m][0m [97mlsb 10010005000f403c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_CHANNEL[0m, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(5) | DPU_DATA_CUBE_CHANNEL_CHANNEL(15));
+[96m[[96m0xffea98b8[0m][0m [97mlsb 1001000000534040[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_CFG[0m, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+[96m[[96m0xffea98d8[0m][0m [97mlsb 1001000001264050[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_OW_CFG[0m, DPU_BS_OW_CFG_SIZE_E_2(1) | DPU_BS_OW_CFG_SIZE_E_1(1) | DPU_BS_OW_CFG_SIZE_E_0(1) | DPU_BS_OW_CFG_OD_BYPASS(1));
+[96m[[96m0xffea98e8[0m][0m [97mlsb 10010000000f4058[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(15));
+[96m[[96m0xffea98f0[0m][0m [97mlsb 100100010004405c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(1) | DPU_WDMA_SIZE_1_WIDTH_WDMA(4));
+[96m[[96m0xffea98f8[0m][0m [97mlsb 1001000000534060[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BN_CFG[0m, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+[96m[[96m0xffea9918[0m][0m [97mlsb 1001000003834070[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CFG[0m, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+[96m[[96m0xffea9928[0m][0m [97mlsb 1001000000014078[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CVT_SCALE_VALUE[0m, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+[96m[[96m0xffea9940[0m][0m [97mlsb 1001000100014084[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_OUT_CVT_SCALE[0m, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+[96m[[96m0xffea9990[0m][0m [97mlsb 10010000028040c0[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_SURFACE_ADD[0m, DPU_SURFACE_ADD_SURF_ADD(40));
+[96m[[96m0xffea9998[0m][0m [97mlsb 10010000000040c4[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0xffea9a00[0m][0m [97mlsb 0101ffea9a400010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347812));
+[96m[[96m0xffea9a08[0m][0m [97mlsb 01010002000e0014[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_REGISTER_AMOUNTS[0m, PC_REGISTER_AMOUNTS_RESERVED_0(2) | PC_REGISTER_AMOUNTS_PC_DATA_AMOUNT(14));
+[96m[[96m0xffea9a18[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea9a40[0m][0m [97mlsb 40010000000e6004[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_S_POINTER[0m, PPU_S_POINTER_POINTER_PP_MODE(1) | PPU_S_POINTER_EXECUTER_PP_EN(1) | PPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9a48[0m][0m [97mlsb 80010000000e7004[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_S_POINTER[0m, PPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | PPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | PPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9a60[0m][0m [97mlsb 40010000001f6014[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_IN_CHANNEL[0m, PPU_DATA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea9a78[0m][0m [97mlsb 40010000001f6020[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_OUT_CHANNEL[0m, PPU_DATA_CUBE_OUT_CHANNEL_CUBE_OUT_CHANNEL(31));
+[96m[[96m0xffea9a80[0m][0m [97mlsb 4001000000116024[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_OPERATION_MODE_CFG[0m, PPU_OPERATION_MODE_CFG_FLYING_MODE(1) | PPU_OPERATION_MODE_CFG_POOLING_METHOD(1));
+[96m[[96m0xffea9ab8[0m][0m [97mlsb 4001ffea82406070[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_BASE_ADDR[0m, PPU_DST_BASE_ADDR_DST_BASE_ADDR(268347428));
+[96m[[96m0xffea9ac0[0m][0m [97mlsb 400100000010607c[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_SURF_STRIDE[0m, PPU_DST_SURF_STRIDE_DST_SURF_STRIDE(1));
+[96m[[96m0xffea9ac8[0m][0m [97mlsb 4001000000106084[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_FORMAT[0m, PPU_DATA_FORMAT_INDEX_ADD(1));
+[96m[[96m0xffea9ad0[0m][0m [97mlsb 40010000000360dc[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_MISC_CTRL[0m, PPU_MISC_CTRL_BURST_LEN(3));
+[96m[[96m0xffea9ae8[0m][0m [97mlsb 80010000001f7014[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_CUBE_IN_CHANNEL[0m, PPU_RDMA_RDMA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea9af0[0m][0m [97mlsb 8001ffea8640701c[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_BASE_ADDR[0m, [96m0xffea8640[0m);
+[96m[[96m0xffea9af8[0m][0m [97mlsb 8001000000107024[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_LINE_STRIDE[0m, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(1));
+[96m[[96m0xffea9b00[0m][0m [97mlsb 8001000000107028[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_SURF_STRIDE[0m, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(1));
+[96m[[96m0xffea9b08[0m][0m [97mlsb 8001000000017030[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_DATA_FORMAT[0m, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(1));
+[96m[[96m0xffea9b28[0m][0m [97mlsb 0081000000600008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(48));
+[96m[[96m0xffea9b40[0m][0m [97mlsb 10010000000e4004[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_S_POINTER[0m, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9b48[0m][0m [97mlsb 02016000a120100c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+[96m[[96m0xffea9b50[0m][0m [97mlsb 0201200000401010[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m2, CNA_CONV_CON2_RESERVED_0(32) | CNA_CONV_CON2_FEATURE_GRAINS(4));
+[96m[[96m0xffea9b58[0m][0m [97mlsb 0201000000091014[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+[96m[[96m0xffea9b60[0m][0m [97mlsb 0201000800021020[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m0, CNA_DATA_SIZE0_DATAIN_WIDTH(8) | CNA_DATA_SIZE0_DATAIN_HEIGHT(2));
+[96m[[96m0xffea9b68[0m][0m [97mlsb 0201000200081024[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(2) | CNA_DATA_SIZE1_DATAIN_CHANNEL(8));
+[96m[[96m0xffea9b70[0m][0m [97mlsb 0201000000051028[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m2, CNA_DATA_SIZE2_DATAOUT_WIDTH(5));
+[96m[[96m0xffea9b78[0m][0m [97mlsb 020100000005102c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(5));
+[96m[[96m0xffea9b80[0m][0m [97mlsb 0201000002401030[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m0, [96m0x00000240[0m);
+[96m[[96m0xffea9b88[0m][0m [97mlsb 0201000000601034[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(96));
+[96m[[96m0xffea9b90[0m][0m [97mlsb 0201030200061038[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(3) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(2) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(6));
+[96m[[96m0xffea9b98[0m][0m [97mlsb 0201000000b11040[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+[96m[[96m0xffea9ba0[0m][0m [97mlsb 0201000000101044[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m1, CNA_CBUF_CON1_DATA_ENTRIES(16));
+[96m[[96m0xffea9ba8[0m][0m [97mlsb 020100000001104c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m0, CNA_CVT_CON0_CVT_BYPASS(1));
+[96m[[96m0xffea9bb0[0m][0m [97mlsb 0201000100001050[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m1, CNA_CVT_CON1_CVT_SCALE0(1));
+[96m[[96m0xffea9bb8[0m][0m [97mlsb 0201000100001054[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m2, CNA_CVT_CON2_CVT_SCALE1(1));
+[96m[[96m0xffea9bc0[0m][0m [97mlsb 0201000100001058[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m3, CNA_CVT_CON3_CVT_SCALE2(1));
+[96m[[96m0xffea9bc8[0m][0m [97mlsb 020100010000105c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m4, CNA_CVT_CON4_CVT_SCALE3(1));
+[96m[[96m0xffea9be8[0m][0m [97mlsb 0201ffea50601070[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FEATURE_DATA_ADDR[0m, [96m0xffea5060[0m);
+[96m[[96m0xffea9bf8[0m][0m [97mlsb 0201000f000f1078[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+[96m[[96m0xffea9c00[0m][0m [97mlsb 020100000008107c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m1, CNA_DMA_CON1_LINE_STRIDE(8));
+[96m[[96m0xffea9c08[0m][0m [97mlsb 0201000000201080[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m2, CNA_DMA_CON2_SURF_STRIDE(32));
+[96m[[96m0xffea9c10[0m][0m [97mlsb 0201000700021084[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m0, CNA_FC_DATA_SIZE0_DMA_WIDTH(7) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(2));
+[96m[[96m0xffea9c18[0m][0m [97mlsb 0201000000081088[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(8));
+[96m[[96m0xffea9c30[0m][0m [97mlsb 0201ffea80001110[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DCOMP_ADDR[0m0, [96m0xffea8000[0m);
+[96m[[96m0xffea9cb8[0m][0m [97mlsb 020100000fff1180[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m5, [96m0x00000fff[0m);
+[96m[[96m0xffea9cc8[0m][0m [97mlsb 0801000002003010[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_MISC_CFG[0m, CORE_MISC_CFG_PROC_PRECISION(2));
+[96m[[96m0xffea9cd0[0m][0m [97mlsb 0801000000043014[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m0, CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(4));
+[96m[[96m0xffea9cd8[0m][0m [97mlsb 08010000000f3018[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(15));
+[96m[[96m0xffea9ce8[0m][0m [97mlsb 0801000000003030[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0xffea9cf0[0m][0m [97mlsb 1001000001e4400c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_FEATURE_MODE_CFG[0m, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+[96m[[96m0xffea9cf8[0m][0m [97mlsb 1001480000024010[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_FORMAT[0m, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+[96m[[96m0xffea9d08[0m][0m [97mlsb 1001ffea40a04020[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_BASE_ADDR[0m, [96m0xffea40a0[0m);
+[96m[[96m0xffea9d10[0m][0m [97mlsb 1001000001404024[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_SURF_STRIDE[0m, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(20));
+[96m[[96m0xffea9d18[0m][0m [97mlsb 1001000000044030[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_WIDTH[0m, DPU_DATA_CUBE_WIDTH_WIDTH(4));
+[96m[[96m0xffea9d30[0m][0m [97mlsb 10010005000f403c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_CHANNEL[0m, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(5) | DPU_DATA_CUBE_CHANNEL_CHANNEL(15));
+[96m[[96m0xffea9d38[0m][0m [97mlsb 1001000000534040[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_CFG[0m, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+[96m[[96m0xffea9d58[0m][0m [97mlsb 1001000001264050[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_OW_CFG[0m, DPU_BS_OW_CFG_SIZE_E_2(1) | DPU_BS_OW_CFG_SIZE_E_1(1) | DPU_BS_OW_CFG_SIZE_E_0(1) | DPU_BS_OW_CFG_OD_BYPASS(1));
+[96m[[96m0xffea9d68[0m][0m [97mlsb 10010000000f4058[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(15));
+[96m[[96m0xffea9d70[0m][0m [97mlsb 100100000004405c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m1, DPU_WDMA_SIZE_1_WIDTH_WDMA(4));
+[96m[[96m0xffea9d78[0m][0m [97mlsb 1001000000534060[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BN_CFG[0m, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+[96m[[96m0xffea9d98[0m][0m [97mlsb 1001000003834070[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CFG[0m, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+[96m[[96m0xffea9da8[0m][0m [97mlsb 1001000000014078[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CVT_SCALE_VALUE[0m, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+[96m[[96m0xffea9dc0[0m][0m [97mlsb 1001000100014084[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_OUT_CVT_SCALE[0m, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+[96m[[96m0xffea9e10[0m][0m [97mlsb 10010000028040c0[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_SURFACE_ADD[0m, DPU_SURFACE_ADD_SURF_ADD(40));
+[96m[[96m0xffea9e18[0m][0m [97mlsb 10010000000040c4[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0xffea9e80[0m][0m [97mlsb 0101ffea9ec00010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347884));
+[96m[[96m0xffea9e88[0m][0m [97mlsb 01010002000e0014[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_REGISTER_AMOUNTS[0m, PC_REGISTER_AMOUNTS_RESERVED_0(2) | PC_REGISTER_AMOUNTS_PC_DATA_AMOUNT(14));
+[96m[[96m0xffea9e98[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea9ec0[0m][0m [97mlsb 40010000000e6004[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_S_POINTER[0m, PPU_S_POINTER_POINTER_PP_MODE(1) | PPU_S_POINTER_EXECUTER_PP_EN(1) | PPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9ec8[0m][0m [97mlsb 80010000000e7004[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_S_POINTER[0m, PPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | PPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | PPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9ee0[0m][0m [97mlsb 40010000001f6014[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_IN_CHANNEL[0m, PPU_DATA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea9ef8[0m][0m [97mlsb 40010000001f6020[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_OUT_CHANNEL[0m, PPU_DATA_CUBE_OUT_CHANNEL_CUBE_OUT_CHANNEL(31));
+[96m[[96m0xffea9f00[0m][0m [97mlsb 4001000000116024[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_OPERATION_MODE_CFG[0m, PPU_OPERATION_MODE_CFG_FLYING_MODE(1) | PPU_OPERATION_MODE_CFG_POOLING_METHOD(1));
+[96m[[96m0xffea9f38[0m][0m [97mlsb 4001ffea82406070[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_BASE_ADDR[0m, PPU_DST_BASE_ADDR_DST_BASE_ADDR(268347428));
+[96m[[96m0xffea9f40[0m][0m [97mlsb 400100000010607c[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_SURF_STRIDE[0m, PPU_DST_SURF_STRIDE_DST_SURF_STRIDE(1));
+[96m[[96m0xffea9f48[0m][0m [97mlsb 4001000000106084[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_FORMAT[0m, PPU_DATA_FORMAT_INDEX_ADD(1));
+[96m[[96m0xffea9f50[0m][0m [97mlsb 40010000000360dc[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_MISC_CTRL[0m, PPU_MISC_CTRL_BURST_LEN(3));
+[96m[[96m0xffea9f68[0m][0m [97mlsb 80010000001f7014[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_CUBE_IN_CHANNEL[0m, PPU_RDMA_RDMA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffea9f70[0m][0m [97mlsb 8001ffea8640701c[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_BASE_ADDR[0m, [96m0xffea8640[0m);
+[96m[[96m0xffea9f78[0m][0m [97mlsb 8001000000107024[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_LINE_STRIDE[0m, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(1));
+[96m[[96m0xffea9f80[0m][0m [97mlsb 8001000000107028[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_SURF_STRIDE[0m, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(1));
+[96m[[96m0xffea9f88[0m][0m [97mlsb 8001000000017030[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_DATA_FORMAT[0m, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(1));
+[96m[[96m0xffea9fa8[0m][0m [97mlsb 0081000000600008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(48));
+[96m[[96m0xffea9fc0[0m][0m [97mlsb 10010000000e4004[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_S_POINTER[0m, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffea9fc8[0m][0m [97mlsb 02016000a120100c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+[96m[[96m0xffea9fd0[0m][0m [97mlsb 0201200000401010[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m2, CNA_CONV_CON2_RESERVED_0(32) | CNA_CONV_CON2_FEATURE_GRAINS(4));
+[96m[[96m0xffea9fd8[0m][0m [97mlsb 0201000000091014[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CONV_CON[0m3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
+[96m[[96m0xffea9fe0[0m][0m [97mlsb 0201000800021020[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m0, CNA_DATA_SIZE0_DATAIN_WIDTH(8) | CNA_DATA_SIZE0_DATAIN_HEIGHT(2));
+[96m[[96m0xffea9fe8[0m][0m [97mlsb 0201000200081024[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(2) | CNA_DATA_SIZE1_DATAIN_CHANNEL(8));
+[96m[[96m0xffea9ff0[0m][0m [97mlsb 0201000000051028[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m2, CNA_DATA_SIZE2_DATAOUT_WIDTH(5));
+[96m[[96m0xffea9ff8[0m][0m [97mlsb 020100000005102c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DATA_SIZE[0m3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(5));
+[96m[[96m0xffeaa000[0m][0m [97mlsb 0201000002401030[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m0, [96m0x00000240[0m);
+[96m[[96m0xffeaa008[0m][0m [97mlsb 0201000000601034[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(96));
+[96m[[96m0xffeaa010[0m][0m [97mlsb 0201030200061038[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_WEIGHT_SIZE[0m2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(3) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(2) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(6));
+[96m[[96m0xffeaa018[0m][0m [97mlsb 0201000000b11040[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
+[96m[[96m0xffeaa020[0m][0m [97mlsb 0201000000101044[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CBUF_CON[0m1, CNA_CBUF_CON1_DATA_ENTRIES(16));
+[96m[[96m0xffeaa028[0m][0m [97mlsb 020100000001104c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m0, CNA_CVT_CON0_CVT_BYPASS(1));
+[96m[[96m0xffeaa030[0m][0m [97mlsb 0201000100001050[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m1, CNA_CVT_CON1_CVT_SCALE0(1));
+[96m[[96m0xffeaa038[0m][0m [97mlsb 0201000100001054[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m2, CNA_CVT_CON2_CVT_SCALE1(1));
+[96m[[96m0xffeaa040[0m][0m [97mlsb 0201000100001058[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m3, CNA_CVT_CON3_CVT_SCALE2(1));
+[96m[[96m0xffeaa048[0m][0m [97mlsb 020100010000105c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m4, CNA_CVT_CON4_CVT_SCALE3(1));
+[96m[[96m0xffeaa068[0m][0m [97mlsb 0201ffea50901070[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FEATURE_DATA_ADDR[0m, [96m0xffea5090[0m);
+[96m[[96m0xffeaa078[0m][0m [97mlsb 0201000f000f1078[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+[96m[[96m0xffeaa080[0m][0m [97mlsb 020100000008107c[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m1, CNA_DMA_CON1_LINE_STRIDE(8));
+[96m[[96m0xffeaa088[0m][0m [97mlsb 0201000000201080[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DMA_CON[0m2, CNA_DMA_CON2_SURF_STRIDE(32));
+[96m[[96m0xffeaa090[0m][0m [97mlsb 0201000700021084[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m0, CNA_FC_DATA_SIZE0_DMA_WIDTH(7) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(2));
+[96m[[96m0xffeaa098[0m][0m [97mlsb 0201000000081088[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_FC_DATA_SIZE[0m1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(8));
+[96m[[96m0xffeaa0b0[0m][0m [97mlsb 0201ffea80001110[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_DCOMP_ADDR[0m0, [96m0xffea8000[0m);
+[96m[[96m0xffeaa138[0m][0m [97mlsb 020100000fff1180[0m - [93mCNA[0m           [93mEMIT[0m([92mREG_CNA_CVT_CON[0m5, [96m0x00000fff[0m);
+[96m[[96m0xffeaa148[0m][0m [97mlsb 0801000002003010[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_MISC_CFG[0m, CORE_MISC_CFG_PROC_PRECISION(2));
+[96m[[96m0xffeaa150[0m][0m [97mlsb 0801000000043014[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m0, CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(4));
+[96m[[96m0xffeaa158[0m][0m [97mlsb 08010000000f3018[0m - [93mCORE[0m          [93mEMIT[0m([92mREG_CORE_DATAOUT_SIZE_[0m1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(15));
+[96m[[96m0xffeaa168[0m][0m [97mlsb 0801000000003030[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0xffeaa170[0m][0m [97mlsb 1001000001e4400c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_FEATURE_MODE_CFG[0m, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
+[96m[[96m0xffeaa178[0m][0m [97mlsb 1001480000024010[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_FORMAT[0m, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+[96m[[96m0xffeaa188[0m][0m [97mlsb 1001ffea40f04020[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_BASE_ADDR[0m, [96m0xffea40f0[0m);
+[96m[[96m0xffeaa190[0m][0m [97mlsb 1001000001404024[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DST_SURF_STRIDE[0m, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(20));
+[96m[[96m0xffeaa198[0m][0m [97mlsb 1001000000044030[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_WIDTH[0m, DPU_DATA_CUBE_WIDTH_WIDTH(4));
+[96m[[96m0xffeaa1b0[0m][0m [97mlsb 10010005000f403c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_DATA_CUBE_CHANNEL[0m, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(5) | DPU_DATA_CUBE_CHANNEL_CHANNEL(15));
+[96m[[96m0xffeaa1b8[0m][0m [97mlsb 1001000000534040[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_CFG[0m, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
+[96m[[96m0xffeaa1d8[0m][0m [97mlsb 1001000001264050[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BS_OW_CFG[0m, DPU_BS_OW_CFG_SIZE_E_2(1) | DPU_BS_OW_CFG_SIZE_E_1(1) | DPU_BS_OW_CFG_SIZE_E_0(1) | DPU_BS_OW_CFG_OD_BYPASS(1));
+[96m[[96m0xffeaa1e8[0m][0m [97mlsb 10010000000f4058[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(15));
+[96m[[96m0xffeaa1f0[0m][0m [97mlsb 100100000004405c[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_WDMA_SIZE_[0m1, DPU_WDMA_SIZE_1_WIDTH_WDMA(4));
+[96m[[96m0xffeaa1f8[0m][0m [97mlsb 1001000000534060[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_BN_CFG[0m, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+[96m[[96m0xffeaa218[0m][0m [97mlsb 1001000003834070[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CFG[0m, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+[96m[[96m0xffeaa228[0m][0m [97mlsb 1001000000014078[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_EW_CVT_SCALE_VALUE[0m, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+[96m[[96m0xffeaa240[0m][0m [97mlsb 1001000100014084[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_OUT_CVT_SCALE[0m, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+[96m[[96m0xffeaa290[0m][0m [97mlsb 10010000028040c0[0m - [93mDPU[0m           [93mEMIT[0m([92mREG_DPU_SURFACE_ADD[0m, DPU_SURFACE_ADD_SURF_ADD(40));
+[96m[[96m0xffeaa298[0m][0m [97mlsb 10010000000040c4[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0xffeaa300[0m][0m [97mlsb 0101ffeaa3400010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347956));
+[96m[[96m0xffeaa308[0m][0m [97mlsb 01010002000e0014[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_REGISTER_AMOUNTS[0m, PC_REGISTER_AMOUNTS_RESERVED_0(2) | PC_REGISTER_AMOUNTS_PC_DATA_AMOUNT(14));
+[96m[[96m0xffeaa318[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffeaa340[0m][0m [97mlsb 40010000000e6004[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_S_POINTER[0m, PPU_S_POINTER_POINTER_PP_MODE(1) | PPU_S_POINTER_EXECUTER_PP_EN(1) | PPU_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffeaa348[0m][0m [97mlsb 80010000000e7004[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_S_POINTER[0m, PPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | PPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | PPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+[96m[[96m0xffeaa360[0m][0m [97mlsb 40010000001f6014[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_IN_CHANNEL[0m, PPU_DATA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffeaa378[0m][0m [97mlsb 40010000001f6020[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_CUBE_OUT_CHANNEL[0m, PPU_DATA_CUBE_OUT_CHANNEL_CUBE_OUT_CHANNEL(31));
+[96m[[96m0xffeaa380[0m][0m [97mlsb 4001000000116024[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_OPERATION_MODE_CFG[0m, PPU_OPERATION_MODE_CFG_FLYING_MODE(1) | PPU_OPERATION_MODE_CFG_POOLING_METHOD(1));
+[96m[[96m0xffeaa3b8[0m][0m [97mlsb 4001ffea82406070[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_BASE_ADDR[0m, PPU_DST_BASE_ADDR_DST_BASE_ADDR(268347428));
+[96m[[96m0xffeaa3c0[0m][0m [97mlsb 400100000010607c[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DST_SURF_STRIDE[0m, PPU_DST_SURF_STRIDE_DST_SURF_STRIDE(1));
+[96m[[96m0xffeaa3c8[0m][0m [97mlsb 4001000000106084[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_DATA_FORMAT[0m, PPU_DATA_FORMAT_INDEX_ADD(1));
+[96m[[96m0xffeaa3d0[0m][0m [97mlsb 40010000000360dc[0m - [93mPPU[0m           [93mEMIT[0m([92mREG_PPU_MISC_CTRL[0m, PPU_MISC_CTRL_BURST_LEN(3));
+[96m[[96m0xffeaa3e8[0m][0m [97mlsb 80010000001f7014[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_CUBE_IN_CHANNEL[0m, PPU_RDMA_RDMA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(31));
+[96m[[96m0xffeaa3f0[0m][0m [97mlsb 8001ffea8640701c[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_BASE_ADDR[0m, [96m0xffea8640[0m);
+[96m[[96m0xffeaa3f8[0m][0m [97mlsb 8001000000107024[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_LINE_STRIDE[0m, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(1));
+[96m[[96m0xffeaa400[0m][0m [97mlsb 8001000000107028[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_SRC_SURF_STRIDE[0m, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(1));
+[96m[[96m0xffeaa408[0m][0m [97mlsb 8001000000017030[0m - [93mPPU_RDMA[0m      [93mEMIT[0m([92mREG_PPU_RDMA_RDMA_DATA_FORMAT[0m, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(1));
+[96m[[96m0xffeaa428[0m][0m [97mlsb 0081000000600008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(48));
+[96m[[96m0xffeaa440[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa448[0m][0m [97mlsb 000003000000000d[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa450[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa458[0m][0m [97mlsb 000000000000006c[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa468[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa470[0m][0m [97mlsb 000003000000000d[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa478[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa480[0m][0m [97mlsb 0000000000000068[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa488[0m][0m [97mlsb 0000000000000380[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa490[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa498[0m][0m [97mlsb 00000c0000000060[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4a0[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4a8[0m][0m [97mlsb 000000000000001a[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4b0[0m][0m [97mlsb 0000000000000700[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4b8[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa4c0[0m][0m [97mlsb 000003000000000d[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4c8[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4d0[0m][0m [97mlsb 0000000000000068[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4d8[0m][0m [97mlsb 0000000000000800[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4e0[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa4e8[0m][0m [97mlsb 00000c0000000060[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4f0[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa4f8[0m][0m [97mlsb 000000000000001a[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa500[0m][0m [97mlsb 0000000000000b80[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa508[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa510[0m][0m [97mlsb 000003000000000d[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa518[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa520[0m][0m [97mlsb 0000000000000068[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa528[0m][0m [97mlsb 0000000000000c80[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa530[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa538[0m][0m [97mlsb 00000c0000000060[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa540[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa548[0m][0m [97mlsb 000000000000001a[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa558[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa560[0m][0m [97mlsb 000003000000000d[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa568[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa570[0m][0m [97mlsb 0000000000000068[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa580[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa588[0m][0m [97mlsb 00000c0000000060[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa590[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa598[0m][0m [97mlsb 000000000000001a[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5a0[0m][0m [97mlsb 0000000000001480[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5a8[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa5b0[0m][0m [97mlsb 000003000000000d[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5b8[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5c0[0m][0m [97mlsb 0000000000000068[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5c8[0m][0m [97mlsb 0000000000001580[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5d0[0m][0m [97mlsb 0000000100000000[0m - noone         [93mEMIT[0m([92mREG_PC_VERSION[0m, [96m0x00010000[0m);
+[96m[[96m0xffeaa5d8[0m][0m [97mlsb 00000c0000000060[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5e0[0m][0m [97mlsb 000000000001ffff[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5e8[0m][0m [97mlsb 000000000000001a[0m - noone [93mUnknown[0m
+[96m[[96m0xffeaa5f0[0m][0m [97mlsb 0000000000001900[0m - noone [93mUnknown[0m
+Dumped 1013 register commands to dump/gem2_regdump.bin
+[96m[[96m0xffea8db8[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea9118[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea9598[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea9a18[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffea9e98[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+[96m[[96m0xffeaa318[0m][0m [97mlsb 00810000000d0008[0m - noone         [93mEMIT[0m([92mREG_PC_OPERATION_ENABLE[0m, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
+6
+[96m[[96m0xffea9100[0m][0m [97mlsb 0101ffea91400010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347668));
+[96m[[96m0xffea9580[0m][0m [97mlsb 0101ffea95c00010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347740));
+[96m[[96m0xffea9a00[0m][0m [97mlsb 0101ffea9a400010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347812));
+[96m[[96m0xffea9e80[0m][0m [97mlsb 0101ffea9ec00010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347884));
+[96m[[96m0xffeaa300[0m][0m [97mlsb 0101ffeaa3400010[0m - [93mPC[0m            [93mEMIT[0m([92mREG_PC_BASE_ADDRESS[0m, PC_BASE_ADDRESS_PC_SOURCE_ADDR(268347956));
+5
+drm name is rknpu - 20231018 - RKNPU driver
+du is 
+Dumping specified GEM objects...
+
+=== Processing GEM 3 ===
+
+==================================================
+Processing GEM Flink 3
+==================================================
+gem flink 3: ret=0 handle=1 size=4096
+DRM_IOCTL_RKNPU_MEM_MAP returned 0 0x100004000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294983680>
+
+==================================================
+Processing GEM Flink 3 for Register Decode
+==================================================
+Successfully opened GEM via flink 3
+memmap returned 0 0x100004000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294983680> 4294983680
+DEBUG: Found 199 registers in XML
+DEBUG: Loaded 199 register definitions
+No register commands found in this GEM; skipping decode.
+drm name is rknpu - 20231018 - RKNPU driver
+du is 
+Dumping specified GEM objects...
+
+=== Processing GEM 4 ===
+
+==================================================
+Processing GEM Flink 4
+==================================================
+gem flink 4: ret=0 handle=1 size=4096
+DRM_IOCTL_RKNPU_MEM_MAP returned 0 0x100005000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294987776>
+
+==================================================
+Processing GEM Flink 4 for Register Decode
+==================================================
+Successfully opened GEM via flink 4
+memmap returned 0 0x100005000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294987776> 4294987776
+DEBUG: Found 199 registers in XML
+DEBUG: Loaded 199 register definitions
+No register commands found in this GEM; skipping decode.
+drm name is rknpu - 20231018 - RKNPU driver
+du is 
+Dumping specified GEM objects...
+
+=== Processing GEM 5 ===
+
+==================================================
+Processing GEM Flink 5
+==================================================
+gem flink 5: ret=0 handle=1 size=4096
+DRM_IOCTL_RKNPU_MEM_MAP returned 0 0x100006000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294991872>
+
+==================================================
+Processing GEM Flink 5 for Register Decode
+==================================================
+Successfully opened GEM via flink 5
+memmap returned 0 0x100006000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294991872> 4294991872
+DEBUG: Found 199 registers in XML
+DEBUG: Loaded 199 register definitions
+DEBUG: base selection for GEM 5: dma_base=None phys_base=0x100006000 task_base=None chosen=0x100006000 commands=30
+Successfully created dump/gem5_regdump.bin
+[96m[[96m0x100006000[0m][0m [97mlsb 3cf63e853c7b38e1[0m - [93mCORE[0m [93mUnknown[0m
+DEBUG: Looking for offset 0x38e1, available offsets: [0, 4, 8, 16, 20, 32, 36, 40, 44, 48]
+[96m[[96m0x100006008[0m][0m [97mlsb 447b4094430a40c3[0m - [93mPPU[0m [93mUnknown[0m
+DEBUG: Looking for offset 0x40c3, available offsets: [0, 4, 8, 16, 20, 32, 36, 40, 44, 48]
+[96m[[96m0x100006010[0m][0m [97mlsb 498a476c438546ac[0m - [93mPC[0m [93mUnknown[0m
+DEBUG: Looking for offset 0x46ac, available offsets: [0, 4, 8, 16, 20, 32, 36, 40, 44, 48]
+[96m[[96m0x100006018[0m][0m [97mlsb 47f64c30499a45a6[0m - [93mPC[0m [93mUnknown[0m
+DEBUG: Looking for offset 0x45a6, available offsets: [0, 4, 8, 16, 20, 32, 36, 40, 44, 48]
+[96m[[96m0x100006020[0m][0m [97mlsb 4d5249584dec4be9[0m - [93mPC[0m [93mUnknown[0m
+DEBUG: Looking for offset 0x4be9, available offsets: [0, 4, 8, 16, 20, 32, 36, 40, 44, 48]
+[96m[[96m0x100006028[0m][0m [97mlsb 0000000000004ff8[0m - noone [93mUnknown[0m
+[96m[[96m0x100006030[0m][0m [97mlsb 4048445441d73e0a[0m - [93mPPU[0m [93mUnknown[0m
+[96m[[96m0x100006038[0m][0m [97mlsb 464842614638442e[0m - [93mCNA[0m [93mUnknown[0m
+[96m[[96m0x100006040[0m][0m [97mlsb 4ae4489c44a948af[0m - [93mCNA[0m [93mUnknown[0m
+[96m[[96m0x100006048[0m][0m [97mlsb 486e4cdd4a80468d[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0x100006050[0m][0m [97mlsb 4dc549cc4e984c68[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0x100006058[0m][0m [97mlsb 0000000000005052[0m - noone [93mUnknown[0m
+[96m[[96m0x100006060[0m][0m [97mlsb 4348486a45ec4205[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0x100006068[0m][0m [97mlsb 48a444b1495c472e[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0x100006070[0m][0m [97mlsb 4c924a1c46294aef[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0x100006078[0m][0m [97mlsb 492e4dfd4c004806[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0x100006080[0m][0m [97mlsb 4e854a8c4fb84d28[0m - [93mCNA[0m [93mUnknown[0m
+[96m[[96m0x100006088[0m][0m [97mlsb 00000000000050e2[0m - noone [93mUnknown[0m
+[96m[[96m0x100006090[0m][0m [97mlsb 45bd4b91490f451c[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0x100006098[0m][0m [97mlsb 4abd46ca4c4149b1[0m - [93mCNA[0m [93mUnknown[0m
+[96m[[96m0x1000060a0[0m][0m [97mlsb 4e254c1b48214d0b[0m - [93mCNA[0m [93mUnknown[0m
+[96m[[96m0x1000060a8[0m][0m [97mlsb 4a3b4f904d0d4913[0m - [93mCNA[0m [93mUnknown[0m
+[96m[[96m0x1000060b0[0m][0m [97mlsb 4f924b9850a64e34[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0x1000060b8[0m][0m [97mlsb 00000000000051ac[0m - noone [93mUnknown[0m
+[96m[[96m0x1000060c0[0m][0m [97mlsb 48384dcf4bc347cf[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0x1000060c8[0m][0m [97mlsb 4cb848bf4e484c32[0m - [93mCORE[0m [93mUnknown[0m
+[96m[[96m0x1000060d0[0m][0m [97mlsb 50164d74497b4f11[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0x1000060d8[0m][0m [97mlsb 4b9450cb4e664a6d[0m - [93mPC[0m [93mUnknown[0m
+[96m[[96m0x1000060e0[0m][0m [97mlsb 50764c7951a94f8e[0m - [93mDPU[0m [93mUnknown[0m
+[96m[[96m0x1000060e8[0m][0m [97mlsb 00000000000052af[0m - noone [93mUnknown[0m
+Dumped 30 register commands to dump/gem5_regdump.bin
+drm name is rknpu - 20231018 - RKNPU driver
+du is 
+Dumping specified GEM objects...
+
+=== Processing GEM 6 ===
+
+==================================================
+Processing GEM Flink 6
+==================================================
+gem flink 6: ret=0 handle=1 size=4096
+DRM_IOCTL_RKNPU_MEM_MAP returned 0 0x100007000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294995968>
+
+==================================================
+Processing GEM Flink 6 for Register Decode
+==================================================
+Successfully opened GEM via flink 6
+memmap returned 0 0x100007000
+mmap returned <mmap.mmap closed=False, access=ACCESS_DEFAULT, length=4096, pos=0, offset=4294995968> 4294995968
+DEBUG: Found 199 registers in XML
+DEBUG: Loaded 199 register definitions
+No register commands found in this GEM; skipping decode.
+============
+D RKNN: [22:34:31.820] allocated memory, name: input, virt addr: 0x7ff7ff0000, dma addr: 0xffea5000, obj addr: 0xffffff810fa9cc00, size: 240, aligned size: 4096, fd: 8, handle: 5, flags: 0x403, gem name: 5, iommu domain id: 0
+D RKNN: [22:34:31.820] allocated memory, name: output, virt addr: 0x7ff7fef000, dma addr: 0xffea4000, obj addr: 0xffffff810fa9d800, size: 640, aligned size: 4096, fd: 9, handle: 6, flags: 0x403, gem name: 6, iommu domain id: 0
+D RKNN: [22:34:31.820] enable argb mode, dtype: FLOAT16, channel: 3
+D RKNN: [22:34:31.820] update cvt sign: 0
+D RKNN: [22:34:33.412] Output(output): size_with_stride larger than model origin size, if need run OutputOperator in NPU, please call rknn_create_memory using size_with_stride.
+  Output shape: 1x6x4x5
+
+  Expected Output (CPU computed):
+    Output Channel 0:
+      6.29932 8.82031 11.3477 13.8574 16.3633 
+      6.29883 8.82227 11.3379 13.8555 16.3789 
+      6.29883 8.82031 11.3438 13.8633 16.3828 
+      6.28906 8.81641 11.3359 13.8516 16.3984 
+    Output Channel 1:
+      3.78271 6.29688 8.81641 11.3535 13.8672 
+      3.7793 6.30078 8.82617 11.3398 13.8555 
+      3.7793 6.30078 8.81641 11.3398 13.8516 
+      3.78906 6.29297 8.83594 11.3359 13.8516 
+    Output Channel 2:
+      -10.082 -15.1172 -20.1641 -25.2109 -30.2305 
+      -10.0781 -15.123 -20.1641 -25.1953 -30.2344 
+      -10.0781 -15.1211 -20.1602 -25.2031 -30.2344 
+      -10.0781 -15.1094 -20.1719 -25.1875 -30.25 
+    Output Channel 3:
+      6.29932 8.82031 11.3477 13.8574 16.3633 
+      6.29883 8.82227 11.3379 13.8555 16.3789 
+      6.29883 8.82031 11.3438 13.8633 16.3828 
+      6.28906 8.81641 11.3359 13.8516 16.3984 
+    Output Channel 4:
+      3.78271 6.29688 8.81641 11.3535 13.8672 
+      3.7793 6.30078 8.82617 11.3398 13.8555 
+      3.7793 6.30078 8.81641 11.3398 13.8516 
+      3.78906 6.29297 8.83594 11.3359 13.8516 
+    Output Channel 5:
+      -10.082 -15.1172 -20.1641 -25.2109 -30.2305 
+      -10.0781 -15.123 -20.1641 -25.1953 -30.2344 
+      -10.0781 -15.1211 -20.1602 -25.2031 -30.2344 
+      -10.0781 -15.1094 -20.1719 -25.1875 -30.25 
+
+  Actual Output (RKNN):
+    Output Channel 0:
+      6.30078 8.82031 11.3438 13.8594 16.3594 
+      6.29688 8.82031 11.3359 13.8594 16.375 
+      6.29688 8.82031 11.3438 13.8594 16.375 
+      6.28906 8.8125 11.3359 13.8516 16.4062 
+    Output Channel 1:
+      3.7832 6.29688 8.8125 11.3516 13.8672 
+      3.7793 6.30078 8.82812 11.3438 13.8594 
+      3.7793 6.30078 8.8125 11.3438 13.8516 
+      3.78906 6.29297 8.83594 11.3359 13.8516 
+    Output Channel 2:
+      -10.0781 -15.1172 -20.1562 -25.2188 -30.2344 
+      -10.0781 -15.125 -20.1562 -25.1875 -30.2344 
+      -10.0781 -15.125 -20.1562 -25.2031 -30.2344 
+      -10.0781 -15.1094 -20.1719 -25.1875 -30.25 
+    Output Channel 3:
+      6.30078 8.82031 11.3438 13.8594 16.3594 
+      6.29688 8.82031 11.3359 13.8594 16.375 
+      6.29688 8.82031 11.3438 13.8594 16.375 
+      6.28906 8.8125 11.3359 13.8516 16.4062 
+    Output Channel 4:
+      3.7832 6.29688 8.8125 11.3516 13.8672 
+      3.7793 6.30078 8.82812 11.3438 13.8594 
+      3.7793 6.30078 8.8125 11.3438 13.8516 
+      3.78906 6.29297 8.83594 11.3359 13.8516 
+    Output Channel 5:
+      -10.0781 -15.1172 -20.1562 -25.2188 -30.2344 
+      -10.0781 -15.125 -20.1562 -25.1875 -30.2344 
+      -10.0781 -15.125 -20.1562 -25.2031 -30.2344 
+      -10.0781 -15.1094 -20.1719 -25.1875 -30.25 
+D RKNN: [22:34:33.412] free memory, name: external, virt addr: 0x7ff7ff1000, dma addr: 0xffea6000, obj addr: 0xffffff810fa9c000, size: 640, aligned size: 4096, fd: 7, handle: 4, flags: 0x403, gem name: 4, iommu domain id: 0
+D RKNN: [22:34:33.413] free memory, name: internal, virt addr: 0x7ff7ff2000, dma addr: 0xffea7000, obj addr: 0xffffff810fa99000, size: 896, aligned size: 4096, fd: 6, handle: 3, flags: 0x403, gem name: 3, iommu domain id: 0
+D RKNN: [22:34:33.413] free memory, name: weight, virt addr: 0x7ff7ff3000, dma addr: 0xffea8000, obj addr: 0xffffff810fa98000, size: 9728, aligned size: 12288, fd: 5, handle: 2, flags: 0x403, gem name: 2, iommu domain id: 0
+D RKNN: [22:34:33.413] free memory, name: task, virt addr: 0x7ff7ff6000, dma addr: 0xffead000, obj addr: 0xffffff810fa99c00, size: 440, aligned size: 4096, fd: 4, handle: 1, flags: 0x40b, gem name: 1, iommu domain id: 0
+D RKNN: [22:34:33.413] free memory, name: input, virt addr: 0x7ff7ff0000, dma addr: 0xffea5000, obj addr: 0xffffff810fa9cc00, size: 240, aligned size: 4096, fd: 8, handle: 5, flags: 0x403, gem name: 5, iommu domain id: 0
+D RKNN: [22:34:33.413] free memory, name: output, virt addr: 0x7ff7fef000, dma addr: 0xffea4000, obj addr: 0xffffff810fa9d800, size: 640, aligned size: 4096, fd: 9, handle: 6, flags: 0x403, gem name: 6, iommu domain id: 0
+
+  ✓ PASSED (max error: 0.0078125)
+
+################################################################################
+TEST SUMMARY
+################################################################################
+Total tests: 1
+Passed: 1
+Failed: 0
+################################################################################
+[Inferior 1 (process 411874) exited normally]

@@ -1,4 +1,4 @@
-import sys, os, fcntl, mmap, ctypes, struct, argparse, re, xml.parsers.expat, collections
+import sys, os, fcntl, mmap, ctypes, struct, argparse, re, xml.parsers.expat, collections, subprocess
 
 class Error(Exception):
     def __init__(self, message):
@@ -297,6 +297,157 @@ class Colors:
         text = re.sub(r'(lsb\s+[0-9a-fA-F]+)', f'{Colors.W}\\1{Colors.RESET}', text)
         return text
 
+TASK_STRUCT = struct.Struct("<8IQ")
+TASK_FIELD_NAMES = (
+    "flags",
+    "op_idx",
+    "enable_mask",
+    "int_mask",
+    "int_clear",
+    "int_status",
+    "regcfg_amount",
+    "regcfg_offset",
+    "regcmd_addr",
+)
+_TASK_ZERO_CHUNK = b"\x00" * TASK_STRUCT.size
+
+_TASK_REGCMDS = []
+_DMA_LOG_CACHE = None
+_DMA_LOG_COUNTER = 0
+
+def _parse_dma_log_text(text, cache):
+    global _DMA_LOG_COUNTER
+    if not text:
+        return
+    pattern = re.compile(r"dma addr:\s*(0x[0-9a-fA-F]+).*gem name:\s*(\d+)", re.IGNORECASE)
+    ts_pattern = re.compile(r"\[(\d{2}):(\d{2}):(\d{2})[.:](\d+)\]")
+    for line in text.splitlines():
+        m = pattern.search(line)
+        if not m:
+            continue
+        addr = int(m.group(1), 16)
+        flink = int(m.group(2))
+        ts_match = ts_pattern.search(line)
+        if ts_match:
+            h, mi, s, frac = ts_match.groups()
+            try:
+                seconds = int(h) * 3600 + int(mi) * 60 + int(s) + float(f"0.{frac}")
+            except Exception:
+                seconds = 0.0
+        else:
+            seconds = 0.0
+        _DMA_LOG_COUNTER += 1
+        cache[flink].append((seconds, _DMA_LOG_COUNTER, addr))
+
+def _populate_dma_cache(force=False):
+    global _DMA_LOG_CACHE
+    if _DMA_LOG_CACHE is None or force:
+        cache = collections.defaultdict(list)
+        # Try kernel ring buffer
+        try:
+            dm = subprocess.run(["dmesg"], capture_output=True, text=True, timeout=1.0)
+            if dm.returncode == 0:
+                _parse_dma_log_text(dm.stdout, cache)
+        except Exception:
+            pass
+
+        # Try local log files that may capture RKNN output
+        search_dirs = []
+        cwd = os.getcwd()
+        for _ in range(4):
+            if cwd and cwd not in search_dirs:
+                search_dirs.append(cwd)
+            parent = os.path.dirname(cwd)
+            if parent == cwd or not parent:
+                break
+            cwd = parent
+
+        extra_dirs = [
+            os.path.join(os.path.expanduser("~"), "npu", "ops_rknn"),
+            os.path.join(os.path.expanduser("~"), "npu"),
+        ]
+        for directory in extra_dirs:
+            if directory and directory not in search_dirs:
+                search_dirs.append(directory)
+
+        for directory in search_dirs:
+            for name in ("run_output.txt", "output.txt"):
+                path = os.path.join(directory, name)
+                try:
+                    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                        _parse_dma_log_text(f.read(), cache)
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    pass
+
+        _DMA_LOG_CACHE = cache
+    return _DMA_LOG_CACHE
+
+def lookup_dma_addr_from_logs(flink):
+    cache = _populate_dma_cache(force=True)
+    if flink not in cache or not cache[flink]:
+        return None
+    seconds, counter, addr = max(cache[flink], key=lambda x: (x[0], x[1]))
+    return addr
+
+def decode_tasks_from_buffer(buf, gem_size, flink=None):
+    tasks = []
+    regcmd_addrs = []
+    for offset in range(0, gem_size, TASK_STRUCT.size):
+        chunk = buf[offset: offset + TASK_STRUCT.size]
+        if len(chunk) < TASK_STRUCT.size:
+            break
+        if chunk == _TASK_ZERO_CHUNK:
+            continue
+        values = TASK_STRUCT.unpack(chunk)
+        flags, op_idx, enable_mask, int_mask, int_clear, int_status, regcfg_amount, regcfg_offset, regcmd_addr = values
+        if regcfg_amount == 0 or regcmd_addr == 0:
+            continue
+        if regcfg_amount > 0x10000:
+            continue
+        if regcmd_addr & 0xf:
+            continue
+        tasks.append((offset, values))
+        if regcmd_addr:
+            regcmd_addrs.append(regcmd_addr)
+            _TASK_REGCMDS.append({
+                "flink": flink,
+                "offset": offset,
+                "regcfg_amount": regcfg_amount,
+                "regcmd_addr": regcmd_addr,
+                "used": False,
+            })
+    return tasks
+
+def _format_task_value(name, value):
+    if name == "regcmd_addr":
+        return f"0x{value:016x}"
+    if name == "regcfg_amount":
+        return f"{value} entries (0x{value:08x})"
+    if name == "op_idx":
+        return f"{value} (0x{value:08x})"
+    return f"0x{value:08x}"
+
+def emit_task_report(tasks, flink):
+    if not tasks:
+        return
+    print(f"\n{'='*50}\nDecoded rknpu_task entries for GEM {flink}\n{'='*50}")
+    output_path = f"dump/gem{flink}_tasks.txt"
+    with open(output_path, "w") as tf:
+        for idx, (offset, values) in enumerate(tasks):
+            header = f"Task {idx} @ offset 0x{offset:04x}"
+            print(Colors.highlight(header))
+            tf.write(f"{header}\n")
+            for name, value in zip(TASK_FIELD_NAMES, values):
+                formatted = _format_task_value(name, value)
+                line = f"  {name:<13}: {formatted}"
+                print(Colors.highlight(line))
+                tf.write(f"{line}\n")
+            print()
+            tf.write("\n")
+    print(Colors.highlight(f"Decoded {len(tasks)} task entries to {output_path}"))
+
 class drm_version(ctypes.Structure):
     _fields_ = [("version_major", ctypes.c_int), ("version_minor", ctypes.c_int), ("version_patchlevel", ctypes.c_int),
                 ("name_len", ctypes.c_size_t), ("name", ctypes.POINTER(ctypes.c_char)), ("date_len", ctypes.c_size_t),
@@ -337,41 +488,46 @@ def dump_gem(fd, flink):
         os.makedirs("dump", exist_ok=True)
         with open(f"dump/gem{flink}-dump", "wb") as f: f.write(instr)
 
-        # Process blocks, grouping consecutive zero blocks together
-        i = 0
-        while i < g.size:
-            block = instr[i : i + 16]
-            here = struct.unpack("<4I", block)
+        # # Process blocks, grouping consecutive zero blocks together
+        # i = 0
+        # while i < g.size:
+        #     block = instr[i : i + 16]
+        #     here = struct.unpack("<4I", block)
             
-            # Check if current block is all zeros
-            if all(x == 0 for x in here):
-                # Count how many consecutive zero blocks there are starting from this point
-                zero_start = i
-                zero_blocks = 0
+        #     # Check if current block is all zeros
+        #     if all(x == 0 for x in here):
+        #         # Count how many consecutive zero blocks there are starting from this point
+        #         zero_start = i
+        #         zero_blocks = 0
                 
-                # Count all consecutive zero blocks
-                j = i
-                while j < g.size:
-                    block = instr[j : j + 16]
-                    here = struct.unpack("<4I", block)
-                    if all(x == 0 for x in here):
-                        zero_blocks += 1
-                        j += 16
-                    else:
-                        break
+        #         # Count all consecutive zero blocks
+        #         j = i
+        #         while j < g.size:
+        #             block = instr[j : j + 16]
+        #             here = struct.unpack("<4I", block)
+        #             if all(x == 0 for x in here):
+        #                 zero_blocks += 1
+        #                 j += 16
+        #             else:
+        #                 break
                 
-                # Only print the first zero block if there are many consecutive ones
-                if zero_blocks > 1:
-                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
-                    print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
-                else:
-                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+        #         # Only print the first zero block if there are many consecutive ones
+        #         if zero_blocks > 1:
+        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+        #             print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
+        #         else:
+        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
                 
-                i = j  # Move to the next non-zero block
-            else:
-                print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
-                i += 16
+        #         i = j  # Move to the next non-zero block
+        #     else:
+        #         print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
+        #         i += 16
 
+        if flink == 1:
+            tasks = decode_tasks_from_buffer(instr, g.size, flink=flink)
+            emit_task_report(tasks, flink)
+            instr.close()
+            return
         instr.close()
     except: pass
 
@@ -387,8 +543,9 @@ def dump_gem(fd, flink):
         ret = fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, m)
         print(f"memmap returned", ret, hex(m.offset))
 
-        instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=m.offset)
-        print(f"mmap returned {instr}", m.offset)
+        phys_base = m.offset
+        instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=phys_base)
+        print(f"mmap returned {instr}", phys_base)
 
         # Initialize parser for XML register definitions
         regs, domains = {}, {}
@@ -407,11 +564,45 @@ def dump_gem(fd, flink):
                 print(f"DEBUG: XML parsing failed: {ex}")
                 pass
 
+        commands = []
+        for i in range(g.size // 8):
+            v = struct.unpack("<Q", instr[i*8:(i+1)*8])[0]
+            if v == 0:
+                continue
+            commands.append((i, v))
+
+        if not commands:
+            print(Colors.highlight("No register commands found in this GEM; skipping decode."))
+            instr.close()
+            return
+
+        base_addr = phys_base
+        dma_base = lookup_dma_addr_from_logs(flink)
+        if dma_base is not None:
+            base_addr = dma_base
+        best_entry = None
+        best_diff = None
+        for entry in _TASK_REGCMDS:
+            if entry["regcfg_amount"] <= 0:
+                continue
+            diff = abs(entry["regcfg_amount"] - len(commands))
+            if best_entry is None or diff < best_diff or (diff == best_diff and entry["used"] is False and best_entry.get("used", False)):
+                best_entry = entry
+                best_diff = diff
+
+        task_base = None
+        if best_entry and (best_diff == 0 or best_entry["used"] is False):
+            task_base = best_entry["regcmd_addr"]
+            if dma_base is not None and dma_base != task_base:
+                print(f"DEBUG: overriding dma base 0x{dma_base:x} with task base 0x{task_base:x} for GEM {flink}")
+            base_addr = task_base
+            best_entry["used"] = True
+
+        print(f"DEBUG: base selection for GEM {flink}: dma_base={dma_base} phys_base=0x{phys_base:x} task_base={task_base} chosen=0x{base_addr:x} commands={len(commands)}")
+
         with open(f"dump/gem{flink}_regdump.bin", "wb") as df:
             print(Colors.highlight(f"Successfully created dump/gem{flink}_regdump.bin"))
-            for i in range(g.size // 8):
-                v = struct.unpack("<Q", instr[i*8:(i+1)*8])[0]
-                if v == 0: continue
+            for i, v in commands:
                 val = (v >> 16) & 0xffffffff
                 low = v & 0xffff
                 tgt = 0
@@ -424,6 +615,7 @@ def dump_gem(fd, flink):
                 elif (v >> 62) & 1: tgt, dst = 0x4000, "PPU"
                 elif (v >> 63) & 1: tgt, dst = 0x8000, "PPU_RDMA"
 
+                addr = base_addr + i * 8
                 if low in regs:
                     reg = regs[low]
                     emit_str = f"EMIT(REG_{regs[low].full_name.upper()}, "
@@ -444,18 +636,18 @@ def dump_gem(fd, flink):
                                     emit_str += f"{reg.full_name.upper()}_{field.name.upper()}({field_value})"
                                     first = False
                     emit_str += ");"
-                    reg_info = f"[{8 * i + 0xffef0000:x}] lsb {v:016x} - {dst}"
+                    reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst}"
                     spacing = " " * max(1, 50 - len(reg_info))
                     print(Colors.highlight(f"{reg_info}{spacing}{emit_str}"))
                 else:
-                    reg_info = f"[{8 * i + 0xffef0000:x}] lsb {v:016x} - {dst} Unknown"
+                    reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst} Unknown"
                     print(Colors.highlight(reg_info))
                     if i < 5:  # Only show first few mismatches
                         print(f"DEBUG: Looking for offset 0x{low:x}, available offsets: {sorted(regs.keys())[:10]}")
 
                 df.write(struct.pack("<hIh", low if low <= 32767 else low - 65536, val, tgt if tgt <= 32767 else tgt - 65536))
 
-        print(Colors.highlight(f"Dumped {g.size // 8} register commands to dump/gem{flink}_regdump.bin"))
+        print(Colors.highlight(f"Dumped {len(commands)} register commands to dump/gem{flink}_regdump.bin"))
         instr.close()
     except: pass
 
@@ -463,37 +655,74 @@ def dump_virtual_memory(fd, address, size=4096):
     """Dump specific virtual memory address"""
     print(f"\n{'='*50}\nProcessing Virtual Memory Address 0x{address:x}\n{'='*50}")
     try:
-        # Map memory at specific address
-        # This is a simplified approach - in practice, you'd need to know the file descriptor
-        # and offset corresponding to this virtual address
+        # Try to map the virtual memory using the device file descriptor
         print(Colors.highlight(f"Attempting to dump memory at virtual address 0x{address:x}"))
+        print(Colors.highlight("Note: This attempts to map virtual memory through the DRM device"))
+        print(Colors.highlight("For actual physical memory dumps, you would need to know the GEM object handle"))
         
-        # For demonstration, we'll create a mock memory dump
-        # In a real implementation, you would need to translate the virtual address
-        # to a file descriptor and offset that can be mmap'd
-        print(Colors.highlight("Note: Virtual memory dumping requires kernel-level access"))
-        print(Colors.highlight("This implementation would need to be extended with actual memory mapping logic"))
+        # Align address to page boundary and adjust size accordingly
+        page_size = 4096
+        aligned_address = address & ~(page_size - 1)
+        offset = address - aligned_address
+        aligned_size = ((offset + size + page_size - 1) // page_size) * page_size
         
-        # Create a mock memory dump for demonstration
-        mock_data = bytearray()
-        for i in range(min(size, 256)):  # Only dump first 256 bytes for demo
-            mock_data.append((address + i) & 0xFF)
+        print(Colors.highlight(f"Mapping parameters: address=0x{address:x}, aligned=0x{aligned_address:x}, offset=0x{offset:x}, size={size}, aligned_size={aligned_size}"))
+        
+        # Try to map the memory
+        try:
+            # Map memory with READ permissions
+            mem = mmap.mmap(fd, aligned_size, mmap.MAP_SHARED, mmap.PROT_READ, offset=aligned_address)
+            print(Colors.highlight(f"Successfully mapped memory region"))
             
+            # Extract the requested data
+            data = mem[offset:offset+size]
+            mem.close()
+            
+        except Exception as mmap_error:
+            print(Colors.highlight(f"mmap failed: {mmap_error}"))
+            # Try with different protection flags
+            try:
+                mem = mmap.mmap(fd, aligned_size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=aligned_address)
+                data = mem[offset:offset+size]
+                mem.close()
+                print(Colors.highlight(f"mmap with PROT_READ|PROT_WRITE succeeded"))
+            except Exception as fallback_error:
+                print(Colors.highlight(f"All mmap attempts failed: {fallback_error}"))
+                print(Colors.highlight("Cannot map virtual memory at this address"))
+                print(Colors.highlight("To dump actual memory, you need to:"))
+                print(Colors.highlight("1. Find the GEM object associated with this virtual address"))
+                print(Colors.highlight("2. Use DRM_IOCTL_GEM_OPEN to get the handle"))
+                print(Colors.highlight("3. Use DRM_IOCTL_RKNPU_MEM_MAP to get the offset"))
+                print(Colors.highlight("4. Use mmap with the correct offset"))
+                return  # Exit without creating mock data
+        
         os.makedirs("dump", exist_ok=True)
         filename = f"dump/vmem_0x{address:x}.bin"
         with open(filename, "wb") as f:
-            f.write(mock_data)
+            f.write(data)
             
         print(Colors.highlight(f"Dumped virtual memory to {filename}"))
         
-        # Display first few lines in a hexdump format
-        for i in range(0, min(size, 64), 16):
-            hex_part = " ".join(f"{b:02x}" for b in mock_data[i:i+16])
-            ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in mock_data[i:i+16])
+        # Display data in hexdump format
+        print(Colors.highlight(f"\nHex dump of virtual memory at 0x{address:x}:"))
+        for i in range(0, min(len(data), size), 16):
+            # Get 16 bytes for this line
+            chunk = data[i:i+16]
+            # Convert to hex
+            hex_part = " ".join(f"{b:02x}" for b in chunk)
+            # Convert to ASCII (printable characters or dots)
+            ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
+            # Print with address
             print(Colors.highlight(f"0x{i:08x}: {hex_part:<48} {ascii_part}"))
+            
+        # If we have more data than displayed, show summary
+        if len(data) > 256:
+            print(Colors.highlight(f"... ({len(data) - 256} more bytes not shown)"))
             
     except Exception as e:
         print(Colors.highlight(f"Failed to dump virtual memory at 0x{address:x}: {e}"))
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     # Check if we're dumping a virtual memory address
@@ -502,6 +731,13 @@ if __name__ == "__main__":
         try:
             address = int(sys.argv[1], 16)
             size = int(sys.argv[2]) if len(sys.argv) > 2 else 4096
+            
+            print(Colors.highlight("Virtual Memory Dumping Information:"))
+            print(Colors.highlight("=============================="))
+            print(Colors.highlight("This tool attempts to dump virtual memory through the DRM device."))
+            print(Colors.highlight("For meaningful results, you need to know the correct virtual address."))
+            print(Colors.highlight("For GEM object memory dumps, use the GEM flink name instead."))
+            print(Colors.highlight(""))
             
             # Try to open DRM device
             try: 
@@ -514,12 +750,32 @@ if __name__ == "__main__":
                 dump_virtual_memory(None, address, size)
         except ValueError:
             print(Colors.highlight("Invalid virtual memory address format. Use 0x<hex_address>"))
+            print(Colors.highlight("Example: python3 dump.py 0x100000"))
         sys.exit(0)
     
     # Handle GEM object dumping (original functionality)
-    p = argparse.ArgumentParser()
-    p.add_argument('gems', nargs='*', type=int)
+    p = argparse.ArgumentParser(description="Dump GEM objects from RKNNPU device")
+    p.add_argument('gems', nargs='*', type=int, help="GEM flink names to dump (default: 1 2)")
+    p.add_argument('--vmem', metavar='ADDR', help="Dump virtual memory at hex address (e.g., 0x100000)")
+    p.add_argument('--size', type=int, default=4096, help="Size in bytes for virtual memory dump (default: 4096)")
     a = p.parse_args()
+
+    # Handle virtual memory dump from arguments
+    if a.vmem:
+        try:
+            address = int(a.vmem, 16)
+            # Try to open DRM device
+            try: 
+                fd = os.open("/dev/dri/card1", os.O_RDWR)
+                dump_virtual_memory(fd, address, a.size)
+                os.close(fd)
+            except Exception as e:
+                print(Colors.highlight(f"Failed to open DRM device: {e}"))
+                # Still try to dump with mock data
+                dump_virtual_memory(None, address, a.size)
+        except ValueError:
+            print(Colors.highlight("Invalid virtual memory address format. Use 0x<hex_address>"))
+        sys.exit(0)
 
     try: fd = os.open("/dev/dri/card1", os.O_RDWR)
     except: sys.exit(1)
