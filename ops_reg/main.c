@@ -206,6 +206,14 @@ int test_conv2d(int argc, char **argv) {
   }
 
   __fp16 *result = float16_conv2d(input, kernel, 13, (int)input_elems, (int)weight_elems);
+  if (result == NULL) {
+    printf("float16_conv2d returned NULL\n");
+    free(input);
+    free(kernel);
+    free(input_packed);
+    free(expected);
+    return -1;
+  }
   float *output_nchw = (float*)malloc((size_t)out_channels * out_height * out_width * sizeof(float));
   if (!output_nchw) {
     printf("failed to allocate output buffer\n");

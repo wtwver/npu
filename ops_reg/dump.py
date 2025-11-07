@@ -708,7 +708,13 @@ def dump_gem(fd, flink):
                     emit_str += ");"
                     reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst}"
                     spacing = " " * max(1, 50 - len(reg_info))
-                    print(Colors.highlight(f"{reg_info}{spacing}{emit_str}"))
+                    full_line = f"{reg_info}{spacing}{emit_str}"
+                    rendered = Colors.highlight(full_line)
+                    if "REG_PC_OPERATION_ENABLE" in emit_str:
+                        rendered = Colors.R + rendered.replace(Colors.RESET, Colors.RESET + Colors.R) + Colors.RESET
+                        print(rendered + "\n\n\n")
+                    else:
+                        print(rendered)
                 else:
                     reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst} Unknown"
                     print(Colors.highlight(reg_info))
