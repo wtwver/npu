@@ -1,4 +1,37 @@
-import sys, os, fcntl, mmap, ctypes, struct, argparse, re, xml.parsers.expat, collections, subprocess
+import sys, os, fcntl, mmap, ctypes, struct, argparse, re, xml.parsers.expat, collections, subprocess, signal
+
+# Prevent BrokenPipeError stack traces when output is piped through tools like `tee`
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+TMP_DMA_LOG = "/tmp/rknpu_info"
+
+def _lookup_dma_from_tmp(flink):
+    if not os.path.exists(TMP_DMA_LOG):
+        return None
+    dma = None
+    try:
+        with open(TMP_DMA_LOG, "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if not parts or parts[0] != "FLINK":
+                    continue
+                kv = {}
+                for part in parts[1:]:
+                    if "=" in part:
+                        k, v = part.split("=", 1)
+                        kv[k] = v
+                try:
+                    if int(kv.get("flink", "0"), 0) != flink:
+                        continue
+                    dma_str = kv.get("dma")
+                    if dma_str is None:
+                        continue
+                    dma = int(dma_str, 0)
+                except Exception:
+                    continue
+    except Exception:
+        return None
+    return dma
 
 class Error(Exception):
     def __init__(self, message):
@@ -400,6 +433,9 @@ def _populate_dma_cache(force=False):
     return _DMA_LOG_CACHE
 
 def lookup_dma_addr_from_logs(flink):
+    tmp_dma = _lookup_dma_from_tmp(flink)
+    if tmp_dma is not None:
+        return tmp_dma
     cache = _populate_dma_cache(force=True)
     if flink not in cache or not cache[flink]:
         return None
@@ -533,6 +569,7 @@ def mask(l, h): return ((0xffffffffffffffff >> (64 - (h + 1 - l))) << l)
 
 def dump_gem(fd, flink):
     print(f"\n{'='*50}\nProcessing GEM Flink {flink}\n{'='*50}")
+    raw_map = None
     try:
         g = drm_gem_open()
         g.name = flink
@@ -544,56 +581,28 @@ def dump_gem(fd, flink):
         ret = fcntl.ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, m)
         print(f"DRM_IOCTL_RKNPU_MEM_MAP returned", ret, hex(m.offset))
 
-        instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=m.offset)
-        print(f"mmap returned {instr}")
+        raw_map = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=m.offset)
+        print(f"mmap returned {raw_map}")
 
         os.makedirs("dump", exist_ok=True)
-        with open(f"dump/gem{flink}-dump", "wb") as f: f.write(instr)
-
-        # # Process blocks, grouping consecutive zero blocks together
-        # i = 0
-        # while i < g.size:
-        #     block = instr[i : i + 16]
-        #     here = struct.unpack("<4I", block)
-            
-        #     # Check if current block is all zeros
-        #     if all(x == 0 for x in here):
-        #         # Count how many consecutive zero blocks there are starting from this point
-        #         zero_start = i
-        #         zero_blocks = 0
-                
-        #         # Count all consecutive zero blocks
-        #         j = i
-        #         while j < g.size:
-        #             block = instr[j : j + 16]
-        #             here = struct.unpack("<4I", block)
-        #             if all(x == 0 for x in here):
-        #                 zero_blocks += 1
-        #                 j += 16
-        #             else:
-        #                 break
-                
-        #         # Only print the first zero block if there are many consecutive ones
-        #         if zero_blocks > 1:
-        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
-        #             print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
-        #         else:
-        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
-                
-        #         i = j  # Move to the next non-zero block
-        #     else:
-        #         print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
-        #         i += 16
+        with open(f"dump/gem{flink}-dump", "wb") as f:
+            f.write(raw_map)
 
         if flink == 1:
-            tasks = decode_tasks_from_buffer(instr, g.size, flink=flink)
+            tasks = decode_tasks_from_buffer(raw_map, g.size, flink=flink)
             emit_task_report(tasks, flink)
-            instr.close()
             return
-        instr.close()
-    except: pass
+    except Exception as ex:
+        print(f"DEBUG: dump_gem raw dump failed for flink {flink}: {ex}")
+    finally:
+        try:
+            if raw_map is not None:
+                raw_map.close()
+        except Exception:
+            pass
 
     print(f"\n{'='*50}\nProcessing GEM Flink {flink} for Register Decode\n{'='*50}")
+    instr = None
     try:
         g = drm_gem_open()
         g.name = flink
@@ -640,10 +649,8 @@ def dump_gem(fd, flink):
 
         ensure_task_regcmds_loaded(flink)
 
-        base_addr = phys_base
         dma_base = lookup_dma_addr_from_logs(flink)
-        if dma_base is not None:
-            base_addr = dma_base
+        base_addr = dma_base if dma_base is not None else phys_base
         best_entry = None
         best_diff = None
         for entry in _TASK_REGCMDS:
@@ -658,8 +665,7 @@ def dump_gem(fd, flink):
         if best_entry and (best_diff == 0 or best_entry["used"] is False):
             task_base = best_entry["regcmd_addr"]
             if dma_base is not None and dma_base != task_base:
-                print(f"DEBUG: overriding dma base 0x{dma_base:x} with task base 0x{task_base:x} for GEM {flink}")
-            base_addr = task_base
+                print(f"DEBUG: keeping weight dma base 0x{dma_base:x} but matched task base 0x{task_base:x} for GEM {flink}")
             best_entry["used"] = True
 
         print(f"DEBUG: base selection for GEM {flink}: dma_base={dma_base} phys_base=0x{phys_base:x} task_base={task_base} chosen=0x{base_addr:x} commands={len(commands)}")
@@ -712,8 +718,14 @@ def dump_gem(fd, flink):
                 df.write(struct.pack("<hIh", low if low <= 32767 else low - 65536, val, tgt if tgt <= 32767 else tgt - 65536))
 
         print(Colors.highlight(f"Dumped {len(commands)} register commands to dump/gem{flink}_regdump.bin"))
-        instr.close()
-    except: pass
+    except Exception as ex:
+        print(f"DEBUG: Register decode failed for GEM {flink}: {ex}")
+    finally:
+        if instr is not None:
+            try:
+                instr.close()
+            except Exception:
+                pass
 
 def dump_virtual_memory(fd, address, size=4096):
     """Dump specific virtual memory address"""
