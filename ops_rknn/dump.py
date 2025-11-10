@@ -297,6 +297,39 @@ class Colors:
         text = re.sub(r'(lsb\s+[0-9a-fA-F]+)', f'{Colors.W}\\1{Colors.RESET}', text)
         return text
 
+def _word_to_ascii(value):
+    try:
+        raw = value.to_bytes(8, 'little')
+    except OverflowError:
+        return None
+    filtered = bytes(b for b in raw if 32 <= b <= 126)
+    if len(filtered) >= 4:
+        try:
+            return filtered.decode('ascii')
+        except UnicodeDecodeError:
+            return None
+    return None
+
+def _looks_like_host_pointer(value):
+    high = (value >> 32) & 0xffffffff
+    return value > 0x10000 and 0x00000040 <= high <= 0x00000090
+
+def describe_pc_metadata(dst, value):
+    if dst not in ("PC", "noone"):
+        return None
+    if value == 0:
+        return "PC metadata padding"
+    if value == 0x0101010101010101:
+        return "PC metadata sentinel (0x0101...)"
+    ascii_str = _word_to_ascii(value)
+    if ascii_str:
+        return f'PC metadata ASCII "{ascii_str}"'
+    if _looks_like_host_pointer(value):
+        return f'Host pointer 0x{value:016x}'
+    if (value >> 32) == 0:
+        return f'PC metadata value 0x{value:08x}'
+    return None
+
 TASK_STRUCT = struct.Struct("<8IQ")
 TASK_FIELD_NAMES = (
     "flags",
@@ -488,40 +521,40 @@ def dump_gem(fd, flink):
         os.makedirs("dump", exist_ok=True)
         with open(f"dump/gem{flink}-dump", "wb") as f: f.write(instr)
 
-        # # Process blocks, grouping consecutive zero blocks together
-        # i = 0
-        # while i < g.size:
-        #     block = instr[i : i + 16]
-        #     here = struct.unpack("<4I", block)
+        # Process blocks, grouping consecutive zero blocks together
+        i = 0
+        while i < g.size:
+            block = instr[i : i + 16]
+            here = struct.unpack("<4I", block)
             
-        #     # Check if current block is all zeros
-        #     if all(x == 0 for x in here):
-        #         # Count how many consecutive zero blocks there are starting from this point
-        #         zero_start = i
-        #         zero_blocks = 0
+            # Check if current block is all zeros
+            if all(x == 0 for x in here):
+                # Count how many consecutive zero blocks there are starting from this point
+                zero_start = i
+                zero_blocks = 0
                 
-        #         # Count all consecutive zero blocks
-        #         j = i
-        #         while j < g.size:
-        #             block = instr[j : j + 16]
-        #             here = struct.unpack("<4I", block)
-        #             if all(x == 0 for x in here):
-        #                 zero_blocks += 1
-        #                 j += 16
-        #             else:
-        #                 break
+                # Count all consecutive zero blocks
+                j = i
+                while j < g.size:
+                    block = instr[j : j + 16]
+                    here = struct.unpack("<4I", block)
+                    if all(x == 0 for x in here):
+                        zero_blocks += 1
+                        j += 16
+                    else:
+                        break
                 
-        #         # Only print the first zero block if there are many consecutive ones
-        #         if zero_blocks > 1:
-        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
-        #             print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
-        #         else:
-        #             print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+                # Only print the first zero block if there are many consecutive ones
+                if zero_blocks > 1:
+                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+                    print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
+                else:
+                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
                 
-        #         i = j  # Move to the next non-zero block
-        #     else:
-        #         print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
-        #         i += 16
+                i = j  # Move to the next non-zero block
+            else:
+                print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
+                i += 16
 
         if flink == 1:
             tasks = decode_tasks_from_buffer(instr, g.size, flink=flink)
@@ -600,6 +633,13 @@ def dump_gem(fd, flink):
 
         print(f"DEBUG: base selection for GEM {flink}: dma_base={dma_base} phys_base=0x{phys_base:x} task_base={task_base} chosen=0x{base_addr:x} commands={len(commands)}")
 
+        first_known_cmd_idx = None
+        for i, v in commands:
+            low = v & 0xffff
+            if low in regs:
+                first_known_cmd_idx = i
+                break
+
         with open(f"dump/gem{flink}_regdump.bin", "wb") as df:
             print(Colors.highlight(f"Successfully created dump/gem{flink}_regdump.bin"))
             for i, v in commands:
@@ -640,9 +680,17 @@ def dump_gem(fd, flink):
                     spacing = " " * max(1, 50 - len(reg_info))
                     print(Colors.highlight(f"{reg_info}{spacing}{emit_str}"))
                 else:
-                    reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst} Unknown"
+                    meta_desc = None
+                    if first_known_cmd_idx is not None and i < first_known_cmd_idx:
+                        meta_desc = "Packed weight data (see pack_conv_weights_fp16)"
+                    else:
+                        meta_desc = describe_pc_metadata(dst, val)
+                    if meta_desc:
+                        reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst} {meta_desc}"
+                    else:
+                        reg_info = f"[0x{addr:08x}] lsb {v:016x} - {dst} Unknown"
                     print(Colors.highlight(reg_info))
-                    if i < 5:  # Only show first few mismatches
+                    if meta_desc is None and i < 5:  # Only show first few mismatches
                         print(f"DEBUG: Looking for offset 0x{low:x}, available offsets: {sorted(regs.keys())[:10]}")
 
                 df.write(struct.pack("<hIh", low if low <= 32767 else low - 65536, val, tgt if tgt <= 32767 else tgt - 65536))

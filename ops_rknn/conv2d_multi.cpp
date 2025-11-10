@@ -238,6 +238,7 @@ static bool run_conv_test(const ConvConfig& config) {
 
   rknn_tensor_attr output_mem_attr = native_output_attr;
   output_mem_attr.pass_through = 1;
+  // output_mem_attr.pass_through = 0;
   ret = rknn_set_io_mem(ctx, output_mem, &output_mem_attr);
   if (ret < 0) {
     std::cerr << "rknn_set_io_mem failed: " << ret << std::endl;
@@ -328,6 +329,7 @@ static bool run_conv_test(const ConvConfig& config) {
   input_desc.pass_through = 1;
   input_desc.type = static_cast<rknn_tensor_type>(native_input_attr.type);
   input_desc.fmt = static_cast<rknn_tensor_format>(native_input_attr.fmt);
+  printf("haha %d\n", input_desc.buf);
 
   ret = rknn_inputs_set(ctx, 1, &input_desc);
   if (ret < 0) {

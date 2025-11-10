@@ -125,8 +125,14 @@ int test_conv2d(int argc, char **argv) {
 
   size_t input_elems = (size_t)batch * in_channels * in_height * in_width;
   size_t weight_elems = (size_t)out_channels * in_channels * kernel_h * kernel_w;
-  size_t packed_input_elems =
-      (size_t)batch * ((in_channels + align_c - 1) / align_c) * in_height * width_stride * align_c;
+  bool use_pair_pack = (align_c / in_channels) == 2 && (width_stride >= in_width);
+  size_t packed_input_elems;
+  if (use_pair_pack) {
+    packed_input_elems = (size_t)batch * in_height * width_stride * in_channels;
+  } else {
+    packed_input_elems =
+        (size_t)batch * ((in_channels + align_c - 1) / align_c) * in_height * width_stride * align_c;
+  }
   __fp16 *input = (__fp16*)malloc(input_elems * sizeof(__fp16));
   __fp16 *kernel = (__fp16*)malloc(weight_elems * sizeof(__fp16));
   __fp16 *input_packed = (__fp16*)malloc(packed_input_elems * sizeof(__fp16));

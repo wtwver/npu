@@ -588,6 +588,42 @@ def dump_gem(fd, flink):
         with open(f"dump/gem{flink}-dump", "wb") as f:
             f.write(raw_map)
 
+        # Process blocks, grouping consecutive zero blocks together
+        instr = raw_map
+        i = 0
+        while i < g.size:
+            block = instr[i : i + 16]
+            here = struct.unpack("<4I", block)
+            
+            # Check if current block is all zeros
+            if all(x == 0 for x in here):
+                # Count how many consecutive zero blocks there are starting from this point
+                zero_start = i
+                zero_blocks = 0
+                
+                # Count all consecutive zero blocks
+                j = i
+                while j < g.size:
+                    block = instr[j : j + 16]
+                    here = struct.unpack("<4I", block)
+                    if all(x == 0 for x in here):
+                        zero_blocks += 1
+                        j += 16
+                    else:
+                        break
+                
+                # Only print the first zero block if there are many consecutive ones
+                if zero_blocks > 1:
+                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+                    print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
+                else:
+                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+                
+                i = j  # Move to the next non-zero block
+            else:
+                print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
+                i += 16
+
         if flink == 1:
             tasks = decode_tasks_from_buffer(raw_map, g.size, flink=flink)
             emit_task_report(tasks, flink)
