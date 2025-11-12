@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include "rknnops.h"
 
 static void unpack_nc1hwc2_fp16(const __fp16 *src, float *dst,
@@ -20,6 +21,26 @@ static void unpack_nc1hwc2_fp16(const __fp16 *src, float *dst,
         }
       }
     }
+  }
+}
+
+static void print_conv1d_outputs(const char *title, const float *data,
+    int channels, int width, int row_len) {
+  printf("%s\n", title);
+  if (row_len <= 0) row_len = width;
+  for (int oc = 0; oc < channels; oc++) {
+    printf("  Output Channel %d:\n", oc);
+    const float *row = data + (size_t)oc * width;
+    for (int start = 0; start < width; start += row_len) {
+      printf("    ");
+      int end = start + row_len;
+      if (end > width) end = width;
+      for (int i = start; i < end; i++) {
+        printf("%8.5f  ", row[i]);
+      }
+      printf("\n");
+    }
+    printf("\n");
   }
 }
 
@@ -73,7 +94,7 @@ int test_matmul(int argc, char **argv) {
     // CUSTOM 9: MUL
     // CUSTOM 10: RELU
     // CUSTOM 11: MATMUL
-    float* result = float16_matmul(a, b, 11, 32, 32, 32);
+    __fp16* result = float16_matmul(a, b, 11, 32, 32, 32);
     printf("Input0: "); for (size_t i = 0; i < M*K ; i++) printf("%f ", a[i]); printf("\n");
     printf("Input1: "); for (size_t i = 0; i < N*K ; i++) printf("%f ", b[i]); printf("\n");
     printf("Result/Input0: "); for (size_t i = 0; i < M*N ; i++) printf("fp16: %f fp32: %f \n", (__fp16)result[i], result[i]); printf("\n");
@@ -81,31 +102,105 @@ int test_matmul(int argc, char **argv) {
 }
 
 int test_conv(int argc, char **argv) {
-    int input_size = 5;
-    int kernel_size = 3;
-    int output_size = input_size - kernel_size + 1;  // 5 - 3 + 1 = 3
-    
-    __fp16* input = (__fp16*)malloc(input_size * sizeof(__fp16));
-    __fp16* kernel = (__fp16*)malloc(kernel_size * sizeof(__fp16));
-    
-    // Initialize input: [1, 2, 3, 4, 5]
-    input[0] = 1.0f; input[1] = 2.0f; input[2] = 3.0f; input[3] = 4.0f; input[4] = 5.0f;
-    // Initialize kernel: [1, 0, -1]
-    kernel[0] = 1.0f; kernel[1] = 0.0f; kernel[2] = -1.0f;
-    
-    // CUSTOM 12: CONV
-    __fp16* result = float16_conv(input, kernel, 12, input_size, kernel_size);
-    printf("Input0: "); for (size_t i = 0; i < input_size ; i++) printf("%f ", input[i]); printf("\n");
-    printf("Input1: "); for (size_t i = 0; i < kernel_size ; i++) printf("%f ", kernel[i]); printf("\n");
-    printf("Result/Input0: "); for (size_t i = 0; i < output_size ; i++) printf("fp16: %f fp32: %f \n", (__fp16)result[i], result[i]); printf("\n");
-    return 0;
-    
-    // Expected output should be: [-2.0, -2.0, -2.0]
-    // This matches conv1d_simple.cpp calculation
-    
+  const int batch = 1;
+  const int in_channels = 1;
+  const int input_size = 11;
+  const int kernel_size = 1;
+  const int out_channels = 6;
+  const int output_size = input_size - kernel_size + 1;
+  const size_t kernel_elems = (size_t)out_channels * in_channels * kernel_size;
+
+  __fp16* input = (__fp16*)malloc(input_size * sizeof(__fp16));
+  __fp16* kernel = (__fp16*)malloc(kernel_elems * sizeof(__fp16));
+
+  for (int i = 0; i < input_size; i++) {
+    input[i] = (float)(i + 1);
+  }
+  for (int oc = 0; oc < out_channels; oc++) {
+    for (int ic = 0; ic < in_channels; ic++) {
+      for (int k = 0; k < kernel_size; k++) {
+        size_t idx = ((size_t)oc * in_channels + ic) * kernel_size + k;
+        kernel[idx] = (__fp16)(oc + 1);
+      }
+    }
+  }
+
+  printf("Input shape: (%d, %d, %d)\n", batch, in_channels, input_size);
+  printf("Weight shape: (%d, %d, %d)\n", out_channels, in_channels, kernel_size);
+  printf("Input: ");
+  for (int i = 0; i < input_size; i++) printf("%f ", input[i]);
+  printf("\n");
+  printf("Weight: ");
+  for (size_t i = 0; i < kernel_elems; i++) printf("%f ", kernel[i]);
+  printf("\n");
+
+  __fp16* result = float16_conv(input, kernel, 12, input_size, kernel_size, in_channels, out_channels);
+  if (!result) {
     free(input);
     free(kernel);
-    return 0;
+    return -1;
+  }
+
+  size_t cpu_output_elements = (size_t)output_size * out_channels;
+
+  float* cpu_output = (float*)malloc(cpu_output_elements * sizeof(float));
+  if (!cpu_output) {
+    printf("failed to allocate cpu output buffer\n");
+    free(input);
+    free(kernel);
+    return -1;
+  }
+
+  for (int oc = 0; oc < out_channels; oc++) {
+    for (int pos = 0; pos < output_size; pos++) {
+      float acc = 0.0f;
+      for (int ic = 0; ic < in_channels; ic++) {
+        for (int k = 0; k < kernel_size; k++) {
+          int input_idx = ic * input_size + pos + k;
+          int weight_idx = ((oc * in_channels + ic) * kernel_size) + k;
+          acc += (float)input[input_idx] * (float)kernel[weight_idx];
+        }
+      }
+      cpu_output[(size_t)oc * output_size + pos] = acc;
+    }
+  }
+
+  print_conv1d_outputs("Expected Output (CPU computed):",
+      cpu_output, out_channels, output_size, 5);
+
+  const int conv1d_output_align = 8;  // matches RKNN NC1HWC2 width packing in conv2d_multi
+  float *npu_output =
+      (float*)malloc((size_t)batch * out_channels * output_size * sizeof(float));
+  if (!npu_output) {
+    printf("failed to allocate unpack buffer\n");
+    free(cpu_output);
+    free(input);
+    free(kernel);
+    return -1;
+  }
+
+  unpack_nc1hwc2_fp16(result, npu_output,
+      batch, out_channels, 1, output_size, conv1d_output_align, output_size);
+
+  print_conv1d_outputs("Actual Output (RKNN):",
+      npu_output, out_channels, output_size, 5);
+
+  int matches = 1;
+  for (size_t idx = 0; idx < cpu_output_elements; idx++) {
+    if (fabsf(npu_output[idx] - cpu_output[idx]) > 1e-2f) {
+      printf("conv1d mismatch idx=%zu npu=%f cpu=%f\n", idx,
+             npu_output[idx], cpu_output[idx]);
+      matches = 0;
+      break;
+    }
+  }
+  printf("NPU output %s CPU reference\n", matches ? "matches" : "does not match");
+
+  free(npu_output);
+  free(cpu_output);
+  free(input);
+  free(kernel);
+  return 0;
 }
 
 int test_conv2d(int argc, char **argv) {
@@ -300,7 +395,7 @@ int main(int argc, char **argv) {
 
     // test_alu(argc, argv);
     // test_matmul(argc, argv);
-    // test_conv(argc, argv);
-    test_conv2d(argc, argv);
+    test_conv(argc, argv);
+    // test_conv2d(argc, argv);
     return 0;
 }
