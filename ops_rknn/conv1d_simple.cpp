@@ -97,8 +97,9 @@ static void print_tensor_rows(const std::string& title, const std::vector<float>
                               int channels, int length, int row_width = 5) {
     std::cout << title << std::endl;
     for (int b = 0; b < batch; ++b) {
+        std::cout << "Batch " << b << ":" << std::endl;
         for (int c = 0; c < channels; ++c) {
-            std::cout << "  Output Channel " << (b * channels + c) << ":" << std::endl;
+            std::cout << "  Output Channel " << c << ":" << std::endl;
             size_t base_idx = (static_cast<size_t>(b) * channels + c) * length;
             for (int offset = 0; offset < length; offset += row_width) {
                 std::cout << "    ";
@@ -122,8 +123,8 @@ static void print_shape(const std::string& label, int a, int b, int c) {
 
 int main() {
     const std::vector<TestCase> test_cases = {
-        {"batch-1", "models/conv1d_simple_bs1.rknn", 1, 1, 11, 6, 1},
-        // {"batch-8", "models/conv1d_simple_bs8.rknn", 8, 1, 11, 6, 1},
+        // {"batch-1", "models/conv1d_simple_bs1.rknn", 1, 1, 11, 6, 1},
+        {"batch-8", "models/conv1d_simple_bs8.rknn", 8, 1, 11, 6, 1},
     };
 
     for (const auto& test : test_cases) {
@@ -143,14 +144,57 @@ int main() {
             return -1;
         }
 
+        rknn_tensor_attr native_input_attr;
+        std::memset(&native_input_attr, 0, sizeof(native_input_attr));
+        native_input_attr.index = 0;
+        ret = rknn_query(ctx, RKNN_QUERY_NATIVE_INPUT_ATTR, &native_input_attr, sizeof(native_input_attr));
+        if (ret < 0) {
+            std::cerr << "rknn_query native input attr failed: " << ret << std::endl;
+            rknn_destroy(ctx);
+            return -1;
+        }
+
+        rknn_tensor_attr native_output_attr;
+        std::memset(&native_output_attr, 0, sizeof(native_output_attr));
+        native_output_attr.index = 0;
+        ret = rknn_query(ctx, RKNN_QUERY_NATIVE_OUTPUT_ATTR, &native_output_attr, sizeof(native_output_attr));
+        if (ret < 0) {
+            std::cerr << "rknn_query native output attr failed: " << ret << std::endl;
+            rknn_destroy(ctx);
+            return -1;
+        }
+        std::cout << "  Native output type: " << get_type_string(static_cast<rknn_tensor_type>(native_output_attr.type))
+                  << ", format: " << get_format_string(native_output_attr.fmt) << std::endl;
+        std::cout << "  Native output dims:";
+        for (uint32_t i = 0; i < native_output_attr.n_dims; ++i) {
+            std::cout << " " << native_output_attr.dims[i];
+        }
+        std::cout << std::endl;
+        std::cout << "  Native output size: " << native_output_attr.size
+                  << ", size_with_stride: " << native_output_attr.size_with_stride
+                  << ", w_stride: " << native_output_attr.w_stride << std::endl;
+
+        std::vector<__fp16> input_fp16;
+        const void* input_buffer = input.data();
+        uint32_t input_size_bytes = static_cast<uint32_t>(input.size() * sizeof(float));
+        if (native_input_attr.type == RKNN_TENSOR_FLOAT16) {
+            input_fp16.resize(input.size());
+            for (size_t i = 0; i < input.size(); ++i) {
+                input_fp16[i] = static_cast<__fp16>(input[i]);
+            }
+            input_buffer = input_fp16.data();
+            input_size_bytes = static_cast<uint32_t>(input_fp16.size() * sizeof(__fp16));
+        }
+
         rknn_input inputs[1];
         std::memset(inputs, 0, sizeof(inputs));
 
         inputs[0].index = 0;
-        inputs[0].buf = input.data();
-        inputs[0].size = static_cast<uint32_t>(input.size() * sizeof(float));
-        inputs[0].type = RKNN_TENSOR_FLOAT32;
-        inputs[0].fmt = RKNN_TENSOR_NCHW;
+        inputs[0].buf = const_cast<void*>(input_buffer);
+        inputs[0].size = input_size_bytes;
+        inputs[0].type = static_cast<rknn_tensor_type>(native_input_attr.type);
+        inputs[0].fmt = static_cast<rknn_tensor_format>(native_input_attr.fmt);
+        inputs[0].pass_through = 0;
 
         ret = rknn_inputs_set(ctx, 1, inputs);
         if (ret < 0) {
@@ -169,7 +213,7 @@ int main() {
 
         rknn_output output;
         std::memset(&output, 0, sizeof(output));
-        output.want_float = 1;
+        output.want_float = 0;
         output.index = 0;
 
         ret = rknn_outputs_get(ctx, 1, &output, nullptr);
@@ -179,17 +223,34 @@ int main() {
             return -1;
         }
 
-        size_t output_elems = output.size / sizeof(float);
-        std::vector<float> results(output_elems, 0.f);
-        auto* result_buf = reinterpret_cast<float*>(output.buf);
-        for (size_t i = 0; i < output_elems; ++i) {
-            results[i] = result_buf[i];
+        int output_length = test.input_length - test.kernel_size + 1;
+        size_t output_elems = output.size / sizeof(__fp16);
+        auto* result_buf = reinterpret_cast<const __fp16*>(output.buf);
+        auto width_stride = static_cast<size_t>(native_output_attr.w_stride > 0 ? native_output_attr.w_stride
+                                                                                 : output_length);
+        if (width_stride < static_cast<size_t>(output_length)) {
+            width_stride = output_length;
         }
-
-        rknn_outputs_release(ctx, 1, &output);
+        size_t total_results = static_cast<size_t>(test.batch) * test.out_channels * output_length;
+        std::vector<float> results(total_results, 0.f);
+        for (int n = 0; n < test.batch; ++n) {
+            for (int c = 0; c < test.out_channels; ++c) {
+                size_t src_base = (static_cast<size_t>(n) * test.out_channels + c) * width_stride;
+                for (int w = 0; w < output_length; ++w) {
+                    size_t src_idx = src_base + static_cast<size_t>(w);
+                    if (src_idx >= output_elems) {
+                        break;
+                    }
+                    size_t dst_idx = ((static_cast<size_t>(n) * test.out_channels + c) * output_length) + w;
+                    results[dst_idx] = static_cast<float>(result_buf[src_idx]);
+                }
+            }
+        }
 
         auto expected = compute_expected(test.batch, test.out_channels, test.in_channels, test.input_length,
                                          test.kernel_size, input, weight);
+
+        rknn_outputs_release(ctx, 1, &output);
 
         auto end = std::chrono::high_resolution_clock::now();
         auto duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
@@ -197,7 +258,6 @@ int main() {
         std::cout << "Model     : " << test.model_path << std::endl;
         print_shape("Input shape", test.batch, test.in_channels, test.input_length);
         print_shape("Weight shape", test.out_channels, test.in_channels, test.kernel_size);
-        int output_length = test.input_length - test.kernel_size + 1;
         print_shape("Output shape", test.batch, test.out_channels, output_length);
         print_values("Input     : ", input);
         print_values("Weight    : ", weight);

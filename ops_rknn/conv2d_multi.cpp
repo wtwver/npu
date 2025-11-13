@@ -329,7 +329,6 @@ static bool run_conv_test(const ConvConfig& config) {
   input_desc.pass_through = 1;
   input_desc.type = static_cast<rknn_tensor_type>(native_input_attr.type);
   input_desc.fmt = static_cast<rknn_tensor_format>(native_input_attr.fmt);
-  printf("haha %d\n", input_desc.buf);
 
   ret = rknn_inputs_set(ctx, 1, &input_desc);
   if (ret < 0) {
