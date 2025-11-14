@@ -9,8 +9,11 @@
 #  conv2d with input shape (1,3,5,7), weight shape (6,1,3,3)
 #  conv2d with input shape (1,3,5,7), weight shape (6,3,3,5)
 
+GDB_SCRIPT=${GDB_SCRIPT:-rknn.gdb}
+GDB_FLAGS=${GDB_FLAGS:-}
+
 python3 generate_conv1d_inputs.py
-g++ -o conv1d_simple conv1d_simple.cpp -I../include -lrknnrt -std=c++11 &&  gdb -x rknn.gdb ./conv1d_simple | tee run_output.txt
+g++ -o conv1d_simple conv1d_simple.cpp -I../include -lrknnrt -std=c++11 && gdb $GDB_FLAGS -x "$GDB_SCRIPT" ./conv1d_simple | tee run_output.txt
 
 # conv1d with input shape (1, 1, 11), weight shape (6, 1, 1)
 # conv1d with input shape (8, 1, 11), weight shape (6, 1, 1)

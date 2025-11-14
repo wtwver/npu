@@ -31,7 +31,7 @@ def map_gem(fd, flink):
 def zero_after_task0(fd, flink):
   gem, mm = map_gem(fd, flink)
   try:
-    end = min(TASK_TABLE_BYTES, gem.size)
+    end = gem.size
     if end <= TASK0_BYTES:
       return 0
     zero_len = end - TASK0_BYTES
