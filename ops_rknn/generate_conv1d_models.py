@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate RKNN models for the conv1d_simple test cases."""
 from pathlib import Path
-from typing import Sequence
+from typing import Optional, Sequence
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -12,13 +13,18 @@ except ImportError:
   RKNN = None
 
 
-def create_conv2d_model(in_channels: int, out_channels: int, kernel_size: int) -> nn.Module:
+def create_conv2d_model(in_channels: int, out_channels: int, kernel_size: int,
+                        kernel_values: Optional[np.ndarray]) -> nn.Module:
   conv = nn.Conv2d(in_channels, out_channels, (1, kernel_size), bias=False)
   with torch.no_grad():
-    for oc in range(out_channels):
-      for ic in range(in_channels):
-        for k in range(kernel_size):
-          conv.weight[oc, ic, 0, k] = float(oc + 1)
+    if kernel_values is not None:
+      weight_tensor = torch.tensor(kernel_values.astype(np.float32)).view_as(conv.weight)
+      conv.weight.copy_(weight_tensor)
+    else:
+      for oc in range(out_channels):
+        for ic in range(in_channels):
+          for k in range(kernel_size):
+            conv.weight[oc, ic, 0, k] = float(oc + 1)
   conv.eval()
   return conv
 
@@ -55,6 +61,7 @@ def main() -> None:
   base_dir = Path(__file__).resolve().parent
   models_dir = base_dir / "models"
   models_dir.mkdir(exist_ok=True)
+  data_dir = base_dir / "conv1d_simple_data"
 
   cases = [
     {"name": "conv1d_simple_bs1", "batch": 1, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 1},
@@ -63,8 +70,13 @@ def main() -> None:
 
   for case in cases:
     onnx_path = models_dir / f"{case['name']}.onnx"
+    kernel_values = None
+    kernel_path = data_dir / case["name"] / "kernel.bin"
+    if kernel_path.exists():
+      kernel_values = np.fromfile(kernel_path, dtype=np.float16).astype(np.float32)
+      kernel_values = kernel_values.reshape(case["out_channels"], case["in_channels"], case["kernel"])
     print(f"\nGenerating {case['name']}... ")
-    model = create_conv2d_model(case["in_channels"], case["out_channels"], case["kernel"])
+    model = create_conv2d_model(case["in_channels"], case["out_channels"], case["kernel"], kernel_values)
     input_shape = (case["batch"], case["in_channels"], 1, case["input_length"])
     export_onnx(model, input_shape, onnx_path)
     if not build_rknn(onnx_path, input_shape):

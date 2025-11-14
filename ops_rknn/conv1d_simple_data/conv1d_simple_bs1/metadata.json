@@ -1,0 +1,46 @@
+{
+  "name": "conv1d_simple_bs1",
+  "description": "conv1d|lhs=1,1,11|rhs=6,1,1|out=1,6,11|hw=1|stride=1|dilation=1|groups=1",
+  "seed": 0,
+  "dtype": "fp16",
+  "tensor_layout": {
+    "input": {
+      "shape": [
+        1,
+        1,
+        11
+      ],
+      "format": "NCHW"
+    },
+    "kernel": {
+      "shape": [
+        6,
+        1,
+        1
+      ],
+      "format": "OIHW"
+    },
+    "output": {
+      "shape": [
+        1,
+        6,
+        11
+      ],
+      "format": "NCHW"
+    }
+  },
+  "groups": 1,
+  "stride": 1,
+  "dilation": 1,
+  "kernel_height": 1,
+  "expected": {
+    "dtype": "fp32",
+    "path": "expected.bin",
+    "rtol": 0.001,
+    "atol": 1e-06
+  },
+  "paths": {
+    "input": "input.bin",
+    "kernel": "kernel.bin"
+  }
+}
