@@ -63,10 +63,29 @@ def zero_reg_after_offset(fd, flink, zero_from, zero_to=None):
     mm.close()
 
 
+def write_reg_value(fd, flink, offset, value, length):
+  gem, mm = map_gem(fd, flink)
+  try:
+    start = max(0, min(offset, gem.size))
+    if start >= gem.size or length <= 0:
+      return b""
+    writable = min(length, gem.size - start)
+    try:
+      data = value.to_bytes(length, "little", signed=False)
+    except OverflowError:
+      raise ValueError(f"value 0x{value:x} does not fit in {length} bytes")
+    data = data[:writable]
+    mm[start:start + writable] = data
+    safe_flush(mm)
+    return data
+  finally:
+    mm.close()
+
+
 def parse_args():
   parser = argparse.ArgumentParser(description="Patch GEM buffers to keep only the first task")
   parser.add_argument("flink", type=int, nargs="?", help="Task GEM flink (default: 1)")
-  parser.add_argument("--mode", choices=["task", "regs", "both"], default="task",
+  parser.add_argument("--mode", choices=["task", "regs", "both", "none"], default="task",
                       help="Which buffers to patch (default: task)")
   parser.add_argument("--task-flink", type=int, help="Override task GEM flink (default: positional or 1)")
   parser.add_argument("--reg-flink", type=int, default=2, help="GEM flink holding register commands (default: 2)")
@@ -74,15 +93,27 @@ def parse_args():
                       help="Byte offset after which reg GEM should be zeroed (default: 0xdc0)")
   parser.add_argument("--reg-end", type=lambda v: int(v, 0),
                       help="Byte offset at which reg GEM zeroing should stop (default: end of GEM)")
-  return parser.parse_args()
+  parser.add_argument("--write-offset", type=lambda v: int(v, 0),
+                      help="Byte offset inside reg GEM where we should write")
+  parser.add_argument("--write-value", type=lambda v: int(v, 0),
+                      help="Integer value to write at --write-offset")
+  parser.add_argument("--write-length", type=lambda v: int(v, 0), default=8,
+                      help="Number of bytes to write when using --write-offset (default: 8)")
+  return parser, parser.parse_args()
 
 
 def main():
-  args = parse_args()
+  parser, args = parse_args()
   do_tasks = args.mode in ("task", "both")
   do_regs = args.mode in ("regs", "both")
-  if not do_tasks and not do_regs:
+  if args.mode == "none":
+    do_tasks = False
+    do_regs = False
+  elif not do_tasks and not do_regs:
     do_tasks = True
+
+  if (args.write_offset is None) != (args.write_value is None):
+    parser.error("both --write-offset and --write-value must be supplied together")
 
   task_flink = args.task_flink or args.flink or 1
 
@@ -102,6 +133,13 @@ def main():
       print(f"GEM {args.reg_flink}: zeroed 0x{zeroed:x} bytes {range_desc}")
       print(f"  sample before: {sample_hex[:64]}")
       print(f"  tail verified zero: {'yes' if verified else 'no'}")
+    if args.write_offset is not None:
+      written = write_reg_value(
+        fd, args.reg_flink, args.write_offset, args.write_value, args.write_length)
+      if written:
+        print(f"GEM {args.reg_flink}: wrote {written.hex()} at 0x{args.write_offset:x}")
+      else:
+        print(f"GEM {args.reg_flink}: nothing written at 0x{args.write_offset:x}")
   finally:
     os.close(fd)
 

@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
 #include <string.h>
 #include "rknnops.h"
@@ -41,7 +43,83 @@ static void print_conv1d_outputs(const char *title, const float *data,
         for (int i = start; i < end; i++) {
           printf("%8.5f  ", row[i]);
         }
-        printf("\n");
+        // printf("\n");
+      }
+      printf("\n");
+    }
+  }
+}
+
+typedef struct {
+  uint32_t mt[624];
+  int index;
+} Mt19937;
+
+static void mt_seed(Mt19937 *rng, uint32_t seed) {
+  rng->mt[0] = seed;
+  for (int i = 1; i < 624; i++) {
+    rng->mt[i] = 1812433253U * (rng->mt[i-1] ^ (rng->mt[i-1] >> 30)) + (uint32_t)i;
+  }
+  rng->index = 624;
+}
+
+static uint32_t mt_extract(Mt19937 *rng) {
+  const uint32_t mag01[2] = {0U, 0x9908b0dfU};
+  if (rng->index >= 624) {
+    int kk;
+    for (kk = 0; kk < 624 - 397; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk+1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk + 397] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    for (; kk < 623; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk+1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk + (397 - 624)] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    uint32_t y = (rng->mt[623] & 0x80000000U) | (rng->mt[0] & 0x7fffffffU);
+    rng->mt[623] = rng->mt[396] ^ (y >> 1) ^ mag01[y & 1U];
+    rng->index = 0;
+  }
+  uint32_t y = rng->mt[rng->index++];
+  y ^= (y >> 11);
+  y ^= (y << 7) & 0x9d2c5680U;
+  y ^= (y << 15) & 0xefc60000U;
+  y ^= (y >> 18);
+  return y;
+}
+
+static float mt_uniform(Mt19937 *rng, float low, float high) {
+  const double a = (double)(mt_extract(rng) >> 5);
+  const double b = (double)(mt_extract(rng) >> 6);
+  const double random = (a * 67108864.0 + b) / 9007199254740992.0;
+  return (float)(low + (high - low) * random);
+}
+
+static void print_conv1d_tensor(const char *title, const __fp16 *data,
+    int batch, int channels, int width) {
+  printf("%s\n", title);
+  for (int n = 0; n < batch; n++) {
+    printf("  batch=%d\n", n);
+    for (int c = 0; c < channels; c++) {
+      printf("    channel=%d: ", c);
+      for (int w = 0; w < width; w++) {
+        size_t idx = ((size_t)n * channels + c) * width + w;
+        printf("%8.5f ", (float)data[idx]);
+      }
+      printf("\n");
+    }
+  }
+}
+
+static void print_conv1d_kernel(const char *title, const __fp16 *data,
+    int out_channels, int in_channels, int kernel_size) {
+  printf("%s\n", title);
+  for (int oc = 0; oc < out_channels; oc++) {
+    printf("  out_channel=%d\n", oc);
+    for (int ic = 0; ic < in_channels; ic++) {
+      printf("    in_channel=%d: ", ic);
+      for (int k = 0; k < kernel_size; k++) {
+        size_t idx = ((size_t)oc * in_channels + ic) * kernel_size + k;
+        printf("%8.5f ", (float)data[idx]);
       }
       printf("\n");
     }
@@ -133,18 +211,24 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
     return -1;
   }
 
+  const float low = -2.0f;
+  const float high = 2.0f;
+  Mt19937 rng;
+  mt_seed(&rng, 0);
   for (size_t idx = 0; idx < input_elems; idx++) {
-    input[idx] = (__fp16)((float)((idx % config->input_size) + 1));
+    input[idx] = (__fp16)mt_uniform(&rng, low, high);
   }
   size_t weight_idx = 0;
   for (int oc = 0; oc < config->out_channels; oc++) {
     for (int ic = 0; ic < config->in_channels; ic++) {
       for (int k = 0; k < config->kernel_size; k++) {
-        kernel[weight_idx++] = (__fp16)(oc + 1);
+        kernel[weight_idx++] = (__fp16)mt_uniform(&rng, low, high);
       }
     }
   }
-  // Input/weight generation mirrors npu/ops_rknn/conv1d_simple.cpp.
+
+  print_conv1d_tensor("Generated Input:", input, config->batch, config->in_channels, config->input_size);
+  print_conv1d_kernel("Generated Kernel:", kernel, config->out_channels, config->in_channels, config->kernel_size);
 
   printf("\n=== conv1d test: %s ===\n", config->name);
   printf(" Input shape: (%d, %d, %d)\n", config->batch, config->in_channels, config->input_size);
@@ -194,17 +278,7 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
     return -1;
   }
 
-  __fp16 *result = float16_conv(input, kernel, 12, config->input_size,
-      config->kernel_size, config->in_channels, config->out_channels);
-  if (!result) {
-    printf("float16_conv returned NULL for %s\n", config->name);
-    free(npu_output);
-    free(cpu_output);
-    free(input);
-    free(kernel);
-    return -1;
-  }
-
+  size_t input_stride = (size_t)config->in_channels * config->input_size;
   size_t single_output_elements =
       (size_t)config->out_channels * output_size;
   float *single_output = (float*)malloc(single_output_elements * sizeof(float));
@@ -217,14 +291,33 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
     return -1;
   }
 
-  unpack_nc1hwc2_fp16(result, single_output,
-      1, config->out_channels, 1, output_size, output_align, width_stride);
-
+  int batch_success = 1;
   for (int n = 0; n < config->batch; n++) {
+    __fp16 *batch_input = input + (size_t)n * input_stride;
+    Float16ConvResult result = float16_conv(batch_input, kernel, 12,
+        config->input_size, config->kernel_size, config->in_channels, config->out_channels);
+    if (!result.output) {
+      printf("float16_conv returned NULL for %s batch %d\n", config->name, n);
+      batch_success = 0;
+      release_conv_result(&result);
+      break;
+    }
+
+    unpack_nc1hwc2_fp16(result.output, single_output,
+        1, config->out_channels, 1, output_size, output_align, width_stride);
+
     memcpy(npu_output + (size_t)n * single_output_elements,
         single_output, single_output_elements * sizeof(float));
+    release_conv_result(&result);
   }
   free(single_output);
+  if (!batch_success) {
+    free(npu_output);
+    free(cpu_output);
+    free(input);
+    free(kernel);
+    return -1;
+  }
 
   print_conv1d_outputs("Actual Output (RKNN):", npu_output,
       config->batch, config->out_channels, output_size, 5);
@@ -423,7 +516,7 @@ int test_conv2d(int argc, char **argv) {
         float val = expected[(size_t)oc * out_height * out_width + oh * out_width + ow];
         printf("%.5f ", val);
       }
-      printf("\n");
+      // printf("\n");
     }
   }
 
@@ -436,7 +529,7 @@ int test_conv2d(int argc, char **argv) {
         size_t idx_out = (size_t)oc * out_height * out_width + oh * out_width + ow;
         printf("%.5f ", output_nchw[idx_out]);
       }
-      printf("\n");
+      // printf("\n");
     }
   }
 

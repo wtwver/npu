@@ -25,6 +25,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 #include <math.h>
 #include <libdrm/drm.h>
 #include "rknpu-ioctl.h"
@@ -294,6 +295,7 @@ struct MemHandles {
    void* input;
    void* weights;
    void* output;
+   void* tasks;
    uint64_t input_dma, input_obj;
    uint64_t weights_dma, weights_obj;
    uint64_t output_dma, output_obj;
@@ -302,7 +304,23 @@ struct MemHandles {
    uint32_t input_handle;
    uint32_t weights_handle;
    uint32_t output_handle;
+   uint32_t tasks_handle;
+   size_t input_size;
+   size_t weights_alloc_size;
+   size_t output_size;
+   size_t tasks_size;
 };
+
+typedef struct {
+   __fp16 *output;
+   struct MemHandles handles;
+   int fd;
+   size_t input_bytes;
+   size_t weights_alloc_size;
+   size_t output_bytes;
+} Float16ConvResult;
+
+void release_conv_result(Float16ConvResult *result);
 
 int get_type_size(rknn_tensor_type type){
    switch (type){
@@ -375,6 +393,46 @@ void mem_destroy(int fd, uint32_t handle, uint64_t obj_addr) {
    if (ret <0) {
       printf("RKNPU_MEM_DESTROY failed %d\n",ret);
    }
+}
+
+void release_conv_result(Float16ConvResult *result) {
+   if (!result || result->fd < 0) return;
+
+   if (result->handles.tasks && result->handles.tasks_size > 0) {
+      munmap(result->handles.tasks, result->handles.tasks_size);
+   }
+   if (result->handles.tasks_handle) {
+      mem_destroy(result->fd, result->handles.tasks_handle, result->handles.tasks_obj);
+   }
+
+   if (result->handles.input && result->input_bytes > 0) {
+      munmap(result->handles.input, result->input_bytes);
+   }
+   if (result->handles.input_handle) {
+      mem_destroy(result->fd, result->handles.input_handle, result->handles.input_dma);
+   }
+
+   if (result->handles.weights && result->weights_alloc_size > 0) {
+      munmap(result->handles.weights, result->weights_alloc_size);
+   }
+   if (result->handles.weights_handle) {
+      mem_destroy(result->fd, result->handles.weights_handle, result->handles.weights_obj);
+   }
+
+   if (result->handles.output && result->output_bytes > 0) {
+      munmap(result->handles.output, result->output_bytes);
+   }
+   if (result->handles.output_handle) {
+      mem_destroy(result->fd, result->handles.output_handle, result->handles.output_obj);
+   }
+
+   close(result->fd);
+   result->fd = -1;
+   result->input_bytes = 0;
+   result->weights_alloc_size = 0;
+   result->output_bytes = 0;
+   result->output = NULL;
+   result->handles = (struct MemHandles){0};
 }
 
 int getDeviceFd()
@@ -974,7 +1032,8 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    uint32_t output_handle;
 
    printf("%zu %zu %zu\n", input_size, weights_size, output_size);
-   struct rknpu_task *tasks = mem_allocate(fd, 1024, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
+   const size_t tasks_size = 1024;
+   struct rknpu_task *tasks = mem_allocate(fd, tasks_size, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
    printf("task addr %p %#llx %#llx %u\n", (void*)tasks,
       (unsigned long long)tasks_dma, (unsigned long long)tasks_obj, tasks_handle);
    
@@ -1079,6 +1138,7 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    handles.input = input;
    handles.weights = weights;
    handles.output = output;
+   handles.tasks = tasks;
    handles.input_dma = input_dma;
    handles.input_obj = input_obj;
    handles.weights_dma = weights_dma;
@@ -1088,6 +1148,11 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    handles.input_handle = input_handle;
    handles.weights_handle = weights_handle;
    handles.output_handle = output_handle;
+   handles.tasks_handle = tasks_handle;
+   handles.input_size = input_size;
+   handles.weights_alloc_size = weights_alloc_size;
+   handles.output_size = output_size;
+   handles.tasks_size = tasks_size;
    handles.tasks_obj = tasks_obj;
    handles.task_count = total_tasks;
    return handles;
@@ -1118,23 +1183,27 @@ int submitTask(int fd, uint64_t tasks_obj, size_t task_count){
       {.task_start = 0, .task_number = 1}, {.task_start = 0, .task_number = 1},
       },
    };
+   printf("DRM_IOCTL_RKNPU_SUBMIT\n");
    return ioctl(fd, DRM_IOCTL_RKNPU_SUBMIT, &submit);
 }
 
-__fp16* float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algorithm,
+Float16ConvResult float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algorithm,
       int input_size, int kernel_width, int in_channels, int out_channels)
 {
+   Float16ConvResult result = {0};
+   result.fd = -1;
    if (input_size <= 0 || kernel_width <= 0 || in_channels <= 0 || out_channels <= 0) {
       printf("float16_conv received invalid dimensions\n");
-      return NULL;
+      return result;
    }
    int output_width = input_size - kernel_width + 1;
    if (output_width <= 0) {
       printf("float16_conv output width is non-positive\n");
-      return NULL;
+      return result;
    }
 
    int fd = getDeviceFd();
+   result.fd = fd;
    npu_reset(fd);
    rknn_tensor_type dtype = RKNN_TENSOR_FLOAT16;
 
@@ -1151,9 +1220,20 @@ __fp16* float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algorithm,
    set_conv1d_params(input_size, kernel_width, in_channels, out_channels);
 
    struct MemHandles handles = createRegCmd(fd, input_bytes, weight_bytes_total, output_bytes, alu_algorithm);
+   result.handles = handles;
+   result.input_bytes = handles.input_size;
+   result.weights_alloc_size = handles.weights_alloc_size;
+   result.output_bytes = handles.output_size;
+
+   if (!handles.input || !handles.weights || !handles.output) {
+      release_conv_result(&result);
+      return result;
+   }
+
    __fp16 *kernel_fp16 = (__fp16*)(handles.weights);
    __fp16 *input_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
+   result.output = output_data;
 
    memset((void *)kernel_fp16, 0, weight_bytes_total);
    memset((void *)input_fp16, 0, input_bytes);
@@ -1170,9 +1250,10 @@ __fp16* float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algorithm,
    int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
    if(ret < 0) {
       printf("RKNPU_SUBMIT failed %d\n",ret);
-      return NULL;
+      release_conv_result(&result);
+      return result;
    }
-   return output_data;
+   return result;
 }
 
 __fp16* float16_conv2d(__fp16* input, __fp16* kernel, uint32_t alu_algorithm, int input_size, int kernel_size)

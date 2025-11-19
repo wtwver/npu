@@ -4,8 +4,8 @@ Task 0 @ offset 0x0000
   enable_mask  : 0x0000000d
   int_mask     : 0x00000300
   int_clear    : 0x0001ffff
-  int_status   : 0x00000000
+  int_status   : 0x00000100
   regcfg_amount: 107 entries (0x0000006b)
   regcfg_offset: 0x00000000
-  regcmd_addr  : 0x00000000ff97c080
+  regcmd_addr  : 0x00000000ff974080
 

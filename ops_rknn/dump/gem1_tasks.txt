@@ -7,5 +7,258 @@ Task 0 @ offset 0x0000
   int_status   : 0x00000000
   regcfg_amount: 108 entries (0x0000006c)
   regcfg_offset: 0x00000000
-  regcmd_addr  : 0x00000000ff99a880
+  regcmd_addr  : 0x00000000ff92a880
+
+Task 1 @ offset 0x0028
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 108 entries (0x0000006c)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92ac00
+
+Task 2 @ offset 0x0050
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92af80
+
+Task 3 @ offset 0x0078
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b180
+
+Task 4 @ offset 0x00a0
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b380
+
+Task 5 @ offset 0x00c8
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b580
+
+Task 6 @ offset 0x00f0
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b780
+
+Task 7 @ offset 0x0118
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b980
+
+Task 8 @ offset 0x0140
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 108 entries (0x0000006c)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92a880
+
+Task 9 @ offset 0x0168
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 108 entries (0x0000006c)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92ac00
+
+Task 10 @ offset 0x0190
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92af80
+
+Task 11 @ offset 0x01b8
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b180
+
+Task 12 @ offset 0x01e0
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b380
+
+Task 13 @ offset 0x0208
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b580
+
+Task 14 @ offset 0x0230
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b780
+
+Task 15 @ offset 0x0258
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b980
+
+Task 16 @ offset 0x0280
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 108 entries (0x0000006c)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92a880
+
+Task 17 @ offset 0x02a8
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 108 entries (0x0000006c)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92ac00
+
+Task 18 @ offset 0x02d0
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92af80
+
+Task 19 @ offset 0x02f8
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b180
+
+Task 20 @ offset 0x0320
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b380
+
+Task 21 @ offset 0x0348
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b580
+
+Task 22 @ offset 0x0370
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b780
+
+Task 23 @ offset 0x0398
+  flags        : 0x00000000
+  op_idx       : 1 (0x00000001)
+  enable_mask  : 0x0000000d
+  int_mask     : 0x00000300
+  int_clear    : 0x0001ffff
+  int_status   : 0x00000000
+  regcfg_amount: 56 entries (0x00000038)
+  regcfg_offset: 0x00000000
+  regcmd_addr  : 0x00000000ff92b980
 
