@@ -50,6 +50,57 @@ static void print_conv1d_outputs(const char *title, const float *data,
   }
 }
 
+static int align_up(int value, int align) {
+  if (align <= 0) return value;
+  return ((value + align - 1) / align) * align;
+}
+
+static const char *kConv1dFixtureDefault = "../ops_rknn/conv1d_simple_data";
+static const char *kConv1dFixtureAlternate = "npu/ops_rknn/conv1d_simple_data";
+
+static int load_fp16_fixture(const char *dir, const char *name,
+    __fp16 *dst, size_t elems) {
+  char path[512];
+  int len = snprintf(path, sizeof(path), "%s/%s", dir, name);
+  if (len < 0 || len >= (int)sizeof(path)) return 0;
+  FILE *file = fopen(path, "rb");
+  if (!file) return 0;
+  size_t read = fread(dst, sizeof(__fp16), elems, file);
+  fclose(file);
+  return read == elems;
+}
+
+static int load_conv1d_fixtures_from(const char *base_dir, const char *fixture_dir,
+    __fp16 *input, size_t input_elems,
+    __fp16 *kernel, size_t kernel_elems) {
+  char dir[512];
+  int len = snprintf(dir, sizeof(dir), "%s/%s", base_dir, fixture_dir);
+  if (len < 0 || len >= (int)sizeof(dir)) return 0;
+  if (!load_fp16_fixture(dir, "input.bin", input, input_elems)) return 0;
+  if (!load_fp16_fixture(dir, "kernel.bin", kernel, kernel_elems)) return 0;
+  return 1;
+}
+
+static int load_conv1d_fixtures(const char *fixture_dir,
+    __fp16 *input, size_t input_elems,
+    __fp16 *kernel, size_t kernel_elems) {
+  if (!fixture_dir) return 0;
+  const char *env_base = getenv("CONV1D_DATA_DIR");
+  if (env_base && load_conv1d_fixtures_from(env_base, fixture_dir, input, input_elems,
+        kernel, kernel_elems)) {
+    return 1;
+  }
+  if (load_conv1d_fixtures_from(kConv1dFixtureDefault, fixture_dir, input, input_elems,
+        kernel, kernel_elems)) {
+    return 1;
+  }
+  if (load_conv1d_fixtures_from(kConv1dFixtureAlternate, fixture_dir, input, input_elems,
+        kernel, kernel_elems)) {
+    return 1;
+  }
+  return 0;
+}
+
 typedef struct {
   uint32_t mt[624];
   int index;
@@ -188,51 +239,104 @@ typedef struct {
   int batch;
   int in_channels;
   int input_size;
-  int kernel_size;
   int out_channels;
+  int weight_in_channels;
+  int kernel_size;
+  int groups;
+  const char *fixture_dir;
 } Conv1dTestConfig;
 
 static int run_conv1d_case(const Conv1dTestConfig *config) {
   if (!config) return -1;
+  if (config->weight_in_channels <= 0) {
+    printf("%s has invalid weight channels (%d)\n", config->name, config->weight_in_channels);
+    return -1;
+  }
+  int groups = config->groups;
+  if (groups <= 0) {
+    if (config->in_channels % config->weight_in_channels != 0) {
+      printf("%s mismatched input/weight channels (%d vs %d)\n", config->name,
+          config->in_channels, config->weight_in_channels);
+      return -1;
+    }
+    groups = config->in_channels / config->weight_in_channels;
+  } else {
+    if (config->in_channels % groups != 0) {
+      printf("%s has input channels (%d) not divisible by groups (%d)\n",
+          config->name, config->in_channels, groups);
+      return -1;
+    }
+    int expected_weight_c = config->in_channels / groups;
+    if (config->weight_in_channels != expected_weight_c) {
+      printf("%s has weight channels (%d) but group layout expects %d\n",
+          config->name, config->weight_in_channels, expected_weight_c);
+      return -1;
+    }
+  }
+  if (config->out_channels % groups != 0) {
+    printf("%s has out_channels (%d) not divisible by groups (%d)\n",
+        config->name, config->out_channels, groups);
+    return -1;
+  }
+  int out_per_group = config->out_channels / groups;
   int output_size = config->input_size - config->kernel_size + 1;
   if (output_size <= 0) {
     printf("%s has invalid output width\n", config->name);
     return -1;
   }
 
+  const int c2 = 8;
+  const int output_align = align_up(config->out_channels, c2);
+  const int width_stride = align_up(output_size, 4);
+
   size_t input_elems = (size_t)config->batch * config->in_channels * config->input_size;
-  size_t kernel_elems = (size_t)config->out_channels * config->in_channels * config->kernel_size;
+  size_t kernel_elems = (size_t)config->out_channels * config->weight_in_channels * config->kernel_size;
+  size_t expanded_kernel_elems = (size_t)config->out_channels * config->in_channels * config->kernel_size;
   __fp16 *input = (__fp16*)malloc(input_elems * sizeof(__fp16));
   __fp16 *kernel = (__fp16*)malloc(kernel_elems * sizeof(__fp16));
-  if (!input || !kernel) {
+  __fp16 *npu_kernel = (__fp16*)malloc(expanded_kernel_elems * sizeof(__fp16));
+  if (!input || !kernel || !npu_kernel) {
     printf("failed to allocate conv1d buffers for %s\n", config->name);
     free(input);
     free(kernel);
+    free(npu_kernel);
     return -1;
   }
 
-  const float low = -2.0f;
-  const float high = 2.0f;
-  Mt19937 rng;
-  mt_seed(&rng, 0);
-  for (size_t idx = 0; idx < input_elems; idx++) {
-    input[idx] = (__fp16)mt_uniform(&rng, low, high);
+  int fixtures_loaded = load_conv1d_fixtures(config->fixture_dir,
+      input, input_elems, kernel, kernel_elems);
+  if (fixtures_loaded) {
+    printf("Loaded fixtures for %s from %s\n", config->name, config->fixture_dir);
+  } else if (config->fixture_dir) {
+    printf("Missing fixtures for %s (%s), falling back to RNG\n",
+        config->name, config->fixture_dir);
   }
-  size_t weight_idx = 0;
-  for (int oc = 0; oc < config->out_channels; oc++) {
-    for (int ic = 0; ic < config->in_channels; ic++) {
-      for (int k = 0; k < config->kernel_size; k++) {
-        kernel[weight_idx++] = (__fp16)mt_uniform(&rng, low, high);
+
+  if (!fixtures_loaded) {
+    const float low = -2.0f;
+    const float high = 2.0f;
+    Mt19937 rng;
+    mt_seed(&rng, 0);
+    for (size_t idx = 0; idx < input_elems; idx++) {
+      input[idx] = (__fp16)mt_uniform(&rng, low, high);
+    }
+    size_t weight_idx = 0;
+    for (int oc = 0; oc < config->out_channels; oc++) {
+      for (int ic = 0; ic < config->weight_in_channels; ic++) {
+        for (int k = 0; k < config->kernel_size; k++) {
+          kernel[weight_idx++] = (__fp16)mt_uniform(&rng, low, high);
+        }
       }
     }
   }
 
   print_conv1d_tensor("Generated Input:", input, config->batch, config->in_channels, config->input_size);
-  print_conv1d_kernel("Generated Kernel:", kernel, config->out_channels, config->in_channels, config->kernel_size);
+  print_conv1d_kernel("Generated Kernel:", kernel, config->out_channels, config->weight_in_channels, config->kernel_size);
 
   printf("\n=== conv1d test: %s ===\n", config->name);
   printf(" Input shape: (%d, %d, %d)\n", config->batch, config->in_channels, config->input_size);
-  printf(" Weight shape: (%d, %d, %d)\n", config->out_channels, config->in_channels, config->kernel_size);
+  printf(" Weight shape: (%d, %d, %d) [groups=%d] -> padded to %d for NC1HWC2\n",
+      config->out_channels, config->weight_in_channels, config->kernel_size, groups, output_align);
 
   size_t cpu_output_elements =
       (size_t)config->batch * config->out_channels * output_size;
@@ -241,19 +345,20 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
     printf("failed to allocate cpu output buffer for %s\n", config->name);
     free(input);
     free(kernel);
+    free(npu_kernel);
     return -1;
   }
 
   for (int n = 0; n < config->batch; n++) {
     for (int oc = 0; oc < config->out_channels; oc++) {
+      int group_idx = out_per_group > 0 ? oc / out_per_group : 0;
       for (int pos = 0; pos < output_size; pos++) {
         float acc = 0.0f;
-        for (int ic = 0; ic < config->in_channels; ic++) {
+        for (int ic = 0; ic < config->weight_in_channels; ic++) {
+          int input_channel = group_idx * config->weight_in_channels + ic;
           for (int k = 0; k < config->kernel_size; k++) {
-            size_t input_idx = (((size_t)n * config->in_channels + ic) * config->input_size)
-                + pos + k;
-            size_t weight_idx2 = (((size_t)oc * config->in_channels) + ic)
-                * config->kernel_size + k;
+            size_t input_idx = (((size_t)n * config->in_channels + input_channel) * config->input_size) + pos + k;
+            size_t weight_idx2 = (((size_t)oc * config->weight_in_channels) + ic) * config->kernel_size + k;
             acc += (float)input[input_idx] * (float)kernel[weight_idx2];
           }
         }
@@ -262,39 +367,43 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
     }
   }
 
+  memset(npu_kernel, 0, expanded_kernel_elems * sizeof(__fp16));
+  for (int oc = 0; oc < config->out_channels; oc++) {
+    int group_idx = out_per_group > 0 ? oc / out_per_group : 0;
+    for (int ic = 0; ic < config->weight_in_channels; ic++) {
+      int input_channel = group_idx * config->weight_in_channels + ic;
+      size_t src_base = ((size_t)oc * config->weight_in_channels + ic) * config->kernel_size;
+      size_t dst_base = ((size_t)oc * config->in_channels + input_channel) * config->kernel_size;
+      memcpy(npu_kernel + dst_base, kernel + src_base, config->kernel_size * sizeof(__fp16));
+    }
+  }
+  if (groups > 1) {
+    print_conv1d_kernel("Expanded Kernel (full channel layout):", npu_kernel,
+        config->out_channels, config->in_channels, config->kernel_size);
+  }
+
   print_conv1d_outputs("Expected Output (CPU computed):", cpu_output,
       config->batch, config->out_channels, output_size, 5);
 
   // Use the RKNN NC1HWC2 packing documented in npu/ops_rknn/dump/conv1d_i81_11_w611.h.
-  const int channel_block = 8;
-  int output_align = ((config->out_channels + channel_block - 1) / channel_block) * channel_block;
-  int width_stride = 1;
   float *npu_output = (float*)malloc(cpu_output_elements * sizeof(float));
   if (!npu_output) {
     printf("failed to allocate unpack buffer for %s\n", config->name);
     free(cpu_output);
     free(input);
     free(kernel);
+    free(npu_kernel);
     return -1;
   }
 
   size_t input_stride = (size_t)config->in_channels * config->input_size;
-  size_t single_output_elements =
+  const size_t single_output_elements =
       (size_t)config->out_channels * output_size;
-  float *single_output = (float*)malloc(single_output_elements * sizeof(float));
-  if (!single_output) {
-    printf("failed to allocate temporary output buffer for %s\n", config->name);
-    free(npu_output);
-    free(cpu_output);
-    free(input);
-    free(kernel);
-    return -1;
-  }
 
   int batch_success = 1;
   for (int n = 0; n < config->batch; n++) {
     __fp16 *batch_input = input + (size_t)n * input_stride;
-    Float16ConvResult result = float16_conv(batch_input, kernel, 12,
+    Float16ConvResult result = float16_conv(batch_input, npu_kernel, 12,
         config->input_size, config->kernel_size, config->in_channels, config->out_channels);
     if (!result.output) {
       printf("float16_conv returned NULL for %s batch %d\n", config->name, n);
@@ -303,48 +412,65 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
       break;
     }
 
-    unpack_nc1hwc2_fp16(result.output, single_output,
-        1, config->out_channels, 1, output_size, output_align, width_stride);
+    float *batch_output = npu_output + (size_t)n * single_output_elements;
+    unpack_nc1hwc2_fp16(result.output, batch_output,
+        1, config->out_channels, 1, output_size, c2, width_stride);
 
-    memcpy(npu_output + (size_t)n * single_output_elements,
-        single_output, single_output_elements * sizeof(float));
     release_conv_result(&result);
   }
-  free(single_output);
   if (!batch_success) {
     free(npu_output);
     free(cpu_output);
     free(input);
     free(kernel);
+    free(npu_kernel);
     return -1;
   }
 
-  print_conv1d_outputs("Actual Output (RKNN):", npu_output,
+  print_conv1d_outputs("Actual Output (ops_reg):", npu_output,
       config->batch, config->out_channels, output_size, 5);
 
   int matches = 1;
+  const float atol = 1e-3f;
+  const float rtol = 1e-3f;
   for (size_t idx = 0; idx < cpu_output_elements; idx++) {
-    if (fabsf(npu_output[idx] - cpu_output[idx]) > 1e-2f) {
+    float diff = fabsf(npu_output[idx] - cpu_output[idx]);
+    float scale = fabsf(cpu_output[idx]);
+    if (diff > (atol + rtol * scale)) {
       printf("conv1d mismatch (%s) idx=%zu npu=%f cpu=%f\n", config->name,
           idx, npu_output[idx], cpu_output[idx]);
       matches = 0;
       break;
     }
   }
-  printf("%s: NPU output %s CPU reference\n", config->name,
-      matches ? "matches" : "does not match");
+  printf("%s: matches CPU -> %s\n", config->name, matches ? "YES" : "NO");
 
   free(npu_output);
   free(cpu_output);
   free(input);
   free(kernel);
+  free(npu_kernel);
   return matches ? 0 : -1;
 }
 
 int test_conv1d(int argc, char **argv) {
   static const Conv1dTestConfig configs[] = {
-      // {"conv1d_bs1", 1, 1, 11, 1, 6},
-      {"conv1d_bs8", 8, 1, 11, 1, 6},
+      // {"conv1d_bs1", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs1"},
+      // {"conv1d_bs8", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8"},
+      // {"conv1d_bs1_612", 1, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs1_k2"},
+      // {"conv1d_bs1_615", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs1_k5"},
+      // {"conv1d_bs1_1311_631", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs1_c3_k1"},
+      // {"conv1d_bs1_1311_632", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs1_c3_k2"},
+      // {"conv1d_bs1_1311_635", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs1_c3_k5"},
+      // {"conv1d_bs1_1311_615", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_bs1_c3_g3_k5"},
+      // {"conv1d_bs8_8111_611", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8_c1_k1"},
+      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      // {"conv1d_bs8_8111_615", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c1_k5"},
+      // {"conv1d_bs8_8311_631", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs8_c3_k1"},
+      // {"conv1d_bs8_8311_632", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs8_c3_k2"},
+      // {"conv1d_bs8_8311_635", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs8_c3_k2"},
+      {"conv1d_bs8_8311_635", 8, 3, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c3_g1_k5"},
   };
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
@@ -520,7 +646,7 @@ int test_conv2d(int argc, char **argv) {
     }
   }
 
-  printf("\nActual Output (RKNN):\n");
+  printf("\nActual Output (ops_reg):\n");
   for (int oc = 0; oc < out_channels; oc++) {
     printf("  Output Channel %d:\n", oc);
     for (int oh = 0; oh < out_height; oh++) {
