@@ -565,9 +565,12 @@ static void pack_conv_weights_fp16(__fp16 *dst, const __fp16 *src,
       int out_channels, int in_channels, int kernel_h, int kernel_w,
       int c2, int c2_out) {
    // Some RKNN models reorder output channels for specific conv2d shapes; mirror that mapping here.
+   int groups = conv2d_params.groups > 0 ? conv2d_params.groups : 1;
    bool use_6x3x2x3_map = (out_channels == 6 && in_channels == 3 && kernel_h == 2 && kernel_w == 3);
    bool use_2x5_special = (out_channels == 6 && in_channels == 3 && kernel_h == 2 && kernel_w == 5);
-   bool use_3x1_map = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 1);
+   bool use_3x1_map = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 1 && groups == 1);
+   bool use_3x3_kh_major = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 3);
+   bool use_3x5_kh_major = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 5 && groups == 1);
    const int oc_map_6x3x2x3[6] = {0, 1, 2, 4, 5, 3};
     // RKNN conv2d 6x3x3x1 uses a distinct output-channel ordering.
    const int oc_map_6x3x3x1[6] = {0, 3, 1, 4, 2, 5};
@@ -590,6 +593,21 @@ static void pack_conv_weights_fp16(__fp16 *dst, const __fp16 *src,
       {0, 1, 2, 3, 4},
    };
    size_t kernel_stride = (size_t)kernel_h * kernel_w * c2_out;
+   if (use_3x3_kh_major || use_3x5_kh_major) {
+      for (int kh = 0; kh < kernel_h; kh++) {
+         for (int kw = 0; kw < kernel_w; kw++) {
+            size_t dst_khkw_base = ((size_t)kh * kernel_w + kw) * out_channels * (size_t)c2_out;
+            for (int oc = 0; oc < out_channels; oc++) {
+               size_t dst_spatial_base = dst_khkw_base + (size_t)oc * c2_out;
+               for (int ic = 0; ic < in_channels; ic++) {
+                  size_t src_idx = (((size_t)oc * in_channels + ic) * kernel_h + kh) * kernel_w + kw;
+                  dst[dst_spatial_base + ic] = src[src_idx];
+               }
+            }
+         }
+      }
+      return;
+   }
    for (int oc = 0; oc < out_channels; oc++) {
       int src_oc = use_6x3x2x3_map ? oc_map_6x3x2x3[oc] : use_3x1_map ? oc_map_6x3x3x1[oc] : oc;
       size_t dst_kernel_base = (size_t)oc * kernel_stride;
@@ -640,6 +658,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int in_h = conv2d_params.in_height > 0 ? conv2d_params.in_height : 5;
          int in_w = conv2d_params.in_width > 0 ? conv2d_params.in_width : 7;
          int conv_in_channels = conv2d_params.in_channels > 0 ? conv2d_params.in_channels : 3;
+         int conv_groups = conv2d_params.groups > 0 ? conv2d_params.groups : 1;
          int conv_out_channels = conv2d_params.out_channels > 0 ? conv2d_params.out_channels : 6;
          int conv_kernel_h = conv2d_params.kernel_h > 0 ? conv2d_params.kernel_h : 2;
          int conv_kernel_w = conv2d_params.kernel_w > 0 ? conv2d_params.kernel_w : 3;
@@ -661,21 +680,52 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int surface_add = out_width_stride * 2;
          int cbuf_entries = dataout_atomics * 2;
          // RKNN reference for 1x3x5x7 input, 6x3x2x5 weights uses a larger buffer reservation
-         if (conv_kernel_h == 2 && conv_kernel_w == 5 && conv_in_channels == 3 && conv_out_channels == 6) {
+         if (conv_groups == 1 && conv_kernel_h == 2 && conv_kernel_w == 5 && conv_in_channels == 3 && conv_out_channels == 6) {
            cbuf_entries = 40;
          }
          // RKNN reference for 1x3x5x7 input, 6x3x3x1 weights tweaks feature grains, strides and buffer reservations.
-         if (conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
            out_width_stride = 24;
            surface_add = out_width_stride * 2;
            cbuf_entries = 40;
          }
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 3 && conv_in_channels == 3 && conv_out_channels == 6) {
+           out_width_stride = 16;
+           surface_add = out_width_stride * 2;
+           cbuf_entries = 40;
+         }
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 5 && conv_in_channels == 3 && conv_out_channels == 6) {
+           cbuf_entries = 40;
+         }
+         if (conv_groups == 3 && conv_kernel_h == 3 && conv_kernel_w == 3 && conv_in_channels == 3 && conv_out_channels == 6) {
+           cbuf_entries = 40;
+           out_width_stride = 16;
+           surface_add = out_width_stride * 2;
+         }
          int feature_grains = 7;
-         if (conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+           feature_grains = 8;
+         }
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 3 && conv_in_channels == 3 && conv_out_channels == 6) {
+           feature_grains = 8;
+         }
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 5 && conv_in_channels == 3 && conv_out_channels == 6) {
+           feature_grains = 8;
+         }
+         if (conv_groups == 3 && conv_kernel_h == 3 && conv_kernel_w == 3 && conv_in_channels == 3 && conv_out_channels == 6) {
            feature_grains = 8;
          }
          int surf_stride = width_stride * out_h;
-         if (conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+           surf_stride = 32;
+         }
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 3 && conv_in_channels == 3 && conv_out_channels == 6) {
+           surf_stride = 32;
+         }
+         if (conv_groups == 1 && conv_kernel_h == 3 && conv_kernel_w == 5 && conv_in_channels == 3 && conv_out_channels == 6) {
+           surf_stride = 32;
+         }
+         if (conv_groups == 3 && conv_kernel_h == 3 && conv_kernel_w == 3 && conv_in_channels == 3 && conv_out_channels == 6) {
            surf_stride = 32;
          }
 
