@@ -651,10 +651,10 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
 
 int test_conv2d(int argc, char **argv) {
   static const Conv2dTestConfig configs[] = {
-    {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
+    // {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
     // {1, 3, 5, 7, 6, 3, 2, 5, 1, "conv2d_i1357_w6325"},
     // {1, 3, 5, 7, 6, 3, 3, 1, 1, "conv2d_i1357_w6331"},
-    // {1, 3, 5, 7, 6, 3, 3, 3, 1, "conv2d_i1357_w6333"},
+    {1, 3, 5, 7, 6, 3, 3, 3, 1, "conv2d_i1357_w6333"},
     // {1, 3, 5, 7, 6, 1, 3, 3, 3, "conv2d_i1357_w6133_g3"},
     // {1, 3, 5, 7, 6, 3, 3, 5, 1, "conv2d_i1357_w6335"},
   };

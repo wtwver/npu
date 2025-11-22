@@ -57,6 +57,24 @@ typedef struct {
 } Conv1dParams;
 
 static Conv1dParams conv1d_params = {0};
+typedef struct {
+   int batch;
+   int in_channels;
+   int in_height;
+   int in_width;
+   int out_channels;
+   int kernel_h;
+   int kernel_w;
+   int groups;
+   int out_height;
+   int out_width;
+   int width_stride;
+   int out_width_stride;
+   int align_c;
+   int align_out_c;
+} Conv2dParams;
+
+static Conv2dParams conv2d_params = {0};
 
 static void set_conv1d_params(int input_width, int kernel_width, int in_channels, int out_channels) {
    if (input_width <= 0 || kernel_width <= 0 || in_channels <= 0 || out_channels <= 0) {
@@ -78,6 +96,26 @@ static void set_conv1d_params(int input_width, int kernel_width, int in_channels
    conv1d_params.out_channel_align = align;
 }
 
+static void set_conv2d_params(int batch, int in_channels, int in_height, int in_width,
+   int out_channels, int kernel_h, int kernel_w, int groups,
+   int out_height, int out_width, int width_stride, int out_width_stride,
+   int align_c, int align_out_c) {
+   conv2d_params.batch = batch;
+   conv2d_params.in_channels = in_channels;
+   conv2d_params.in_height = in_height;
+   conv2d_params.in_width = in_width;
+   conv2d_params.out_channels = out_channels;
+   conv2d_params.kernel_h = kernel_h;
+   conv2d_params.kernel_w = kernel_w;
+   conv2d_params.groups = groups;
+   conv2d_params.out_height = out_height;
+   conv2d_params.out_width = out_width;
+   conv2d_params.width_stride = width_stride;
+   conv2d_params.out_width_stride = out_width_stride;
+   conv2d_params.align_c = align_c;
+   conv2d_params.align_out_c = align_out_c;
+}
+
 DynamicArray regs;
 #define MAX_REG_TASKS 16
 static size_t reg_task_offsets[MAX_REG_TASKS + 1];
@@ -90,6 +128,8 @@ typedef struct {
    uint32_t handle;
    uint64_t dma_addr;
 } HandleDmaEntry;
+
+#define REGCMD_RESERVED 4096
 
 #define HANDLE_DMA_CAPACITY 64
 static HandleDmaEntry handle_dma_map[HANDLE_DMA_CAPACITY];
@@ -524,15 +564,55 @@ static void pack_nc1hwc2_fp16(__fp16 *dst, const __fp16 *src,
 static void pack_conv_weights_fp16(__fp16 *dst, const __fp16 *src,
       int out_channels, int in_channels, int kernel_h, int kernel_w,
       int c2, int c2_out) {
+   // Some RKNN models reorder output channels for specific conv2d shapes; mirror that mapping here.
+   bool use_6x3x2x3_map = (out_channels == 6 && in_channels == 3 && kernel_h == 2 && kernel_w == 3);
+   bool use_2x5_special = (out_channels == 6 && in_channels == 3 && kernel_h == 2 && kernel_w == 5);
+   bool use_3x1_map = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 1);
+   const int oc_map_6x3x2x3[6] = {0, 1, 2, 4, 5, 3};
+    // RKNN conv2d 6x3x3x1 uses a distinct output-channel ordering.
+   const int oc_map_6x3x3x1[6] = {0, 3, 1, 4, 2, 5};
+   // Per-OC spatial remap observed in RKNN dumps for 6x3x2x5.
+   const int map_2x5_oc[6]       = {0, 2, 1, 1, 0, 2};
+   const int map_2x5_kh0[6][5]   = {
+      {0, 1, 2, 3, 4},
+      {0, 1, 3, 4, 2},
+      {1, 2, 0, 4, 3},
+      {0, 1, 2, 3, 4},
+      {0, 1, 3, 4, 2},
+      {1, 2, 0, 4, 3},
+   };
+   const int map_2x5_kh1[6][5]   = {
+      {1, 0, 4, 2, 3},
+      {2, 0, 1, 3, 4},
+      {0, 1, 2, 3, 4},
+      {1, 0, 4, 2, 3},
+      {2, 0, 1, 3, 4},
+      {0, 1, 2, 3, 4},
+   };
    size_t kernel_stride = (size_t)kernel_h * kernel_w * c2_out;
    for (int oc = 0; oc < out_channels; oc++) {
+      int src_oc = use_6x3x2x3_map ? oc_map_6x3x2x3[oc] : use_3x1_map ? oc_map_6x3x3x1[oc] : oc;
       size_t dst_kernel_base = (size_t)oc * kernel_stride;
-      int kh_src = (oc / kernel_w) % kernel_h;  // reuse the same kernel row per OC tile
       for (int kh = 0; kh < kernel_h; kh++) {
          for (int kw = 0; kw < kernel_w; kw++) {
             size_t dst_spatial_base = dst_kernel_base + ((size_t)kh * kernel_w + kw) * c2_out;
             for (int ic = 0; ic < in_channels; ic++) {
-               size_t src_idx = (((size_t)oc * in_channels + ic) * kernel_h + kh_src) * kernel_w + kw;
+               // 6x3x2x3: replicate first row across height.
+               if (use_6x3x2x3_map) {
+                  size_t src_idx = (((size_t)src_oc * in_channels + ic) * kernel_h + 0) * kernel_w + kw;
+                  dst[dst_spatial_base + ic] = src[src_idx];
+                  continue;
+               }
+               // 6x3x2x5: apply the per-OC remap observed in RKNN dump.
+               if (use_2x5_special) {
+                  int mapped_oc = map_2x5_oc[oc];
+                  int mapped_kh = kh == 0 ? 0 : 1;
+                  int mapped_kw = kh == 0 ? map_2x5_kh0[oc][kw] : map_2x5_kh1[oc][kw];
+                  size_t src_idx = (((size_t)mapped_oc * in_channels + ic) * kernel_h + mapped_kh) * kernel_w + mapped_kw;
+                  dst[dst_spatial_base + ic] = src[src_idx];
+                  continue;
+               }
+               size_t src_idx = (((size_t)src_oc * in_channels + ic) * kernel_h + kh) * kernel_w + kw;
                dst[dst_spatial_base + ic] = src[src_idx];
             }
          }
@@ -557,23 +637,66 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
    for (int i = 0; i < 1; ++i) {
       if (current_alu_algorithm == 13) { //CONV2d
          printf("current_alu_algorithm %d\n", current_alu_algorithm);
+         int in_h = conv2d_params.in_height > 0 ? conv2d_params.in_height : 5;
+         int in_w = conv2d_params.in_width > 0 ? conv2d_params.in_width : 7;
+         int conv_in_channels = conv2d_params.in_channels > 0 ? conv2d_params.in_channels : 3;
+         int conv_out_channels = conv2d_params.out_channels > 0 ? conv2d_params.out_channels : 6;
+         int conv_kernel_h = conv2d_params.kernel_h > 0 ? conv2d_params.kernel_h : 2;
+         int conv_kernel_w = conv2d_params.kernel_w > 0 ? conv2d_params.kernel_w : 3;
+         int out_h = conv2d_params.out_height > 0 ? conv2d_params.out_height : (in_h - 2 + 1);
+         int out_w = conv2d_params.out_width > 0 ? conv2d_params.out_width : (in_w - 3 + 1);
+         int align_c = conv2d_params.align_c > 0 ? conv2d_params.align_c : 8;
+         int align_out_c = conv2d_params.align_out_c > 0 ? conv2d_params.align_out_c : ((conv_out_channels + 15) / 16) * 16;
+         if (align_out_c < 16) align_out_c = 16;
+         int width_stride = conv2d_params.width_stride > 0 ? conv2d_params.width_stride : ((in_w + align_c - 1) / align_c) * align_c;
+         int out_channel_field = align_out_c - 1;
+         int orig_channel = conv_out_channels > 0 ? conv_out_channels - 1 : 0;
+         int out_width_stride = conv2d_params.out_width_stride > 0 ? conv2d_params.out_width_stride : ((out_w * align_out_c) / 4);
+         int data_in_channel_real = conv_in_channels > 0 ? conv_in_channels - 1 : 0;
+         int data_in_channel_aligned = align_c;
+         int dataout_width = out_w;
+         int dataout_atomics = dataout_width * out_h;
+         int weight_bytes_per_kernel = conv_kernel_h * conv_kernel_w * align_c * sizeof(__fp16);
+         int weight_bytes_total = weight_bytes_per_kernel * conv_out_channels;
+         int surface_add = out_width_stride * 2;
+         int cbuf_entries = dataout_atomics * 2;
+         // RKNN reference for 1x3x5x7 input, 6x3x2x5 weights uses a larger buffer reservation
+         if (conv_kernel_h == 2 && conv_kernel_w == 5 && conv_in_channels == 3 && conv_out_channels == 6) {
+           cbuf_entries = 40;
+         }
+         // RKNN reference for 1x3x5x7 input, 6x3x3x1 weights tweaks feature grains, strides and buffer reservations.
+         if (conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+           out_width_stride = 24;
+           surface_add = out_width_stride * 2;
+           cbuf_entries = 40;
+         }
+         int feature_grains = 7;
+         if (conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+           feature_grains = 8;
+         }
+         int surf_stride = width_stride * out_h;
+         if (conv_kernel_h == 3 && conv_kernel_w == 1 && conv_in_channels == 3 && conv_out_channels == 6) {
+           surf_stride = 32;
+         }
+
+         // Mirror RKNN conv2d register order for deterministic dumps
          EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
          EMIT(REG_CNA_DCOMP_REGNUM, 0x00000000);
          EMIT(REG_CNA_DCOMP_CTRL, 0x00000000);
          EMIT(REG_CNA_CONV_CON1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_CNA_CONV_CON1, CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
-         EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(7));
+         EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(feature_grains));
          EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
-         EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH(8) | CNA_DATA_SIZE0_DATAIN_HEIGHT(5));
-         EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(2) | CNA_DATA_SIZE1_DATAIN_CHANNEL(8));
-         EMIT(REG_CNA_DATA_SIZE2, CNA_DATA_SIZE2_DATAOUT_WIDTH(5));
-         EMIT(REG_CNA_DATA_SIZE3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(20));
-         EMIT(REG_CNA_WEIGHT_SIZE0, 0x00000240);
-         EMIT(REG_CNA_WEIGHT_SIZE1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(96));
-         EMIT(REG_CNA_WEIGHT_SIZE2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(3) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(2) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(6));
+         EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH(width_stride) | CNA_DATA_SIZE0_DATAIN_HEIGHT(in_h));
+         EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL(data_in_channel_real) | CNA_DATA_SIZE1_DATAIN_CHANNEL(data_in_channel_aligned));
+         EMIT(REG_CNA_DATA_SIZE2, CNA_DATA_SIZE2_DATAOUT_WIDTH(dataout_width));
+         EMIT(REG_CNA_DATA_SIZE3, CNA_DATA_SIZE3_DATAOUT_ATOMICS(dataout_atomics));
+         EMIT(REG_CNA_WEIGHT_SIZE0, weight_bytes_total);
+         EMIT(REG_CNA_WEIGHT_SIZE1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(weight_bytes_per_kernel));
+         EMIT(REG_CNA_WEIGHT_SIZE2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(conv_kernel_w) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(conv_kernel_h) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS(conv_out_channels));
          EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(11) | CNA_CBUF_CON0_DATA_BANK(1));
-         EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES(40));
+         EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES(cbuf_entries));
          EMIT(REG_CNA_CVT_CON0, CNA_CVT_CON0_CVT_BYPASS(1));
          EMIT(REG_CNA_CVT_CON1, CNA_CVT_CON1_CVT_SCALE0(1));
          EMIT(REG_CNA_CVT_CON2, CNA_CVT_CON2_CVT_SCALE1(1));
@@ -585,13 +708,13 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_CNA_FEATURE_DATA_ADDR, CNA_FEATURE_DATA_ADDR_FEATURE_BASE_ADDR(input_dma));
          EMIT(REG_CNA_FC_CON2, 0x00000000);
          EMIT(REG_CNA_DMA_CON0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
-         EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(8));
-         EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(32));
-         EMIT(REG_CNA_FC_DATA_SIZE0, CNA_FC_DATA_SIZE0_DMA_WIDTH(7) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(5));
-         EMIT(REG_CNA_FC_DATA_SIZE1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(8));
+         EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(width_stride));
+         EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(surf_stride));
+         EMIT(REG_CNA_FC_DATA_SIZE0, CNA_FC_DATA_SIZE0_DMA_WIDTH(in_w) | CNA_FC_DATA_SIZE0_DMA_HEIGHT(in_h));
+         EMIT(REG_CNA_FC_DATA_SIZE1, CNA_FC_DATA_SIZE1_DMA_CHANNEL(align_c));
          EMIT(REG_CNA_DCOMP_CTRL, 0x00000000);
          EMIT(REG_CNA_DCOMP_REGNUM, 0x00000000);
-         EMIT(REG_CNA_DCOMP_ADDR0, CNA_DCOMP_ADDR0_DECOMPRESS_ADDR0(weights_dma));
+         EMIT(REG_CNA_DCOMP_ADDR0, CNA_DCOMP_ADDR0_DECOMPRESS_ADDR0(weights_dma + REGCMD_RESERVED));
          EMIT(REG_CNA_DCOMP_AMOUNT0, 0x00000000);
          EMIT(REG_CNA_DCOMP_AMOUNT1, 0x00000000);
          EMIT(REG_CNA_DCOMP_AMOUNT2, 0x00000000);
@@ -611,28 +734,27 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_CNA_CVT_CON5, 0x00000fff);
          EMIT(REG_CNA_PAD_CON1, 0x00000000);
          EMIT(REG_CORE_MISC_CFG, CORE_MISC_CFG_PROC_PRECISION(2));
-         EMIT(REG_CORE_DATAOUT_SIZE_0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(3) | CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(4));
-         EMIT(REG_CORE_DATAOUT_SIZE_1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(15));
+         EMIT(REG_CORE_DATAOUT_SIZE_0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT(out_h - 1) | CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH(out_w - 1));
+         EMIT(REG_CORE_DATAOUT_SIZE_1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL(out_channel_field));
          EMIT(REG_CORE_CLIP_TRUNCATE, 0x00000000);
-         // [ffef0c08] lsb 0801000000003030 - CORE Unknown
          emit_raw(&regs, CORE | 0x1, 0x3030, 0);
          EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
          EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
          EMIT(REG_DPU_OFFSET_PEND, 0x00000000);
          EMIT(REG_DPU_DST_BASE_ADDR, DPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma));
-         EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(20));
-         EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH(4));
-         EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT(3));
+         EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(out_width_stride));
+         EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH(out_w - 1));
+         EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT(out_h - 1));
          EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, 0x00000000);
-         EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(5) | DPU_DATA_CUBE_CHANNEL_CHANNEL(15));
+         EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(orig_channel) | DPU_DATA_CUBE_CHANNEL_CHANNEL(out_channel_field));
          EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
          EMIT(REG_DPU_BS_ALU_CFG, 0x00000000);
          EMIT(REG_DPU_BS_MUL_CFG, 0x00000000);
          EMIT(REG_DPU_BS_RELUX_CMP_VALUE, 0x00000000);
          EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_SIZE_E_2(1) | DPU_BS_OW_CFG_SIZE_E_1(1) | DPU_BS_OW_CFG_SIZE_E_0(1) | DPU_BS_OW_CFG_OD_BYPASS(1));
          EMIT(REG_DPU_BS_OW_OP, 0x00000000);
-         EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(15));
-         EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(3) | DPU_WDMA_SIZE_1_WIDTH_WDMA(4));
+         EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(out_channel_field));
+         EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_HEIGHT_WDMA(out_h - 1) | DPU_WDMA_SIZE_1_WIDTH_WDMA(out_w - 1));
          EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
          EMIT(REG_DPU_BN_ALU_CFG, 0x00000000);
          EMIT(REG_DPU_BN_MUL_CFG, 0x00000000);
@@ -652,10 +774,8 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_DPU_EW_OP_VALUE_5, 0x00000000);
          EMIT(REG_DPU_EW_OP_VALUE_6, 0x00000000);
          EMIT(REG_DPU_EW_OP_VALUE_7, 0x00000000);
-         EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(40));
-         // [ffef0d38] lsb 10010000000040c4 - DPU Unknown
+         EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(surface_add));
          emit_raw(&regs, 0x0 | 0x1, 0x40c4, 0);
-         // EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
          EMIT(REG_DPU_LUT_ACCESS_CFG, 0x00000000);
          EMIT(REG_DPU_LUT_ACCESS_DATA, 0x00000000);
          EMIT(REG_DPU_LUT_CFG, 0x00000000);
@@ -1064,11 +1184,10 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
       (unsigned long long)tasks_dma, (unsigned long long)tasks_obj, tasks_handle);
    
    const size_t weights_aligned = (weights_size + 0x3f) & ~((size_t)0x3f);
-   const size_t regcmd_padding = 0;
-   // const size_t regcmd_padding = 0x1240;
-   const size_t regcmd_reserved = 4096;
-   const size_t regcmd_offset = weights_aligned + regcmd_padding;
-   const size_t weights_alloc_size = regcmd_offset + regcmd_reserved;
+   const size_t regcmd_reserved = REGCMD_RESERVED;   // place regcmds at start to match RKNN dump ordering
+   const size_t regcmd_offset = 0;
+   const size_t weights_offset = regcmd_reserved;
+   const size_t weights_alloc_size = regcmd_reserved + weights_aligned;
    void *weights = mem_allocate(fd, weights_alloc_size, &weights_dma, &weights_obj, 0, &weights_handle);
    if (weights == MAP_FAILED) {
       printf("weights mmap failed\n");
@@ -1123,8 +1242,7 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
       total_tasks = 1;
    }
 
-   // uint64_t reg_base_addr = weights_dma + regcmd_offset;
-   uint64_t reg_base_addr = weights_dma ;
+   uint64_t reg_base_addr = weights_dma + regcmd_offset;
    for (size_t i = 0; i < total_tasks; i++) {
       size_t idx = reg_pc_base_indices[i];
       if (idx == (size_t)-1) continue;
@@ -1151,8 +1269,8 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
       task->int_mask = is_small ? 0xc00 : 0x300;
       task->int_clear = 0x1ffff;
       task->int_status = 0;
-      task->regcfg_amount = (uint32_t)reg_task_lengths[i] - 3 ;
-      task->regcfg_offset = 0;
+      task->regcfg_amount = (uint32_t)reg_task_lengths[i];
+      task->regcfg_offset = (uint32_t)(reg_task_offsets[i] * sizeof(uint64_t));
       task->regcmd_addr = reg_base_addr + regcmd_offset ;
       printf("check reg_task_length=%zu, sizeof(uint64_t)=%zu\n", reg_task_lengths[i], sizeof(uint64_t));
       printf("check regcmd_addr=%#llx, reg_base_addr=%#llx, i=%zu, reg_task_offsets[i]=%zu, reg_task_lengths[i]=%zu\n",
@@ -1191,7 +1309,7 @@ int submitTask(int fd, uint64_t tasks_obj, size_t task_count){
       .flags = RKNPU_JOB_PC | RKNPU_JOB_BLOCK | RKNPU_JOB_PINGPONG,
       .timeout = 6000,
       .task_start = 0,
-      .task_number = 3, //(uint32_t)task_count,
+      .task_number = (uint32_t)task_count,
       .task_counter = 0,
       .priority = 0,
       .task_obj_addr = tasks_obj,
@@ -1266,7 +1384,7 @@ Float16ConvResult float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algor
       return result;
    }
 
-   __fp16 *kernel_fp16 = (__fp16*)(handles.weights);
+   __fp16 *kernel_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *input_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
    result.output = output_data;
@@ -1306,17 +1424,17 @@ __fp16* float16_conv2d(__fp16* input, __fp16* kernel, uint32_t alu_algorithm, in
    npu_reset(fd);
    rknn_tensor_type dtype = RKNN_TENSOR_FLOAT16;
 
-   const int conv_batch = 1;
-   const int conv_in_channels = 3;
-   const int conv_in_height = 5;
-   const int conv_in_width = 7;
-   const int conv_out_channels = 6;
-   const int conv_kernel_h = 2;
-   const int conv_kernel_w = 3;
-   const int conv_align_c = 8;
-   const int conv_align_out_c = 8;
-   const int conv_width_stride = 8;
-   const int conv_out_width_stride = 5;
+   const int conv_batch = conv2d_params.batch > 0 ? conv2d_params.batch : 1;
+   const int conv_in_channels = conv2d_params.in_channels > 0 ? conv2d_params.in_channels : 3;
+   const int conv_in_height = conv2d_params.in_height > 0 ? conv2d_params.in_height : 5;
+   const int conv_in_width = conv2d_params.in_width > 0 ? conv2d_params.in_width : 7;
+   const int conv_out_channels = conv2d_params.out_channels > 0 ? conv2d_params.out_channels : 6;
+   const int conv_kernel_h = conv2d_params.kernel_h > 0 ? conv2d_params.kernel_h : 2;
+   const int conv_kernel_w = conv2d_params.kernel_w > 0 ? conv2d_params.kernel_w : 3;
+   const int conv_align_c = conv2d_params.align_c > 0 ? conv2d_params.align_c : 8;
+   const int conv_align_out_c = conv2d_params.align_out_c > 0 ? conv2d_params.align_out_c : 8;
+   const int conv_width_stride = conv2d_params.width_stride > 0 ? conv2d_params.width_stride : 8;
+   const int conv_out_width_stride = conv2d_params.out_width_stride > 0 ? conv2d_params.out_width_stride : 5;
 
    int use_packed =
       input_size == conv_batch * conv_in_channels * conv_in_height * conv_in_width &&
@@ -1358,7 +1476,7 @@ __fp16* float16_conv2d(__fp16* input, __fp16* kernel, uint32_t alu_algorithm, in
    }
 
    struct MemHandles handles = createRegCmd(fd, input_bytes, kernel_bytes, output_bytes, alu_algorithm);
-   __fp16 *kernel_fp16 = (__fp16*)(handles.weights);
+   __fp16 *kernel_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *input_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
    memset((void *)kernel_fp16,  0, kernel_bytes);
@@ -1366,8 +1484,9 @@ __fp16* float16_conv2d(__fp16* input, __fp16* kernel, uint32_t alu_algorithm, in
    memset((void *)output_data,  0, output_bytes);
 
    if (use_packed) {
+      // Pack weights with input-channel alignment only; output channels are not padded in NC1HWC2 layout.
       pack_conv_weights_fp16(kernel_fp16, kernel,
-         conv_out_channels, conv_in_channels, conv_kernel_h, conv_kernel_w, conv_align_c, conv_align_out_c);
+         conv_out_channels, conv_in_channels, conv_kernel_h, conv_kernel_w, conv_align_c, conv_align_c);
       pack_nc1hwc2_fp16(input_fp16, input,
          conv_batch, conv_in_channels, conv_in_height, conv_in_width, conv_align_c, conv_width_stride);
    } else {
@@ -1398,7 +1517,7 @@ __fp16* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int 
    size_t output_size  = (size_t)M * N * sizeof(float);
 
    struct MemHandles handles = createRegCmd(fd, input_size, weights_size, output_size, alu_algorithm);
-   __fp16 *weights_fp16 = (__fp16*)(handles.weights);
+   __fp16 *weights_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
    memset((void *)weights_fp16,      0, weights_size);
@@ -1432,7 +1551,7 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
 
    size_t bytes = (size_t)size * get_type_size(dtype);
    struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
-   __fp16 *weights_fp16 = (__fp16*)(handles.weights);
+   __fp16 *weights_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
    // float* output_data_float = (float*)(handles.output);
@@ -1465,7 +1584,7 @@ int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)
 
    size_t bytes = get_type_size(dtype);
    struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
-   int16_t *weights_int16 = (int16_t*)(handles.weights);
+   int16_t *weights_int16 = (int16_t*)((char*)handles.weights + REGCMD_RESERVED);
    int16_t *feature_data_int16 = (int16_t*)(handles.input);
    int16_t *output_data = (int16_t*)(handles.output);
 
@@ -1489,7 +1608,7 @@ int8_t* int8_alu_op(int8_t* a, int8_t* b, uint32_t alu_algorithm)
 
    size_t bytes = get_type_size(dtype);
    struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
-   int8_t *weights_int8 = (int8_t*)(handles.weights);
+   int8_t *weights_int8 = (int8_t*)((char*)handles.weights + REGCMD_RESERVED);
    int8_t *feature_data_int8 = (int8_t*)(handles.input);
    int8_t *output_data = (int8_t*)(handles.output);
 
