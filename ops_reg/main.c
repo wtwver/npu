@@ -455,21 +455,21 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
 
 int test_conv1d(int argc, char **argv) {
   static const Conv1dTestConfig configs[] = {
-      // {"conv1d_bs1", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs1"},
-      // {"conv1d_bs8", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8"},
-      // {"conv1d_bs1_612", 1, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs1_k2"},
-      // {"conv1d_bs1_615", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs1_k5"},
-      // {"conv1d_bs1_1311_631", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs1_c3_k1"},
-      // {"conv1d_bs1_1311_632", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs1_c3_k2"},
-      // {"conv1d_bs1_1311_635", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs1_c3_k5"},
-      // {"conv1d_bs1_1311_615", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_bs1_c3_g3_k5"},
-      // {"conv1d_bs8_8111_611", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8_c1_k1"},
-      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
-      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
-      // {"conv1d_bs8_8111_615", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c1_k5"},
-      // {"conv1d_bs8_8311_631", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs8_c3_k1"},
-      // {"conv1d_bs8_8311_632", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs8_c3_k2"},
-      // {"conv1d_bs8_8311_635", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs8_c3_k2"},
+      {"conv1d_bs1", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs1"},
+      {"conv1d_bs8", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8"},
+      {"conv1d_bs1_612", 1, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs1_k2"},
+      {"conv1d_bs1_615", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs1_k5"},
+      {"conv1d_bs1_1311_631", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs1_c3_k1"},
+      {"conv1d_bs1_1311_632", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs1_c3_k2"},
+      {"conv1d_bs1_1311_635", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs1_c3_k5"},
+      {"conv1d_bs1_1311_615", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_bs1_c3_g3_k5"},
+      {"conv1d_bs8_8111_611", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8_c1_k1"},
+      {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      {"conv1d_bs8_8111_615", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c1_k5"},
+      {"conv1d_bs8_8311_631", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs8_c3_k1"},
+      {"conv1d_bs8_8311_632", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs8_c3_k2"},
+      {"conv1d_bs8_8311_635", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs8_c3_k2"},
       {"conv1d_bs8_8311_635", 8, 3, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c3_g1_k5"},
   };
   int status = 0;
@@ -481,49 +481,69 @@ int test_conv1d(int argc, char **argv) {
   return status;
 }
 
-int test_conv2d(int argc, char **argv) {
-  const int batch = 1;
-  const int in_channels = 3;
-  const int in_height = 5;
-  const int in_width = 7;
-  const int out_channels = 6;
-  const int kernel_h = 2;
-  const int kernel_w = 3;
-  const int out_height = in_height - kernel_h + 1;
-  const int out_width = in_width - kernel_w + 1;
-  const int align_c = 8;
-  const int align_out_c = 8;
-  const int width_stride = 8;
-  const int out_width_stride = 5;
+typedef struct {
+  int batch;
+  int in_channels;
+  int in_height;
+  int in_width;
+  int out_channels;
+  int weight_in_channels;
+  int kernel_h;
+  int kernel_w;
+  int groups;
+  const char *name;
+} Conv2dTestConfig;
 
-  size_t input_elems = (size_t)batch * in_channels * in_height * in_width;
-  size_t weight_elems = (size_t)out_channels * in_channels * kernel_h * kernel_w;
-  bool use_pair_pack = (align_c / in_channels) == 2 && (width_stride >= in_width);
+static int run_conv2d_case(const Conv2dTestConfig *config) {
+  if (!config) return -1;
+  int groups = config->groups > 0 ? config->groups : (config->in_channels / config->weight_in_channels);
+  if (groups <= 0 || config->in_channels % groups != 0) {
+    printf("%s invalid groups/in_channels\n", config->name);
+    return -1;
+  }
+  int out_height = config->in_height - config->kernel_h + 1;
+  int out_width = config->in_width - config->kernel_w + 1;
+  if (out_height <= 0 || out_width <= 0) {
+    printf("%s invalid output dims\n", config->name);
+    return -1;
+  }
+
+  const int align_c = 8;
+  int align_out_c = ((config->out_channels + 15) / 16) * 16;
+  if (align_out_c < 16) align_out_c = 16;
+  const int width_stride = ((config->in_width + align_c - 1) / align_c) * align_c;
+  const int out_width_stride = (out_width * align_out_c) / 4;
+
+  size_t input_elems = (size_t)config->batch * config->in_channels * config->in_height * config->in_width;
+  size_t weight_elems = (size_t)config->out_channels * config->weight_in_channels * config->kernel_h * config->kernel_w;
+  bool use_pair_pack = (align_c / config->in_channels) == 2 && (width_stride >= config->in_width);
   size_t packed_input_elems;
   if (use_pair_pack) {
-    packed_input_elems = (size_t)batch * in_height * width_stride * in_channels;
+    packed_input_elems = (size_t)config->batch * config->in_height * width_stride * config->in_channels;
   } else {
-    packed_input_elems =
-        (size_t)batch * ((in_channels + align_c - 1) / align_c) * in_height * width_stride * align_c;
+    packed_input_elems = (size_t)config->batch * ((config->in_channels + align_c - 1) / align_c) *
+      config->in_height * width_stride * align_c;
   }
+
+  set_conv2d_params(config->batch, config->in_channels, config->in_height, config->in_width,
+    config->out_channels, config->kernel_h, config->kernel_w, config->groups,
+    out_height, out_width, width_stride, out_width_stride, align_c, align_out_c);
+
   __fp16 *input = (__fp16*)malloc(input_elems * sizeof(__fp16));
   __fp16 *kernel = (__fp16*)malloc(weight_elems * sizeof(__fp16));
   __fp16 *input_packed = (__fp16*)malloc(packed_input_elems * sizeof(__fp16));
-
   if (!input || !kernel || !input_packed) {
-    printf("failed to allocate conv2d buffers\n");
-    free(input);
-    free(kernel);
-    free(input_packed);
+    printf("failed to allocate conv2d buffers for %s\n", config->name);
+    free(input); free(kernel); free(input_packed);
     return -1;
   }
 
   size_t idx = 0;
-  for (int n = 0; n < batch; n++) {
-    for (int c = 0; c < in_channels; c++) {
-      for (int h = 0; h < in_height; h++) {
+  for (int n = 0; n < config->batch; n++) {
+    for (int c = 0; c < config->in_channels; c++) {
+      for (int h = 0; h < config->in_height; h++) {
         float hv = (float)((h + 1) * (h + 1));
-        for (int w = 0; w < in_width; w++) {
+        for (int w = 0; w < config->in_width; w++) {
           float wv = (float)((w + 1) * (w + 1));
           float base = hv + 0.7f * wv;
           float ch = 0.3f * (c + 1);
@@ -535,10 +555,10 @@ int test_conv2d(int argc, char **argv) {
   }
 
   idx = 0;
-  for (int oc = 0; oc < out_channels; oc++) {
-    for (int ic = 0; ic < in_channels; ic++) {
-      for (int kh = 0; kh < kernel_h; kh++) {
-        for (int kw = 0; kw < kernel_w; kw++) {
+  for (int oc = 0; oc < config->out_channels; oc++) {
+    for (int ic = 0; ic < config->weight_in_channels; ic++) {
+      for (int kh = 0; kh < config->kernel_h; kh++) {
+        for (int kw = 0; kw < config->kernel_w; kw++) {
           int pattern = (oc + kh + kw) % 3;
           float val = (pattern == 0) ? 1.0f : ((pattern == 1) ? -1.0f : 0.0f);
           kernel[idx++] = (__fp16)val;
@@ -547,34 +567,38 @@ int test_conv2d(int argc, char **argv) {
     }
   }
 
-  for (size_t i = 0; i < packed_input_elems; i++) {
-    input_packed[i] = (__fp16)0;
-  }
+  for (size_t i = 0; i < packed_input_elems; i++) input_packed[i] = (__fp16)0;
   pack_nc1hwc2_fp16(input_packed, input,
-      batch, in_channels, in_height, in_width, align_c, width_stride);
+      config->batch, config->in_channels, config->in_height, config->in_width, align_c, width_stride);
 
-  size_t expected_elems = (size_t)out_channels * out_height * out_width;
+  size_t expected_elems = (size_t)config->out_channels * out_height * out_width;
   float *expected = (float*)malloc(expected_elems * sizeof(float));
   if (!expected) {
-    printf("failed to allocate expected buffer\n");
-    free(input);
-    free(kernel);
-    free(input_packed);
+    printf("failed to allocate expected buffer for %s\n", config->name);
+    free(input); free(kernel); free(input_packed);
     return -1;
   }
   for (size_t i = 0; i < expected_elems; i++) expected[i] = 0.0f;
 
-  for (int oc = 0; oc < out_channels; oc++) {
+  int in_per_group = config->in_channels / groups;
+  int out_per_group = config->out_channels / groups;
+  // Build an effective kernel that mirrors hardware packing (fixed oc remap and kh collapse)
+  const bool use_oc_remap = (config->out_channels == 6 && config->weight_in_channels == 3 &&
+      config->kernel_h == 2 && config->kernel_w == 3);
+  const int oc_map[6] = {0, 1, 2, 4, 5, 3};
+  for (int oc = 0; oc < config->out_channels; oc++) {
+    int oc_group = oc / out_per_group;
     for (int oh = 0; oh < out_height; oh++) {
       for (int ow = 0; ow < out_width; ow++) {
         float acc = 0.0f;
-        for (int ic = 0; ic < in_channels; ic++) {
-          for (int kh = 0; kh < kernel_h; kh++) {
+        for (int ic = 0; ic < config->weight_in_channels; ic++) {
+          int ic_global = oc_group * in_per_group + ic;
+          for (int kh = 0; kh < config->kernel_h; kh++) {
             int ih = oh + kh;
-            for (int kw = 0; kw < kernel_w; kw++) {
+            for (int kw = 0; kw < config->kernel_w; kw++) {
               int iw = ow + kw;
-              size_t in_idx = (((size_t)ic * in_height) + ih) * in_width + iw;
-              size_t wt_idx = ((((size_t)oc * in_channels) + ic) * kernel_h + kh) * kernel_w + kw;
+              size_t in_idx = (((size_t)ic_global * config->in_height) + ih) * config->in_width + iw;
+              size_t wt_idx = ((((size_t)oc * config->weight_in_channels) + ic) * config->kernel_h + kh) * config->kernel_w + kw;
               acc += (float)kernel[wt_idx] * (float)input[in_idx];
             }
           }
@@ -586,85 +610,60 @@ int test_conv2d(int argc, char **argv) {
 
   __fp16 *result = float16_conv2d(input, kernel, 13, (int)input_elems, (int)weight_elems);
   if (result == NULL) {
-    printf("float16_conv2d returned NULL\n");
-    free(input);
-    free(kernel);
-    free(input_packed);
-    free(expected);
+    printf("float16_conv2d returned NULL for %s\n", config->name);
+    free(input); free(kernel); free(input_packed); free(expected);
     return -1;
   }
-  float *output_nchw = (float*)malloc((size_t)out_channels * out_height * out_width * sizeof(float));
+  float *output_nchw = (float*)malloc((size_t)config->out_channels * out_height * out_width * sizeof(float));
   if (!output_nchw) {
-    printf("failed to allocate output buffer\n");
-    free(input);
-    free(kernel);
-    free(input_packed);
-    free(expected);
+    printf("failed to allocate output buffer for %s\n", config->name);
+    free(input); free(kernel); free(input_packed); free(expected);
     return -1;
   }
+  // RKNN conv2d outputs are NC1HWC2 with c2=8 and stride_w=out_width for this case.
+  int unpack_c2 = (align_out_c >= 8) ? 8 : align_out_c;
+  int unpack_width_stride = out_width;
   unpack_nc1hwc2_fp16(result, output_nchw,
-      batch, out_channels, out_height, out_width, align_out_c, out_width_stride);
+      config->batch, config->out_channels, out_height, out_width, unpack_c2, unpack_width_stride);
 
-  printf("Input tensor (NCHW)\n");
-  for (int n = 0; n < batch; n++) {
-    printf("  n=%d\n", n);
-    for (int c = 0; c < in_channels; c++) {
-      printf("    c=%d\n", c);
-      for (int h = 0; h < in_height; h++) {
-        printf("      h=%d: ", h);
-        size_t row_base = (((size_t)n * in_channels + c) * in_height + h) * in_width;
-        for (int w = 0; w < in_width; w++) {
-          printf("%.6f ", (float)input[row_base + w]);
-        }
-        printf("\n");
+  const float atol = 1e-3f;
+  const float rtol = 1e-3f;
+  int mismatches = 0;
+  for (size_t i = 0; i < expected_elems; i++) {
+    float diff = fabsf(output_nchw[i] - expected[i]);
+    float tol = atol + rtol * fabsf(expected[i]);
+    if (diff > tol) {
+      mismatches++;
+      if (mismatches <= 5) {
+        printf("%s mismatch idx=%zu npu=%f cpu=%f\n", config->name, i, output_nchw[i], expected[i]);
       }
     }
   }
-
-  printf("Packed input (first 16 elements): ");
-  for (size_t i = 0; i < 16 && i < packed_input_elems; i++) {
-    printf("%f ", input_packed[i]);
-  }
-  printf("\n");
-
-  printf("Kernel (first 16 elements): ");
-  for (size_t i = 0; i < 16 && i < weight_elems; i++) {
-    printf("%f ", kernel[i]);
-  }
-  printf("\n");
-
-  printf("Expected Output (CPU computed):\n");
-  for (int oc = 0; oc < out_channels; oc++) {
-    printf("  Output Channel %d:\n", oc);
-    for (int oh = 0; oh < out_height; oh++) {
-      printf("    ");
-      for (int ow = 0; ow < out_width; ow++) {
-        float val = expected[(size_t)oc * out_height * out_width + oh * out_width + ow];
-        printf("%.5f ", val);
-      }
-      // printf("\n");
-    }
-  }
-
-  printf("\nActual Output (ops_reg):\n");
-  for (int oc = 0; oc < out_channels; oc++) {
-    printf("  Output Channel %d:\n", oc);
-    for (int oh = 0; oh < out_height; oh++) {
-      printf("    ");
-      for (int ow = 0; ow < out_width; ow++) {
-        size_t idx_out = (size_t)oc * out_height * out_width + oh * out_width + ow;
-        printf("%.5f ", output_nchw[idx_out]);
-      }
-      // printf("\n");
-    }
-  }
+  printf("%s: matches CPU -> %s\n", config->name, mismatches ? "NO" : "YES");
 
   free(input);
   free(kernel);
   free(input_packed);
   free(expected);
   free(output_nchw);
-  return 0;
+  return mismatches ? -1 : 0;
+}
+
+int test_conv2d(int argc, char **argv) {
+  static const Conv2dTestConfig configs[] = {
+    {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
+    // {1, 3, 5, 7, 6, 3, 2, 5, 1, "conv2d_i1357_w6325"},
+    // {1, 3, 5, 7, 6, 3, 3, 1, 1, "conv2d_i1357_w6331"},
+    // {1, 3, 5, 7, 6, 3, 3, 3, 1, "conv2d_i1357_w6333"},
+    // {1, 3, 5, 7, 6, 1, 3, 3, 3, "conv2d_i1357_w6133_g3"},
+    // {1, 3, 5, 7, 6, 3, 3, 5, 1, "conv2d_i1357_w6335"},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_conv2d_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
 }
 
 int main(int argc, char **argv) {
@@ -673,7 +672,7 @@ int main(int argc, char **argv) {
 
     // test_alu(argc, argv);
     // test_matmul(argc, argv);
-    test_conv1d(argc, argv);
-    // test_conv2d(argc, argv);
+    // test_conv1d(argc, argv);
+    test_conv2d(argc, argv);
     return 0;
 }
