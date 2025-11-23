@@ -427,9 +427,39 @@ static bool run_conv_test(const ConvConfig& config) {
   int native_c2 = native_output_attr.n_dims > 4 ? native_output_attr.dims[4] : 1;
   int stride_w = native_output_attr.w_stride > 0 ? native_output_attr.w_stride : native_width;
 
+  // Some RKNN conv2d models flatten H*W into a single spatial dimension (e.g., NC1HWC2 with H=1, W=out_h*out_w padded).
+  // If the native dims don't match the logical output, re-interpret the spatial extent using stride_w and reshape later.
+  int decode_height = native_height;
+  int decode_width = native_width;
+  bool needs_reshape = false;
+  if (decode_height * decode_width != out_height * out_width) {
+    decode_height = 1;
+    decode_width = stride_w;
+    needs_reshape = true;
+  }
+
   std::vector<float> output_nchw = nc1hwc2_fp16_to_nchw(
-    hw_output, native_batch, native_c1, native_height, native_width,
+    hw_output, native_batch, native_c1, decode_height, decode_width,
     stride_w, native_c2, out_channels);
+
+  if (needs_reshape && static_cast<int>(output_nchw.size()) == out_batch * out_channels * decode_height * decode_width) {
+    std::vector<float> reshaped(out_batch * out_channels * out_height * out_width, 0.f);
+    for (int n = 0; n < out_batch; ++n) {
+      for (int c = 0; c < out_channels; ++c) {
+        for (int h = 0; h < out_height; ++h) {
+          for (int w = 0; w < out_width; ++w) {
+            int flat = h * out_width + w;
+            size_t src_idx = ((n * out_channels + c) * decode_height + 0) * decode_width + flat;
+            size_t dst_idx = ((n * out_channels + c) * out_height + h) * out_width + w;
+            if (src_idx < output_nchw.size() && dst_idx < reshaped.size()) {
+              reshaped[dst_idx] = output_nchw[src_idx];
+            }
+          }
+        }
+      }
+    }
+    output_nchw.swap(reshaped);
+  }
 
   // Compute expected results on CPU (NCHW)
   std::vector<float> expected = generate_weight_data(config);
@@ -474,8 +504,8 @@ static bool run_conv_test(const ConvConfig& config) {
         int idx = oc * out_height * out_width + h * out_width + w;
         std::cout << cpu_output[idx] << " ";
       }
-      std::cout << std::endl;
     }
+    std::cout << std::endl;
   }
 
   std::cout << "\n  Actual Output (RKNN):" << std::endl;
@@ -487,8 +517,8 @@ static bool run_conv_test(const ConvConfig& config) {
         int idx = oc * out_height * out_width + h * out_width + w;
         std::cout << output_nchw[idx] << " ";
       }
-      std::cout << std::endl;
     }
+    std::cout << std::endl;
   }
 
   // Compare results
@@ -523,71 +553,14 @@ static bool run_conv_test(const ConvConfig& config) {
 }
 
 int main() {
-  // Define all test cases
   std::vector<ConvConfig> test_cases = {
-    // {
-    //   "conv2d_1x1",
-    //   1,  // out_channels
-    //   1,  // in_channels
-    //   1,  // kernel_h
-    //   1,  // kernel_w
-    //   1,  // groups
-    //   "conv2d with input shape (1,3,5,7), weight shape (6,3,2,3)"
-    // },      
-    {"conv2d_2x3",
-      6,  // out_channels
-      3,  // in_channels
-      2,  // kernel_h
-      3,  // kernel_w
-      1,  // groups
-      "conv2d with input shape (1,3,5,7), weight shape (6,3,2,3)"
-    },
-    // {
-    //   "conv2d_2x5",
-    //   // 5,  // out_channels
-    //   6,  // out_channels
-    //   3,  // in_channels
-    //   2,  // kernel_h
-    //   5,  // kernel_w
-    //   1,  // groups
-    //   "conv2d with input shape (1,3,5,7), weight shape (6,3,2,5)"
-    // },
-    // {
-    //   "conv2d_3x1",
-    //   6,  // out_channels
-    //   3,  // in_channels
-    //   3,  // kernel_h
-    //   1,  // kernel_w
-    //   1,  // groups
-    //   "conv2d with input shape (1,3,5,7), weight shape (6,3,3,1)"
-    // },
-    // {
-    //   "conv2d_3x3",
-    //   6,  // out_channels
-    //   3,  // in_channels
-    //   3,  // kernel_h
-    //   3,  // kernel_w
-    //   1,  // groups
-    //   "conv2d with input shape (1,3,5,7), weight shape (6,3,3,3)"
-    // },
-    // {
-    //   "conv2d_3x3_g3",
-    //   6,  // out_channels
-    //   3,  // in_channels
-    //   3,  // kernel_h
-    //   3,  // kernel_w
-    //   3,  // groups
-    //   "conv2d with input shape (1,3,5,7), weight shape (6,1,3,3) [depthwise]"
-    // },
-    // {
-    //   "conv2d_3x5",
-    //   6,  // out_channels
-    //   3,  // in_channels
-    //   3,  // kernel_h
-    //   5,  // kernel_w
-    //   1,  // groups
-    //   "conv2d with input shape (1,3,5,7), weight shape (6,3,3,5)"
-    // }
+    {"conv2d_2x1", 6, 3, 2, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 1)"},
+    // {"conv2d_2x3", 6, 3, 2, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 3)"},
+    // {"conv2d_2x5", 6, 3, 2, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 5)"},
+    // {"conv2d_3x1", 6, 3, 3, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 1)"},
+    // {"conv2d_3x3", 6, 3, 3, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 3)"},
+    // {"conv2d_3x3_g3", 6, 3, 3, 3, 3, "conv2d input shape (1, 3, 5, 7), weight shape (6, 1, 3, 3)"},
+    // {"conv2d_3x5", 6, 3, 3, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 5)"},
   };
 
   std::cout << "\n" << std::string(80, '#') << std::endl;

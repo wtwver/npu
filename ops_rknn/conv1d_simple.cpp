@@ -15,6 +15,49 @@
 #include <sys/stat.h>
 #include <vector>
 
+struct Mt19937 {
+    uint32_t mt[624];
+    int index;
+};
+
+static void mt_seed(Mt19937 *rng, uint32_t seed) {
+    rng->mt[0] = seed;
+    for (int i = 1; i < 624; ++i) {
+        rng->mt[i] = 1812433253U * (rng->mt[i-1] ^ (rng->mt[i-1] >> 30)) + static_cast<uint32_t>(i);
+    }
+    rng->index = 624;
+}
+
+static uint32_t mt_extract(Mt19937 *rng) {
+    const uint32_t mag01[2] = {0U, 0x9908b0dfU};
+    if (rng->index >= 624) {
+        for (int kk = 0; kk < 624 - 397; ++kk) {
+            uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk+1] & 0x7fffffffU);
+            rng->mt[kk] = rng->mt[kk + 397] ^ (y >> 1) ^ mag01[y & 1U];
+        }
+        for (int kk = 624 - 397; kk < 623; ++kk) {
+            uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk+1] & 0x7fffffffU);
+            rng->mt[kk] = rng->mt[kk + (397 - 624)] ^ (y >> 1) ^ mag01[y & 1U];
+        }
+        uint32_t y = (rng->mt[623] & 0x80000000U) | (rng->mt[0] & 0x7fffffffU);
+        rng->mt[623] = rng->mt[396] ^ (y >> 1) ^ mag01[y & 1U];
+        rng->index = 0;
+    }
+    uint32_t y = rng->mt[rng->index++];
+    y ^= (y >> 11);
+    y ^= (y << 7) & 0x9d2c5680U;
+    y ^= (y << 15) & 0xefc60000U;
+    y ^= (y >> 18);
+    return y;
+}
+
+static float mt_uniform(Mt19937 *rng, float low, float high) {
+    const double a = static_cast<double>(mt_extract(rng) >> 5);
+    const double b = static_cast<double>(mt_extract(rng) >> 6);
+    const double random = (a * 67108864.0 + b) / 9007199254740992.0;
+    return static_cast<float>(low + (high - low) * random);
+}
+
 static bool load_model(const std::string& path, std::vector<uint8_t>& data) {
     FILE* fp = fopen(path.c_str(), "rb");
     if (!fp) {
@@ -47,8 +90,18 @@ struct TestCase {
     int in_channels;
     int input_length;
     int out_channels;
+    int weight_in_channels;
     int kernel_size;
+    int groups;
     std::string data_dir;
+
+    TestCase(const std::string& n, const std::string& model, int b, int ic, int in_len,
+             int oc, int wic, int k, int g = 0, const std::string& dir = "")
+      : name(n), model_path(model), batch(b), in_channels(ic), input_length(in_len),
+        out_channels(oc), weight_in_channels(wic), kernel_size(k),
+        groups(g > 0 ? g : (wic > 0 ? ic / wic : 1)), data_dir(dir) {}
+
+    int in_channels_per_group() const { return weight_in_channels; }
 };
 
 struct ComparisonConfig {
@@ -182,21 +235,22 @@ static bool load_fp32_tensor(const std::string& path, size_t element_count, std:
     return true;
 }
 
-static std::vector<float> build_input(int batch, int in_channels, int length) {
+static std::vector<float> build_input(int batch, int in_channels, int length, Mt19937 &rng) {
     std::vector<float> data(static_cast<size_t>(batch) * in_channels * length);
     for (size_t idx = 0; idx < data.size(); ++idx) {
-        data[idx] = static_cast<float>((idx % length) + 1);
+        data[idx] = mt_uniform(&rng, -2.0f, 2.0f);
     }
     return data;
 }
 
-static std::vector<float> build_weight(int out_channels, int in_channels, int kernel_size) {
-    std::vector<float> data(static_cast<size_t>(out_channels) * in_channels * kernel_size);
-    size_t idx = 0;
+static std::vector<float> build_default_weight(int out_channels, int in_per_group, int kernel_size) {
+    std::vector<float> data(static_cast<size_t>(out_channels) * in_per_group * kernel_size);
     for (int oc = 0; oc < out_channels; ++oc) {
-        for (int ic = 0; ic < in_channels; ++ic) {
+        float value = static_cast<float>(oc + 1);
+        for (int ic = 0; ic < in_per_group; ++ic) {
             for (int k = 0; k < kernel_size; ++k) {
-                data[idx++] = static_cast<float>(oc + 1);
+                size_t idx = ((static_cast<size_t>(oc) * in_per_group + ic) * kernel_size) + k;
+                data[idx] = value;
             }
         }
     }
@@ -232,18 +286,22 @@ static bool load_fp16_tensor(const std::string& path, size_t element_count, std:
     return true;
 }
 
-static std::vector<float> compute_expected(int batch, int out_channels, int in_channels, int input_length, int kernel_size,
+static std::vector<float> compute_expected(int batch, int out_channels, int in_channels, int in_per_group,
+                                           int input_length, int kernel_size, int groups,
                                            const std::vector<float>& input, const std::vector<float>& weight) {
     int output_length = input_length - kernel_size + 1;
     std::vector<float> expected(static_cast<size_t>(batch) * out_channels * output_length);
+    int out_per_group = groups > 0 ? out_channels / groups : out_channels;
     for (int b = 0; b < batch; ++b) {
         for (int oc = 0; oc < out_channels; ++oc) {
+            int group_idx = out_per_group > 0 ? oc / out_per_group : 0;
             for (int pos = 0; pos < output_length; ++pos) {
                 float acc = 0.f;
-                for (int ic = 0; ic < in_channels; ++ic) {
+                for (int ic = 0; ic < in_per_group; ++ic) {
                     for (int k = 0; k < kernel_size; ++k) {
-                        size_t input_idx = ((static_cast<size_t>(b) * in_channels + ic) * input_length) + pos + k;
-                        size_t weight_idx = ((static_cast<size_t>(oc) * in_channels + ic) * kernel_size) + k;
+                        int input_channel = group_idx * in_per_group + ic;
+                        size_t input_idx = ((static_cast<size_t>(b) * in_channels + input_channel) * input_length) + pos + k;
+                        size_t weight_idx = ((static_cast<size_t>(oc) * in_per_group + ic) * kernel_size) + k;
                         acc += input[input_idx] * weight[weight_idx];
                     }
                 }
@@ -279,7 +337,6 @@ static void print_tensor_rows(const std::string& title, const std::vector<float>
                         std::cout << " ";
                     }
                 }
-                std::cout << std::endl;
             }
             std::cout << std::endl;
         }
@@ -396,10 +453,54 @@ static void dump_channel_slice(const std::string& label, const std::vector<float
     std::cout << std::endl;
 }
 
+static void print_conv1d_input(const std::vector<float>& data,
+                               int batch, int channels, int width) {
+    std::cout << "Generated Input:" << std::endl;
+    for (int n = 0; n < batch; ++n) {
+        std::cout << "  batch=" << n << std::endl;
+        for (int c = 0; c < channels; ++c) {
+            std::cout << "    channel=" << c << ": ";
+            size_t base = (static_cast<size_t>(n) * channels + c) * width;
+            for (int w = 0; w < width; ++w) {
+                std::cout << " " << std::fixed << std::setprecision(5) << data[base + w];
+            }
+            std::cout << std::endl;
+        }
+    }
+}
+
+static void print_conv1d_kernel(const std::vector<float>& data,
+                                int out_channels, int in_channels, int ksize) {
+    std::cout << "Generated Kernel:" << std::endl;
+    for (int oc = 0; oc < out_channels; ++oc) {
+        std::cout << "  out_channel=" << oc << std::endl;
+        for (int ic = 0; ic < in_channels; ++ic) {
+            std::cout << "    in_channel=" << ic << ": ";
+            size_t base = (static_cast<size_t>(oc) * in_channels + ic) * ksize;
+            for (int k = 0; k < ksize; ++k) {
+                std::cout << " " << std::fixed << std::setprecision(5) << data[base + k];
+            }
+            std::cout << std::endl;
+        }
+    }
+}
+
 int main() {
     const std::vector<TestCase> test_cases = {
-        // {"batch-1", "models/conv1d_simple_bs1.rknn", 1, 1, 11, 6, 1},
-        {"batch-8", "models/conv1d_simple_bs8.rknn", 8, 1, 11, 6, 1, "conv1d_simple_data/conv1d_simple_bs8"},
+        // {"conv1d-i-1-1-11-w-6-1-1", "models/conv1d-i-1-1-11-w-6-1-1.rknn", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-1"},
+        {"conv1d-i-1-1-11-w-6-1-2", "models/conv1d-i-1-1-11-w-6-1-2.rknn", 1, 1, 11, 6, 1, 2, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-2"},
+        // {"conv1d-i-1-1-11-w-6-1-5", "models/conv1d-i-1-1-11-w-6-1-5.rknn", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-5"},
+        // {"conv1d-i-1-3-11-w-6-3-1", "models/conv1d-i-1-3-11-w-6-3-1.rknn", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-1"},
+        // {"conv1d-i-1-3-11-w-6-3-2", "models/conv1d-i-1-3-11-w-6-3-2.rknn", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-2"},
+        // {"conv1d-i-1-3-11-w-6-3-5", "models/conv1d-i-1-3-11-w-6-3-5.rknn", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-5"},
+        // {"conv1d-i-1-3-11-w-6-1-5-g3", "models/conv1d-i-1-3-11-w-6-1-5-g3.rknn", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_data/conv1d-i-1-3-11-w-6-1-5-g3"},
+        // {"conv1d-i-8-1-11-w-6-1-1", "models/conv1d-i-8-1-11-w-6-1-1.rknn", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-1"},
+        // {"conv1d-i-8-1-11-w-6-1-2", "models/conv1d-i-8-1-11-w-6-1-2.rknn", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-2"},
+        // {"conv1d-i-8-1-11-w-6-1-5", "models/conv1d-i-8-1-11-w-6-1-5.rknn", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-5"},
+        // {"conv1d-i-8-3-11-w-6-3-1", "models/conv1d-i-8-3-11-w-6-3-1.rknn", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-1"},
+        // {"conv1d-i-8-3-11-w-6-3-2", "models/conv1d-i-8-3-11-w-6-3-2.rknn", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-2"},
+        // {"conv1d-i-8-3-11-w-6-3-5", "models/conv1d-i-8-3-11-w-6-3-5.rknn", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-5"},
+        // {"conv1d-i-8-3-11-w-6-1-5-g3", "models/conv1d-i-8-3-11-w-6-1-5-g3.rknn", 8, 3, 11, 6, 1, 5, 3, "conv1d_simple_data/conv1d-i-8-3-11-w-6-1-5-g3"},
     };
 
     for (const auto& test : test_cases) {
@@ -435,11 +536,8 @@ int main() {
             std::cout << (loaded_input ? "  Loaded deterministic input" : "  Unable to load deterministic input")
                       << " from " << input_path << std::endl;
         }
-        if (!loaded_input) {
-            input = build_input(test.batch, test.in_channels, test.input_length);
-        }
-
-        size_t weight_count = static_cast<size_t>(test.out_channels) * static_cast<size_t>(test.in_channels) * test.kernel_size;
+        int in_per_group = test.in_channels_per_group();
+        size_t weight_count = static_cast<size_t>(test.out_channels) * static_cast<size_t>(in_per_group) * test.kernel_size;
         std::vector<float> weight;
         bool loaded_weight = false;
         if (!test.data_dir.empty()) {
@@ -448,13 +546,24 @@ int main() {
             std::cout << (loaded_weight ? "  Loaded deterministic weight" : "  Unable to load deterministic weight")
                       << " from " << weight_path << std::endl;
         }
+        Mt19937 rng;
+        bool needs_random = !loaded_input || !loaded_weight;
+        if (needs_random) {
+            mt_seed(&rng, 0);
+        }
+        if (!loaded_input) {
+            input = build_input(test.batch, test.in_channels, test.input_length, rng);
+        }
         if (!loaded_weight) {
-            weight = build_weight(test.out_channels, test.in_channels, test.kernel_size);
+            weight = build_default_weight(test.out_channels, in_per_group, test.kernel_size);
         }
 
+        print_conv1d_input(input, test.batch, test.in_channels, test.input_length);
+        print_conv1d_kernel(weight, test.out_channels, in_per_group, test.kernel_size);
+
         if (!expected_from_file) {
-            expected = compute_expected(test.batch, test.out_channels, test.in_channels, test.input_length,
-                                        test.kernel_size, input, weight);
+            expected = compute_expected(test.batch, test.out_channels, test.in_channels, in_per_group,
+                                        test.input_length, test.kernel_size, test.groups, input, weight);
             std::cout << "  Expected output generated on CPU for comparison" << std::endl;
         }
 
@@ -644,12 +753,22 @@ int main() {
         int native_c2 = native_output_attr.n_dims > 4 ? native_output_attr.dims[4] : 1;
         int padded_width = native_output_attr.w_stride > 0 ? native_output_attr.w_stride : native_width;
 
-        std::vector<float> results = nc1hwc2_fp16_to_nchw(result_buf, output_elems,
-                                                          native_batch, native_c1,
-                                                          native_height, native_width,
-                                                          padded_width, native_c2,
-                                                          test.batch, test.out_channels,
-                                                          output_length);
+        std::vector<float> results;
+        if (native_output_attr.fmt == RKNN_TENSOR_NC1HWC2) {
+            results = nc1hwc2_fp16_to_nchw(result_buf, output_elems,
+                                           native_batch, native_c1,
+                                           native_height, native_width,
+                                           padded_width, native_c2,
+                                           test.batch, test.out_channels,
+                                           output_length);
+        } else {
+            size_t logical_count = static_cast<size_t>(test.batch) * test.out_channels * output_length;
+            size_t copy_count = std::min(logical_count, output_elems);
+            results.assign(logical_count, 0.f);
+            for (size_t i = 0; i < copy_count; ++i) {
+                results[i] = static_cast<float>(result_buf[i]);
+            }
+        }
 
         rknn_outputs_release(ctx, 1, &output_desc);
 
@@ -658,7 +777,7 @@ int main() {
 
         std::cout << "Model     : " << test.model_path << std::endl;
         print_shape("Input shape", test.batch, test.in_channels, test.input_length);
-        print_shape("Weight shape", test.out_channels, test.in_channels, test.kernel_size);
+        print_shape("Weight shape", test.out_channels, in_per_group, test.kernel_size);
         print_shape("Output shape", test.batch, test.out_channels, output_length);
         print_values("Input     : ", input);
         print_values("Weight    : ", weight);
@@ -697,7 +816,7 @@ int main() {
             std::cout << "Comparison: tensor size mismatch (expected_elems=" << expected.size()
                       << ", actual_elems=" << results.size() << ")" << std::endl;
         }
-        std::cout << "Status    : " << (stats.matched ? "match" : "not matched")
+        std::cout << "Status    : match " << (stats.matched ? "YES" : "NO")
                   << " (abs_tol=" << compare_cfg.abs_tol
                   << ", rel_tol=" << compare_cfg.rel_tol << ")" << std::endl;
         std::cout << "Elapsed us: " << duration_us << std::endl;
