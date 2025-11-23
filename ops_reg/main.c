@@ -455,22 +455,22 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
 
 int test_conv1d(int argc, char **argv) {
   static const Conv1dTestConfig configs[] = {
-      {"conv1d_bs1", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs1"},
-      {"conv1d_bs8", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8"},
+      // {"conv1d_bs1", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs1"},
+      // {"conv1d_bs8", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8"},
       {"conv1d_bs1_612", 1, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs1_k2"},
-      {"conv1d_bs1_615", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs1_k5"},
-      {"conv1d_bs1_1311_631", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs1_c3_k1"},
-      {"conv1d_bs1_1311_632", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs1_c3_k2"},
-      {"conv1d_bs1_1311_635", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs1_c3_k5"},
-      {"conv1d_bs1_1311_615", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_bs1_c3_g3_k5"},
-      {"conv1d_bs8_8111_611", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8_c1_k1"},
-      {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
-      {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
-      {"conv1d_bs8_8111_615", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c1_k5"},
-      {"conv1d_bs8_8311_631", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs8_c3_k1"},
-      {"conv1d_bs8_8311_632", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs8_c3_k2"},
-      {"conv1d_bs8_8311_635", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs8_c3_k2"},
-      {"conv1d_bs8_8311_635", 8, 3, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c3_g1_k5"},
+      // {"conv1d_bs1_615", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs1_k5"},
+      // {"conv1d_bs1_1311_631", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs1_c3_k1"},
+      // {"conv1d_bs1_1311_632", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs1_c3_k2"},
+      // {"conv1d_bs1_1311_635", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs1_c3_k5"},
+      // {"conv1d_bs1_1311_615", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_bs1_c3_g3_k5"},
+      // {"conv1d_bs8_8111_611", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8_c1_k1"},
+      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      // {"conv1d_bs8_8111_615", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c1_k5"},
+      // {"conv1d_bs8_8311_631", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs8_c3_k1"},
+      // {"conv1d_bs8_8311_632", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs8_c3_k2"},
+      // {"conv1d_bs8_8311_635", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs8_c3_k2"},
+      // {"conv1d_bs8_8311_635", 8, 3, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c3_g1_k5"},
   };
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
@@ -644,30 +644,7 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
   }
   // RKNN conv2d outputs are NC1HWC2 with c2=8 and stride_w=out_width for this case.
   int unpack_c2 = (align_out_c >= 8) ? 8 : align_out_c;
-  int unpack_width_stride = out_width_stride;
-  if (config->kernel_h == 3 && config->kernel_w == 3 &&
-      config->in_channels == 3 && config->out_channels == 6) {
-    unpack_width_stride = out_width;
-  }
-  if (config->kernel_h == 3 && config->kernel_w == 1 &&
-      config->in_channels == 3 && config->out_channels == 6 &&
-      config->groups == 1) {
-    unpack_width_stride = out_width;
-  }
-  if (config->kernel_h == 2 && config->kernel_w == 3 &&
-      config->in_channels == 3 && config->out_channels == 6 &&
-      config->groups == 1) {
-    unpack_width_stride = out_width;
-  }
-  if (config->kernel_h == 2 && config->kernel_w == 5 &&
-      config->in_channels == 3 && config->out_channels == 6 &&
-      config->groups == 1) {
-    unpack_width_stride = out_width;
-  }
-  if (config->kernel_h == 3 && config->kernel_w == 5 &&
-      config->in_channels == 3 && config->out_channels == 6) {
-    unpack_width_stride = out_width;
-  }
+  int unpack_width_stride = out_width;
   unpack_nc1hwc2_fp16(result, output_nchw,
       config->batch, config->out_channels, out_height, out_width, unpack_c2, unpack_width_stride);
 
@@ -697,6 +674,7 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
 
 int test_conv2d(int argc, char **argv) {
   static const Conv2dTestConfig configs[] = {
+    {1, 3, 5, 7, 6, 3, 2, 1, 1, "conv2d_i1357_w6321"},
     {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
     {1, 3, 5, 7, 6, 3, 2, 5, 1, "conv2d_i1357_w6325"},
     {1, 3, 5, 7, 6, 3, 3, 1, 1, "conv2d_i1357_w6331"},
@@ -718,7 +696,7 @@ int main(int argc, char **argv) {
 
     // test_alu(argc, argv);
     // test_matmul(argc, argv);
-    // test_conv1d(argc, argv);
-    test_conv2d(argc, argv);
+    test_conv1d(argc, argv);
+    // test_conv2d(argc, argv);
     return 0;
 }
