@@ -4,3 +4,8 @@ __pycache__
 *.onnx
 *.rknn
 .venv/*
+*dump*
+ops_reg/main
+ops_rknn/conv1d_simple
+ops_rknn/conv2d_multi
+ops_rknn/run_output.txt
