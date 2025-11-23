@@ -14,15 +14,16 @@ except ImportError:
 
 
 def create_conv2d_model(in_channels: int, out_channels: int, kernel_size: int,
-                        kernel_values: Optional[np.ndarray]) -> nn.Module:
-  conv = nn.Conv2d(in_channels, out_channels, (1, kernel_size), bias=False)
+                        kernel_values: Optional[np.ndarray], groups: int) -> nn.Module:
+  conv = nn.Conv2d(in_channels, out_channels, (1, kernel_size), bias=False, groups=groups)
   with torch.no_grad():
     if kernel_values is not None:
       weight_tensor = torch.tensor(kernel_values.astype(np.float32)).view_as(conv.weight)
       conv.weight.copy_(weight_tensor)
     else:
+      in_per_group = in_channels // groups
       for oc in range(out_channels):
-        for ic in range(in_channels):
+        for ic in range(in_per_group):
           for k in range(kernel_size):
             conv.weight[oc, ic, 0, k] = float(oc + 1)
   conv.eval()
@@ -64,8 +65,20 @@ def main() -> None:
   data_dir = base_dir / "conv1d_simple_data"
 
   cases = [
-    {"name": "conv1d_simple_bs1", "batch": 1, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 1},
-    {"name": "conv1d_simple_bs8", "batch": 8, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 1},
+    {"name": "conv1d-i-1-1-11-w-6-1-1", "batch": 1, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 1, "groups": 1},
+    {"name": "conv1d-i-1-1-11-w-6-1-2", "batch": 1, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 2, "groups": 1},
+    {"name": "conv1d-i-1-1-11-w-6-1-5", "batch": 1, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 5, "groups": 1},
+    {"name": "conv1d-i-1-3-11-w-6-3-1", "batch": 1, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 1, "groups": 1},
+    {"name": "conv1d-i-1-3-11-w-6-3-2", "batch": 1, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 2, "groups": 1},
+    {"name": "conv1d-i-1-3-11-w-6-3-5", "batch": 1, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 5, "groups": 1},
+    {"name": "conv1d-i-1-3-11-w-6-1-5-g3", "batch": 1, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 5, "groups": 3},
+    {"name": "conv1d-i-8-1-11-w-6-1-1", "batch": 8, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 1, "groups": 1},
+    {"name": "conv1d-i-8-1-11-w-6-1-2", "batch": 8, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 2, "groups": 1},
+    {"name": "conv1d-i-8-1-11-w-6-1-5", "batch": 8, "in_channels": 1, "input_length": 11, "out_channels": 6, "kernel": 5, "groups": 1},
+    {"name": "conv1d-i-8-3-11-w-6-3-1", "batch": 8, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 1, "groups": 1},
+    {"name": "conv1d-i-8-3-11-w-6-3-2", "batch": 8, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 2, "groups": 1},
+    {"name": "conv1d-i-8-3-11-w-6-3-5", "batch": 8, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 5, "groups": 1},
+    {"name": "conv1d-i-8-3-11-w-6-1-5-g3", "batch": 8, "in_channels": 3, "input_length": 11, "out_channels": 6, "kernel": 5, "groups": 3},
   ]
 
   for case in cases:
@@ -74,9 +87,9 @@ def main() -> None:
     kernel_path = data_dir / case["name"] / "kernel.bin"
     if kernel_path.exists():
       kernel_values = np.fromfile(kernel_path, dtype=np.float16).astype(np.float32)
-      kernel_values = kernel_values.reshape(case["out_channels"], case["in_channels"], case["kernel"])
+      kernel_values = kernel_values.reshape(case["out_channels"], case["in_channels"] // case["groups"], case["kernel"])
     print(f"\nGenerating {case['name']}... ")
-    model = create_conv2d_model(case["in_channels"], case["out_channels"], case["kernel"], kernel_values)
+    model = create_conv2d_model(case["in_channels"], case["out_channels"], case["kernel"], kernel_values, case["groups"])
     input_shape = (case["batch"], case["in_channels"], 1, case["input_length"])
     export_onnx(model, input_shape, onnx_path)
     if not build_rknn(onnx_path, input_shape):
