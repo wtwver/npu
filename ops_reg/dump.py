@@ -612,12 +612,16 @@ def dump_gem(fd, flink):
                     else:
                         break
                 
-                # Only print the first zero block if there are many consecutive ones
-                if zero_blocks > 1:
+                # Only collapse if more than 2 zero blocks; otherwise print individually
+                if zero_blocks > 2:
                     print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
                     print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
                 else:
-                    print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
+                    j = zero_start
+                    for _ in range(zero_blocks):
+                        here_local = struct.unpack('<4I', instr[j : j + 16])
+                        print(Colors.highlight(f"[{j:08x}] = {here_local[0]:08x} {here_local[1]:08x} {here_local[2]:08x} {here_local[3]:08x}"))
+                        j += 16
                 
                 i = j  # Move to the next non-zero block
             else:
