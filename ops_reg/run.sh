@@ -7,7 +7,9 @@
 #   python3 ../ops_rknn/generate_conv1d_inputs.py --case conv1d_simple_bs8
 # fi
 
-# gcc -o main main.c -ldrm -lm -I../include && gdb $GDB_FLAGS -x "$GDB_SCRIPT" --args ./main --data-dir "$CONV1D_DATA_DIR" 1
-
-# gcc -o main main.c -ldrm -lm -I../include && CONV1D_DATA_DIR="$CONV1D_DATA_DIR" ./main
-gcc -o main main.c -ldrm -lm -I../include && gdb -q -x test.gdb ./main
+gcc -o main main.c -ldrm -lm -I../include 
+if [ $# -gt 0 ]; then
+  gdb -q -x test.gdb ./main
+else
+  ./main
+fi
