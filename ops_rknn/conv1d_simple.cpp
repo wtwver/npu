@@ -243,16 +243,10 @@ static std::vector<float> build_input(int batch, int in_channels, int length, Mt
     return data;
 }
 
-static std::vector<float> build_default_weight(int out_channels, int in_per_group, int kernel_size) {
+static std::vector<float> build_weight(int out_channels, int in_per_group, int kernel_size, Mt19937 &rng) {
     std::vector<float> data(static_cast<size_t>(out_channels) * in_per_group * kernel_size);
-    for (int oc = 0; oc < out_channels; ++oc) {
-        float value = static_cast<float>(oc + 1);
-        for (int ic = 0; ic < in_per_group; ++ic) {
-            for (int k = 0; k < kernel_size; ++k) {
-                size_t idx = ((static_cast<size_t>(oc) * in_per_group + ic) * kernel_size) + k;
-                data[idx] = value;
-            }
-        }
+    for (size_t idx = 0; idx < data.size(); ++idx) {
+        data[idx] = mt_uniform(&rng, -2.0f, 2.0f);
     }
     return data;
 }
@@ -487,20 +481,20 @@ static void print_conv1d_kernel(const std::vector<float>& data,
 
 int main() {
     const std::vector<TestCase> test_cases = {
-        // {"conv1d-i-1-1-11-w-6-1-1", "models/conv1d-i-1-1-11-w-6-1-1.rknn", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-1"},
+        {"conv1d-i-1-1-11-w-6-1-1", "models/conv1d-i-1-1-11-w-6-1-1.rknn", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-1"},
         {"conv1d-i-1-1-11-w-6-1-2", "models/conv1d-i-1-1-11-w-6-1-2.rknn", 1, 1, 11, 6, 1, 2, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-2"},
-        // {"conv1d-i-1-1-11-w-6-1-5", "models/conv1d-i-1-1-11-w-6-1-5.rknn", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-5"},
-        // {"conv1d-i-1-3-11-w-6-3-1", "models/conv1d-i-1-3-11-w-6-3-1.rknn", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-1"},
-        // {"conv1d-i-1-3-11-w-6-3-2", "models/conv1d-i-1-3-11-w-6-3-2.rknn", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-2"},
-        // {"conv1d-i-1-3-11-w-6-3-5", "models/conv1d-i-1-3-11-w-6-3-5.rknn", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-5"},
-        // {"conv1d-i-1-3-11-w-6-1-5-g3", "models/conv1d-i-1-3-11-w-6-1-5-g3.rknn", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_data/conv1d-i-1-3-11-w-6-1-5-g3"},
-        // {"conv1d-i-8-1-11-w-6-1-1", "models/conv1d-i-8-1-11-w-6-1-1.rknn", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-1"},
-        // {"conv1d-i-8-1-11-w-6-1-2", "models/conv1d-i-8-1-11-w-6-1-2.rknn", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-2"},
-        // {"conv1d-i-8-1-11-w-6-1-5", "models/conv1d-i-8-1-11-w-6-1-5.rknn", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-5"},
-        // {"conv1d-i-8-3-11-w-6-3-1", "models/conv1d-i-8-3-11-w-6-3-1.rknn", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-1"},
-        // {"conv1d-i-8-3-11-w-6-3-2", "models/conv1d-i-8-3-11-w-6-3-2.rknn", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-2"},
-        // {"conv1d-i-8-3-11-w-6-3-5", "models/conv1d-i-8-3-11-w-6-3-5.rknn", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-5"},
-        // {"conv1d-i-8-3-11-w-6-1-5-g3", "models/conv1d-i-8-3-11-w-6-1-5-g3.rknn", 8, 3, 11, 6, 1, 5, 3, "conv1d_simple_data/conv1d-i-8-3-11-w-6-1-5-g3"},
+        {"conv1d-i-1-1-11-w-6-1-5", "models/conv1d-i-1-1-11-w-6-1-5.rknn", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_data/conv1d-i-1-1-11-w-6-1-5"},
+        {"conv1d-i-1-3-11-w-6-3-1", "models/conv1d-i-1-3-11-w-6-3-1.rknn", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-1"},
+        {"conv1d-i-1-3-11-w-6-3-2", "models/conv1d-i-1-3-11-w-6-3-2.rknn", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-2"},
+        {"conv1d-i-1-3-11-w-6-3-5", "models/conv1d-i-1-3-11-w-6-3-5.rknn", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_data/conv1d-i-1-3-11-w-6-3-5"},
+        {"conv1d-i-1-3-11-w-6-1-5-g3", "models/conv1d-i-1-3-11-w-6-1-5-g3.rknn", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_data/conv1d-i-1-3-11-w-6-1-5-g3"},
+        {"conv1d-i-8-1-11-w-6-1-1", "models/conv1d-i-8-1-11-w-6-1-1.rknn", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-1"},
+        {"conv1d-i-8-1-11-w-6-1-2", "models/conv1d-i-8-1-11-w-6-1-2.rknn", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-2"},
+        {"conv1d-i-8-1-11-w-6-1-5", "models/conv1d-i-8-1-11-w-6-1-5.rknn", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_data/conv1d-i-8-1-11-w-6-1-5"},
+        {"conv1d-i-8-3-11-w-6-3-1", "models/conv1d-i-8-3-11-w-6-3-1.rknn", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-1"},
+        {"conv1d-i-8-3-11-w-6-3-2", "models/conv1d-i-8-3-11-w-6-3-2.rknn", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-2"},
+        {"conv1d-i-8-3-11-w-6-3-5", "models/conv1d-i-8-3-11-w-6-3-5.rknn", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_data/conv1d-i-8-3-11-w-6-3-5"},
+        {"conv1d-i-8-3-11-w-6-1-5-g3", "models/conv1d-i-8-3-11-w-6-1-5-g3.rknn", 8, 3, 11, 6, 1, 5, 3, "conv1d_simple_data/conv1d-i-8-3-11-w-6-1-5-g3"},
     };
 
     for (const auto& test : test_cases) {
@@ -527,36 +521,15 @@ int main() {
         std::cout << "  Comparison tolerances -> abs_tol=" << compare_cfg.abs_tol
                   << ", rel_tol=" << compare_cfg.rel_tol << std::endl;
 
-        size_t input_count = static_cast<size_t>(test.batch) * test.in_channels * test.input_length;
         std::vector<float> input;
-        bool loaded_input = false;
-        if (!test.data_dir.empty()) {
-            std::string input_path = test.data_dir + "/input.bin";
-            loaded_input = load_fp16_tensor(input_path, input_count, input);
-            std::cout << (loaded_input ? "  Loaded deterministic input" : "  Unable to load deterministic input")
-                      << " from " << input_path << std::endl;
-        }
         int in_per_group = test.in_channels_per_group();
-        size_t weight_count = static_cast<size_t>(test.out_channels) * static_cast<size_t>(in_per_group) * test.kernel_size;
         std::vector<float> weight;
-        bool loaded_weight = false;
-        if (!test.data_dir.empty()) {
-            std::string weight_path = test.data_dir + "/kernel.bin";
-            loaded_weight = load_fp16_tensor(weight_path, weight_count, weight);
-            std::cout << (loaded_weight ? "  Loaded deterministic weight" : "  Unable to load deterministic weight")
-                      << " from " << weight_path << std::endl;
-        }
+
         Mt19937 rng;
-        bool needs_random = !loaded_input || !loaded_weight;
-        if (needs_random) {
-            mt_seed(&rng, 0);
-        }
-        if (!loaded_input) {
-            input = build_input(test.batch, test.in_channels, test.input_length, rng);
-        }
-        if (!loaded_weight) {
-            weight = build_default_weight(test.out_channels, in_per_group, test.kernel_size);
-        }
+        mt_seed(&rng, 0);
+        std::cout << "  Using mt19937 seed=0 to generate input and weight" << std::endl;
+        input = build_input(test.batch, test.in_channels, test.input_length, rng);
+        weight = build_weight(test.out_channels, in_per_group, test.kernel_size, rng);
 
         print_conv1d_input(input, test.batch, test.in_channels, test.input_length);
         print_conv1d_kernel(weight, test.out_channels, in_per_group, test.kernel_size);
