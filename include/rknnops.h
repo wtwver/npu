@@ -878,7 +878,8 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_CNA_DCOMP_CTRL, 0x00000000);
          uint32_t conv1d_con1 = CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2);
          if (input_width_aligned != input_width || in_channels > 1) {
-            conv1d_con1 |= CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(8);
+            // Packed NC1HWC2 input needs a larger ARGB_IN stride; mirror ops_rockchip.py (10) for multi-channel cases.
+            conv1d_con1 |= CNA_CONV_CON1_NONALIGN_DMA(1) | CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_ARGB_IN(10);
          }
          EMIT(REG_CNA_CONV_CON1, conv1d_con1);
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
@@ -1413,10 +1414,11 @@ Float16ConvResult float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algor
    if (output_width_stride == 0) output_width_stride = output_width;
    size_t input_elements = (size_t)input_width_aligned * (size_t)data_in_channel;
    size_t input_bytes = input_elements * sizeof(__fp16);
-   size_t kernel_bytes_per_kernel = (size_t)kernel_width * (size_t)data_in_channel * sizeof(__fp16);
-   size_t padded_kernel_bytes = (kernel_bytes_per_kernel + 15) & ~((size_t)15);
-   if (padded_kernel_bytes == 0) padded_kernel_bytes = 16;
-   size_t weight_bytes_total = padded_kernel_bytes * (size_t)out_channels;
+   // Match tinygrad packing: per-OC stride = data_in_channel fp16 (16 bytes), kw stride = out_channels * per-OC stride.
+   size_t oc_stride_bytes = (size_t)data_in_channel * sizeof(__fp16);           // 8 lanes * 2 bytes = 16
+   size_t kw_stride_bytes = (size_t)out_channels * oc_stride_bytes;             // 6 * 16 = 96
+   size_t weight_bytes_total = kw_stride_bytes * (size_t)kernel_width;          // 96 * 2 = 192
+   size_t padded_kernel_bytes = (oc_stride_bytes + 15) & ~((size_t)15);         // still 16 for this shape
    size_t output_elements = (size_t)output_width_stride * (size_t)out_channel_align;
    size_t output_bytes = output_elements * sizeof(__fp16);
 
@@ -1440,11 +1442,10 @@ Float16ConvResult float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algor
    memset((void *)input_fp16, 0, input_bytes);
    memset((void *)output_data, 0, output_bytes);
 
-   size_t kw_stride = (size_t)out_channels * padded_kernel_bytes;
    for (int kw = 0; kw < kernel_width; kw++) {
-      size_t kw_base = (size_t)kw * kw_stride;
+      size_t kw_base = (size_t)kw * kw_stride_bytes;
       for (int oc = 0; oc < out_channels; oc++) {
-         size_t oc_base = kw_base + (size_t)oc * padded_kernel_bytes;
+         size_t oc_base = kw_base + (size_t)oc * oc_stride_bytes;
          for (int ic = 0; ic < in_channels; ic++) {
             size_t src_idx = ((size_t)oc * in_channels + ic) * kernel_width + kw;
             memcpy((char*)kernel_fp16 + oc_base + (size_t)ic * sizeof(__fp16),
