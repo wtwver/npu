@@ -177,6 +177,63 @@ static void print_conv1d_kernel(const char *title, const __fp16 *data,
   }
 }
 
+static void print_conv2d_input(const char *title, const __fp16 *data,
+    int batch, int channels, int height, int width) {
+  printf("%s\n", title);
+  for (int n = 0; n < batch; n++) {
+    printf("  batch=%d\n", n);
+    for (int c = 0; c < channels; c++) {
+      printf("    channel=%d\n", c);
+      for (int h = 0; h < height; h++) {
+        printf("      h=%d: ", h);
+        for (int w = 0; w < width; w++) {
+          size_t idx = ((((size_t)n * channels + c) * height) + h) * width + w;
+          printf("%8.5f ", (float)data[idx]);
+        }
+        printf("\n");
+      }
+    }
+  }
+}
+
+static void print_conv2d_kernel(const char *title, const __fp16 *data,
+    int out_channels, int in_channels, int kernel_h, int kernel_w) {
+  printf("%s\n", title);
+  for (int oc = 0; oc < out_channels; oc++) {
+    printf("  out_channel=%d\n", oc);
+    for (int ic = 0; ic < in_channels; ic++) {
+      printf("    in_channel=%d\n", ic);
+      for (int kh = 0; kh < kernel_h; kh++) {
+        printf("      kh=%d: ", kh);
+        for (int kw = 0; kw < kernel_w; kw++) {
+          size_t idx = ((((size_t)oc * in_channels + ic) * kernel_h + kh) * kernel_w) + kw;
+          printf("%8.5f ", (float)data[idx]);
+        }
+        printf("\n");
+      }
+    }
+  }
+}
+
+static void print_conv2d_output(const char *title, const float *data,
+    int batch, int channels, int height, int width) {
+  printf("%s\n", title);
+  for (int n = 0; n < batch; n++) {
+    printf("  batch=%d\n", n);
+    for (int oc = 0; oc < channels; oc++) {
+      printf("    out_channel=%d\n", oc);
+      for (int h = 0; h < height; h++) {
+        printf("      h=%d: ", h);
+        const float *row = data + ((((size_t)n * channels + oc) * height + h) * width);
+        for (int w = 0; w < width; w++) {
+          printf("%8.5f ", row[w]);
+        }
+        printf("\n");
+      }
+    }
+  }
+}
+
 int test_alu(int argc, char **argv) {
     int size = 1 ;
     if (argc > 1) {
@@ -455,22 +512,22 @@ static int run_conv1d_case(const Conv1dTestConfig *config) {
 
 int test_conv1d(int argc, char **argv) {
   static const Conv1dTestConfig configs[] = {
-      // {"conv1d_bs1", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs1"},
-      // {"conv1d_bs8", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8"},
+      {"conv1d_bs1", 1, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs1"},
+      {"conv1d_bs8", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8"},
       {"conv1d_bs1_612", 1, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs1_k2"},
-      // {"conv1d_bs1_615", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs1_k5"},
-      // {"conv1d_bs1_1311_631", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs1_c3_k1"},
-      // {"conv1d_bs1_1311_632", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs1_c3_k2"},
-      // {"conv1d_bs1_1311_635", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs1_c3_k5"},
-      // {"conv1d_bs1_1311_615", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_bs1_c3_g3_k5"},
-      // {"conv1d_bs8_8111_611", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8_c1_k1"},
-      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
-      // {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
-      // {"conv1d_bs8_8111_615", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c1_k5"},
-      // {"conv1d_bs8_8311_631", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs8_c3_k1"},
-      // {"conv1d_bs8_8311_632", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs8_c3_k2"},
-      // {"conv1d_bs8_8311_635", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs8_c3_k2"},
-      // {"conv1d_bs8_8311_635", 8, 3, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c3_g1_k5"},
+      {"conv1d_bs1_615", 1, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs1_k5"},
+      {"conv1d_bs1_1311_631", 1, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs1_c3_k1"},
+      {"conv1d_bs1_1311_632", 1, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs1_c3_k2"},
+      {"conv1d_bs1_1311_635", 1, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs1_c3_k5"},
+      {"conv1d_bs1_1311_615", 1, 3, 11, 6, 1, 5, 3, "conv1d_simple_bs1_c3_g3_k5"},
+      {"conv1d_bs8_8111_611", 8, 1, 11, 6, 1, 1, 0, "conv1d_simple_bs8_c1_k1"},
+      {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      {"conv1d_bs8_8111_612", 8, 1, 11, 6, 1, 2, 0, "conv1d_simple_bs8_c1_k2"},
+      {"conv1d_bs8_8111_615", 8, 1, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c1_k5"},
+      {"conv1d_bs8_8311_631", 8, 3, 11, 6, 3, 1, 0, "conv1d_simple_bs8_c3_k1"},
+      {"conv1d_bs8_8311_632", 8, 3, 11, 6, 3, 2, 0, "conv1d_simple_bs8_c3_k2"},
+      {"conv1d_bs8_8311_635", 8, 3, 11, 6, 3, 5, 0, "conv1d_simple_bs8_c3_k2"},
+      {"conv1d_bs8_8311_635", 8, 3, 11, 6, 1, 5, 0, "conv1d_simple_bs8_c3_g1_k5"},
   };
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
@@ -548,34 +605,37 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
     return -1;
   }
 
+  const float low = -2.0f;
+  const float high = 2.0f;
+  Mt19937 rng;
+  mt_seed(&rng, 0);
   size_t idx = 0;
   for (int n = 0; n < config->batch; n++) {
     for (int c = 0; c < config->in_channels; c++) {
       for (int h = 0; h < config->in_height; h++) {
-        float hv = (float)((h + 1) * (h + 1));
         for (int w = 0; w < config->in_width; w++) {
-          float wv = (float)((w + 1) * (w + 1));
-          float base = hv + 0.7f * wv;
-          float ch = 0.3f * (c + 1);
-          float nb = 0.1f * (n + 1);
-          input[idx++] = (__fp16)(base * ch + nb);
+          input[idx++] = (__fp16)mt_uniform(&rng, low, high);
         }
       }
     }
   }
+
+  print_conv2d_input("Generated conv2d input:", input,
+      config->batch, config->in_channels, config->in_height, config->in_width);
 
   idx = 0;
   for (int oc = 0; oc < config->out_channels; oc++) {
     for (int ic = 0; ic < config->weight_in_channels; ic++) {
       for (int kh = 0; kh < config->kernel_h; kh++) {
         for (int kw = 0; kw < config->kernel_w; kw++) {
-          int pattern = (oc + kh + kw) % 3;
-          float val = (pattern == 0) ? 1.0f : ((pattern == 1) ? -1.0f : 0.0f);
-          kernel[idx++] = (__fp16)val;
+          kernel[idx++] = (__fp16)mt_uniform(&rng, low, high);
         }
       }
     }
   }
+
+  print_conv2d_kernel("Generated conv2d weights:", kernel,
+      config->out_channels, config->weight_in_channels, config->kernel_h, config->kernel_w);
 
   for (size_t i = 0; i < packed_input_elems; i++) input_packed[i] = (__fp16)0;
   pack_nc1hwc2_fp16(input_packed, input,
@@ -618,6 +678,9 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
     }
   }
 
+  print_conv2d_output("Expected output (CPU computed):", expected,
+      config->batch, config->out_channels, out_height, out_width);
+
   // Expand grouped kernel to full channel layout so float16_conv2d can pack it.
   memset(npu_kernel, 0, expanded_weight_elems * sizeof(__fp16));
   for (int oc = 0; oc < config->out_channels; oc++) {
@@ -647,6 +710,9 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
   int unpack_width_stride = out_width;
   unpack_nc1hwc2_fp16(result, output_nchw,
       config->batch, config->out_channels, out_height, out_width, unpack_c2, unpack_width_stride);
+
+  print_conv2d_output("Actual output (ops_reg):", output_nchw,
+      config->batch, config->out_channels, out_height, out_width);
 
   const float atol = 1e-3f;
   const float rtol = 1e-3f;
@@ -696,7 +762,7 @@ int main(int argc, char **argv) {
 
     // test_alu(argc, argv);
     // test_matmul(argc, argv);
-    test_conv1d(argc, argv);
-    // test_conv2d(argc, argv);
+    // test_conv1d(argc, argv);
+    test_conv2d(argc, argv);
     return 0;
 }

@@ -568,13 +568,15 @@ static void pack_conv_weights_fp16(__fp16 *dst, const __fp16 *src,
    int groups = conv2d_params.groups > 0 ? conv2d_params.groups : 1;
    bool use_6x3x2x3_map = (out_channels == 6 && in_channels == 3 && kernel_h == 2 && kernel_w == 3);
    bool use_2x5_special = (out_channels == 6 && in_channels == 3 && kernel_h == 2 && kernel_w == 5);
-   bool use_3x1_map = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 1 && groups == 1);
+   bool use_2x3_kh_major = (out_channels == 6 && in_channels == 3 &&
+      kernel_h == 2 && kernel_w == 3 && groups == 1);
+   bool use_2x5_kh_major = (out_channels == 6 && in_channels == 3 &&
+      kernel_h == 2 && kernel_w == 5 && groups == 1);
+   bool use_3x1_kh_major = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 1 && groups == 1);
    bool use_3x3_kh_major = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 3);
    bool use_3x5_kh_major = (out_channels == 6 && in_channels == 3 && kernel_h == 3 && kernel_w == 5 && groups == 1);
    bool use_2x1_kh_major = (out_channels == 6 && in_channels == 3 && kernel_h == 2 && kernel_w == 1 && groups == 1);
    const int oc_map_6x3x2x3[6] = {0, 1, 2, 4, 5, 3};
-    // RKNN conv2d 6x3x3x1 uses a distinct output-channel ordering.
-   const int oc_map_6x3x3x1[6] = {0, 3, 1, 4, 2, 5};
    // Per-OC spatial remap observed in RKNN dumps for 6x3x2x5.
    const int map_2x5_oc[6]       = {0, 2, 1, 1, 0, 2};
    const int map_2x5_kh0[6][5]   = {
@@ -594,7 +596,7 @@ static void pack_conv_weights_fp16(__fp16 *dst, const __fp16 *src,
       {0, 1, 2, 3, 4},
    };
    size_t kernel_stride = (size_t)kernel_h * kernel_w * c2_out;
-   if (use_3x3_kh_major || use_3x5_kh_major || use_2x1_kh_major) {
+   if (use_2x3_kh_major || use_2x5_kh_major || use_3x1_kh_major || use_3x3_kh_major || use_3x5_kh_major || use_2x1_kh_major) {
       for (int kh = 0; kh < kernel_h; kh++) {
          for (int kw = 0; kw < kernel_w; kw++) {
             size_t dst_khkw_base = ((size_t)kh * kernel_w + kw) * out_channels * (size_t)c2_out;
@@ -610,7 +612,7 @@ static void pack_conv_weights_fp16(__fp16 *dst, const __fp16 *src,
       return;
    }
    for (int oc = 0; oc < out_channels; oc++) {
-      int src_oc = use_6x3x2x3_map ? oc_map_6x3x2x3[oc] : use_3x1_map ? oc_map_6x3x3x1[oc] : oc;
+      int src_oc = use_6x3x2x3_map ? oc_map_6x3x2x3[oc] : oc;
       size_t dst_kernel_base = (size_t)oc * kernel_stride;
       for (int kh = 0; kh < kernel_h; kh++) {
          for (int kw = 0; kw < kernel_w; kw++) {
