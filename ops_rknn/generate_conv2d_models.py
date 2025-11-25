@@ -10,6 +10,46 @@ import sys
 import os
 from pathlib import Path
 
+# Simple MT19937 implementation to mirror conv2d_multi.cpp
+class Mt19937:
+    def __init__(self):
+        self.mt = [0] * 624
+        self.index = 624
+
+
+def mt_seed(rng: Mt19937, seed: int):
+    rng.mt[0] = seed & 0xFFFFFFFF
+    for i in range(1, 624):
+        prev = rng.mt[i - 1]
+        rng.mt[i] = (1812433253 * (prev ^ (prev >> 30)) + i) & 0xFFFFFFFF
+    rng.index = 624
+
+
+def mt_extract(rng: Mt19937) -> int:
+    mag01 = [0, 0x9908b0df]
+    if rng.index >= 624:
+        for kk in range(624):
+            y = (rng.mt[kk] & 0x80000000) | (rng.mt[(kk + 1) % 624] & 0x7fffffff)
+            rng.mt[kk] = rng.mt[(kk + 397) % 624] ^ (y >> 1) ^ mag01[y & 1]
+        rng.index = 0
+    y = rng.mt[rng.index]
+    rng.index += 1
+
+    # Tempering
+    y ^= (y >> 11)
+    y ^= (y << 7) & 0x9d2c5680
+    y ^= (y << 15) & 0xefc60000
+    y ^= (y >> 18)
+    return y & 0xFFFFFFFF
+
+
+def mt_uniform(rng: Mt19937, low: float, high: float) -> float:
+    a = mt_extract(rng) >> 5  # upper 27 bits
+    b = mt_extract(rng) >> 6  # upper 26 bits
+    random = (a * 67108864.0 + b) / 9007199254740992.0  # 2^53
+    return low + (high - low) * random
+
+
 def create_conv2d_model(in_channels, out_channels, kernel_size, groups=1, bias=False):
     """Create a PyTorch Conv2d model with specified parameters"""
 
@@ -29,23 +69,6 @@ def create_conv2d_model(in_channels, out_channels, kernel_size, groups=1, bias=F
                 groups=groups_val,
                 bias=bias_val
             )
-
-            # Set deterministic weights for testing
-            with torch.no_grad():
-                weight = self.conv.weight
-                in_ch_per_group = in_ch // groups_val
-
-                # For each output channel
-                for oc in range(out_ch):
-                    # For each input channel within the group
-                    for ic in range(in_ch_per_group):
-                        # For each kernel position
-                        for kh in range(k_h):
-                            for kw in range(k_w):
-                                # Create a simple pattern for verification
-                                # Use a mix of values: 1, 0, -1 based on position
-                                val = 1.0 if (oc + kh + kw) % 3 == 0 else ( -1.0 if (oc + kh + kw) % 3 == 1 else 0.0)
-                                weight[oc, ic, kh, kw] = val
 
         def forward(self, x):
             return self.conv(x)
@@ -104,7 +127,7 @@ def main():
         (n, 3, 2, 5, 1),   
         (n, 3, 3, 1, 1),   
         (n, 3, 3, 3, 1),   
-        # (n, 3, 3, 3, 3),   # (6,3,3,3) with groups=3 (depthwise: 6 output channels, 1 input channel per group)
+        (n, 3, 3, 3, 3),    # depthwise-ish: 6 output channels, 1 input channel per group
         (n, 3, 3, 5, 1),   
         (n, 3, 1, 1, 1)
     ]
@@ -114,6 +137,7 @@ def main():
     models_dir.mkdir(exist_ok=True)
 
     dummy_input = torch.randn(1, 3, 5, 7, dtype=torch.float16)
+    input_elems = dummy_input.numel()
 
     for out_ch, in_ch, k_h, k_w, groups in test_cases:
         print(f"\n{'='*60}")
@@ -124,6 +148,18 @@ def main():
 
         # Create model
         model = create_conv2d_model(in_ch, out_ch, (k_h, k_w), groups)
+        # Generate weights using the same MT19937 uniform RNG as conv2d_multi.cpp
+        rng = Mt19937()
+        mt_seed(rng, 0)
+        # Advance RNG by input element count to mirror input generation in conv2d_multi.cpp
+        for _ in range(input_elems):
+            mt_uniform(rng, -2.0, 2.0)
+        in_ch_per_group = in_ch // groups
+        total_weights = out_ch * in_ch_per_group * k_h * k_w
+        weight_vals = [mt_uniform(rng, -2.0, 2.0) for _ in range(total_weights)]
+        with torch.no_grad():
+            weight_tensor = torch.tensor(weight_vals, dtype=torch.float32).view(out_ch, in_ch_per_group, k_h, k_w)
+            model.conv.weight.copy_(weight_tensor)
         model = model.half()
         model.eval()
 

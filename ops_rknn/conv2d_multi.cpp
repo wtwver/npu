@@ -116,8 +116,8 @@ static std::vector<__fp16> generate_input_data(int batch, int channels, int heig
   return input;
 }
 
-// Generate weight data matching the deterministic pattern used in generate_conv2d_models.py
-static std::vector<float> generate_weight_data(const ConvConfig& config) {
+// Generate weight data for a given configuration using MT uniform RNG
+static std::vector<float> generate_weight_data(const ConvConfig& config, Mt19937* rng, float low, float high) {
   std::vector<float> weight;
   int in_ch_per_group = config.in_channels / config.groups;
 
@@ -127,9 +127,8 @@ static std::vector<float> generate_weight_data(const ConvConfig& config) {
     for (int ic = 0; ic < in_ch_per_group; ++ic) {
       for (int kh = 0; kh < config.kernel_h; ++kh) {
         for (int kw = 0; kw < config.kernel_w; ++kw) {
-          int pattern = (oc + kh + kw) % 3;
-          float val = (pattern == 0) ? 1.0f : (pattern == 1 ? -1.0f : 0.0f);
-          weight.push_back(val);
+          (void)oc; (void)kh; (void)kw;  // silence unused warnings if any
+          weight.push_back(mt_uniform(rng, low, high));
         }
       }
     }
@@ -503,8 +502,8 @@ static bool run_conv_test(const ConvConfig& config) {
     output_nchw.swap(reshaped);
   }
 
-  // Compute expected results on CPU (NCHW) using the same deterministic weights as model generation
-  std::vector<float> expected = generate_weight_data(config);
+  // Compute expected results on CPU (NCHW) using the same RNG sequence for weights
+  std::vector<float> expected = generate_weight_data(config, &rng, low, high);
   std::vector<float> cpu_output(out_channels * out_height * out_width, 0.f);
 
   for (int oc = 0; oc < out_channels; ++oc) {
@@ -596,13 +595,13 @@ static bool run_conv_test(const ConvConfig& config) {
 
 int main() {
   std::vector<ConvConfig> test_cases = {
-    // {"conv2d_2x1", 6, 3, 2, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 1)"},
+    {"conv2d_2x1", 6, 3, 2, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 1)"},
     {"conv2d_2x3", 6, 3, 2, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 3)"},
-    // {"conv2d_2x5", 6, 3, 2, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 5)"},
-    // {"conv2d_3x1", 6, 3, 3, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 1)"},
-    // {"conv2d_3x3", 6, 3, 3, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 3)"},
-    // {"conv2d_3x3_g3", 6, 3, 3, 3, 3, "conv2d input shape (1, 3, 5, 7), weight shape (6, 1, 3, 3)"},
-    // {"conv2d_3x5", 6, 3, 3, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 5)"},
+    {"conv2d_2x5", 6, 3, 2, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 5)"},
+    {"conv2d_3x1", 6, 3, 3, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 1)"},
+    {"conv2d_3x3", 6, 3, 3, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 3)"},
+    {"conv2d_3x3_g3", 6, 3, 3, 3, 3, "conv2d input shape (1, 3, 5, 7), weight shape (6, 1, 3, 3)"},
+    {"conv2d_3x5", 6, 3, 3, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 5)"},
   };
 
   std::cout << "\n" << std::string(80, '#') << std::endl;
