@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <sys/stat.h>
+#include <cstdint>
 #include <vector>
 
 static const char* get_format_string(int fmt) {
@@ -51,23 +52,63 @@ struct ConvConfig {
   std::string description;
 };
 
-// Generate input data for a given shape
-static std::vector<__fp16> generate_input_data(int batch, int channels, int height, int width) {
+// Simple MT19937 implementation (matches ops_reg/main.c)
+struct Mt19937 {
+  uint32_t mt[624];
+  int index;
+};
+
+static void mt_seed(Mt19937* rng, uint32_t seed) {
+  rng->mt[0] = seed;
+  for (int i = 1; i < 624; i++) {
+    rng->mt[i] = 1812433253U * (rng->mt[i - 1] ^ (rng->mt[i - 1] >> 30)) + static_cast<uint32_t>(i);
+  }
+  rng->index = 624;
+}
+
+static uint32_t mt_extract(Mt19937* rng) {
+  const uint32_t mag01[2] = {0U, 0x9908b0dfU};
+  if (rng->index >= 624) {
+    int kk;
+    for (kk = 0; kk < 624 - 397; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk + 1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk + 397] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    for (; kk < 623; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk + 1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk - (624 - 397)] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    uint32_t y = (rng->mt[623] & 0x80000000U) | (rng->mt[0] & 0x7fffffffU);
+    rng->mt[623] = rng->mt[396] ^ (y >> 1) ^ mag01[y & 1U];
+    rng->index = 0;
+  }
+  uint32_t y = rng->mt[rng->index++];
+  y ^= (y >> 11);
+  y ^= (y << 7) & 0x9d2c5680U;
+  y ^= (y << 15) & 0xefc60000U;
+  y ^= (y >> 18);
+  return y;
+}
+
+static float mt_uniform(Mt19937* rng, float low, float high) {
+  const double a = static_cast<double>(mt_extract(rng) >> 5);
+  const double b = static_cast<double>(mt_extract(rng) >> 6);
+  const double random = (a * 67108864.0 + b) / 9007199254740992.0;
+  return static_cast<float>(low + (high - low) * random);
+}
+
+// Generate input data for a given shape using MT uniform RNG
+static std::vector<__fp16> generate_input_data(int batch, int channels, int height, int width,
+                                               Mt19937* rng, float low, float high) {
   std::vector<__fp16> input;
   input.reserve(batch * channels * height * width);
 
-  // Use a non-linear, deterministic pattern to avoid symmetric cancellations
-  // that can occur with linear ramps and symmetric kernels (e.g., depthwise 3x3).
   for (int n = 0; n < batch; ++n) {
     for (int c = 0; c < channels; ++c) {
       for (int h = 0; h < height; ++h) {
         for (int w = 0; w < width; ++w) {
-          float hv = static_cast<float>((h + 1) * (h + 1));
-          float wv = static_cast<float>((w + 1) * (w + 1));
-          float base = hv + 0.7f * wv;  // break symmetry across h/w
-          float ch = 0.3f * (c + 1);     // channel-dependent scale
-          float nb = 0.1f * (n + 1);     // batch-dependent offset
-          input.push_back(static_cast<__fp16>(base * ch + nb));
+          (void)n;  // batch dimension not used by RNG sequence
+          input.push_back(static_cast<__fp16>(mt_uniform(rng, low, high)));
         }
       }
     }
@@ -75,7 +116,7 @@ static std::vector<__fp16> generate_input_data(int batch, int channels, int heig
   return input;
 }
 
-// Generate weight data for a given configuration
+// Generate weight data matching the deterministic pattern used in generate_conv2d_models.py
 static std::vector<float> generate_weight_data(const ConvConfig& config) {
   std::vector<float> weight;
   int in_ch_per_group = config.in_channels / config.groups;
@@ -86,9 +127,8 @@ static std::vector<float> generate_weight_data(const ConvConfig& config) {
     for (int ic = 0; ic < in_ch_per_group; ++ic) {
       for (int kh = 0; kh < config.kernel_h; ++kh) {
         for (int kw = 0; kw < config.kernel_w; ++kw) {
-          // Match generate_conv2d_models.py: val depends on (oc + kh + kw)
           int pattern = (oc + kh + kw) % 3;
-          float val = (pattern == 0) ? 1.0f : ((pattern == 1) ? -1.0f : 0.0f);
+          float val = (pattern == 0) ? 1.0f : (pattern == 1 ? -1.0f : 0.0f);
           weight.push_back(val);
         }
       }
@@ -249,8 +289,10 @@ static bool run_conv_test(const ConvConfig& config) {
 
   // Prepare input data
   const int in_batch = 1, in_channels = 3, in_height = 5, in_width = 7;
-  // const int in_batch = 1, in_channels = 3, in_height = 5, in_width = 7;
-  std::vector<__fp16> input = generate_input_data(in_batch, in_channels, in_height, in_width);
+  const float low = -2.0f, high = 2.0f;
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  std::vector<__fp16> input = generate_input_data(in_batch, in_channels, in_height, in_width, &rng, low, high);
   std::vector<float> input_cpu(input.size());
   for (size_t i = 0; i < input.size(); ++i) {
     input_cpu[i] = static_cast<float>(input[i]);
@@ -461,7 +503,7 @@ static bool run_conv_test(const ConvConfig& config) {
     output_nchw.swap(reshaped);
   }
 
-  // Compute expected results on CPU (NCHW)
+  // Compute expected results on CPU (NCHW) using the same deterministic weights as model generation
   std::vector<float> expected = generate_weight_data(config);
   std::vector<float> cpu_output(out_channels * out_height * out_width, 0.f);
 
@@ -554,8 +596,8 @@ static bool run_conv_test(const ConvConfig& config) {
 
 int main() {
   std::vector<ConvConfig> test_cases = {
-    {"conv2d_2x1", 6, 3, 2, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 1)"},
-    // {"conv2d_2x3", 6, 3, 2, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 3)"},
+    // {"conv2d_2x1", 6, 3, 2, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 1)"},
+    {"conv2d_2x3", 6, 3, 2, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 3)"},
     // {"conv2d_2x5", 6, 3, 2, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 5)"},
     // {"conv2d_3x1", 6, 3, 3, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 1)"},
     // {"conv2d_3x3", 6, 3, 3, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 3)"},
