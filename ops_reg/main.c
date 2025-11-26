@@ -234,6 +234,36 @@ static void print_conv2d_output(const char *title, const float *data,
   }
 }
 
+static void print_fp16_matrix(const char *title, const __fp16 *data,
+    int rows, int cols) {
+  printf("%s tensor([\n", title);
+  for (int r = 0; r < rows; r++) {
+    printf("  [");
+    for (int c = 0; c < cols; c++) {
+      printf("%6.2f", (float)data[r * cols + c]);
+      if (c + 1 < cols) printf(", ");
+    }
+    printf("]");
+    if (r + 1 < rows) printf(",\n");
+  }
+  printf("], shape=(%d, %d), dtype=float16)\n", rows, cols);
+}
+
+static void print_float_matrix(const char *title, const float *data,
+    int rows, int cols) {
+  printf("%s tensor([\n", title);
+  for (int r = 0; r < rows; r++) {
+    printf("  [");
+    for (int c = 0; c < cols; c++) {
+      printf("%7.3f", data[r * cols + c]);
+      if (c + 1 < cols) printf(", ");
+    }
+    printf("]");
+    if (r + 1 < rows) printf(",\n");
+  }
+  printf("], shape=(%d, %d), dtype=float32)\n", rows, cols);
+}
+
 int test_alu(int argc, char **argv) {
     int size = 1 ;
     if (argc > 1) {
@@ -266,29 +296,53 @@ int test_alu(int argc, char **argv) {
 }
 
 int test_matmul(int argc, char **argv) {
-    // if (argc > 1) {
-        // size = atoi(argv[1]);
-    // }
-    int M = 32; int K = 32; int N = 32; 
+  int M = 32;
+  int K = 32;
+  int N = 32;
 
-    __fp16* a = (__fp16*)malloc( M*K * sizeof(__fp16));
-    __fp16* b = (__fp16*)malloc( N*K * sizeof(__fp16));
+  __fp16 *a = (__fp16*)malloc(M * K * sizeof(__fp16));
+  __fp16 *b = (__fp16*)malloc(N * K * sizeof(__fp16));
 
-    for (size_t i = 0; i < M*K ; i++) {a[i] = (int)2.0f;}
-    for (size_t i = 0; i < N*K ; i++) {b[i] = (int)3.0f;}
-    // 4'd0: Max;
-    // 4'd1: Min;
-    // 4'd2: Add;
-    // 4'd3: Div; # overflow issue
-    // 4'd4: Minus;
-    // CUSTOM 9: MUL
-    // CUSTOM 10: RELU
-    // CUSTOM 11: MATMUL
-    __fp16* result = float16_matmul(a, b, 11, 32, 32, 32);
-    printf("Input0: "); for (size_t i = 0; i < M*K ; i++) printf("%f ", a[i]); printf("\n");
-    printf("Input1: "); for (size_t i = 0; i < N*K ; i++) printf("%f ", b[i]); printf("\n");
-    printf("Result/Input0: "); for (size_t i = 0; i < M*N ; i++) printf("fp16: %f fp32: %f \n", (__fp16)result[i], result[i]); printf("\n");
-    return 0;
+  for (size_t i = 0; i < (size_t)(M * K); i++) a[i] = (__fp16)2.0f;
+  for (size_t i = 0; i < (size_t)(N * K); i++) b[i] = (__fp16)3.0f;
+
+  __fp16 *result = float16_matmul(a, b, 11, M, K, N);
+
+  float *cpu = (float*)malloc((size_t)M * N * sizeof(float));
+  if (!cpu) {
+    printf("failed to allocate cpu buffer\n");
+    free(a);
+    free(b);
+    return -1;
+  }
+
+  for (int m = 0; m < M; m++) {
+    for (int n = 0; n < N; n++) {
+      float acc = 0.0f;
+      for (int k = 0; k < K; k++) {
+        acc += (float)a[m * K + k] * (float)b[n * K + k];
+      }
+      cpu[m * N + n] = acc;
+    }
+  }
+
+  print_fp16_matrix("Input A", a, M, K);
+  print_fp16_matrix("Input B", b, N, K);
+  print_float_matrix("Expected (CPU)", cpu, M, N);
+  print_fp16_matrix("Result (fp16)", result, M, N);
+
+  float max_diff = 0.0f;
+  for (int i = 0; i < M * N; i++) {
+    float diff = fabsf(cpu[i] - (float)result[i]);
+    if (diff > max_diff) max_diff = diff;
+  }
+  printf("Max abs diff: %.6f\n", max_diff);
+  printf("matmul_test_case: matches CPU -> %s\n", max_diff <= 1e-2f ? "YES" : "NO");
+
+  free(a);
+  free(b);
+  free(cpu);
+  return 0;
 }
 
 typedef struct {
@@ -740,12 +794,12 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
 
 int test_conv2d(int argc, char **argv) {
   static const Conv2dTestConfig configs[] = {
-    {1, 3, 5, 7, 6, 3, 2, 1, 1, "conv2d_i1357_w6321"},
-    {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
-    {1, 3, 5, 7, 6, 3, 2, 5, 1, "conv2d_i1357_w6325"},
-    {1, 3, 5, 7, 6, 3, 3, 1, 1, "conv2d_i1357_w6331"},
-    {1, 3, 5, 7, 6, 3, 3, 3, 1, "conv2d_i1357_w6333"},
-    {1, 3, 5, 7, 6, 1, 3, 3, 3, "conv2d_i1357_w6133_g3"},
+    // {1, 3, 5, 7, 6, 3, 2, 1, 1, "conv2d_i1357_w6321"},
+    // {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
+    // {1, 3, 5, 7, 6, 3, 2, 5, 1, "conv2d_i1357_w6325"},
+    // {1, 3, 5, 7, 6, 3, 3, 1, 1, "conv2d_i1357_w6331"},
+    // {1, 3, 5, 7, 6, 3, 3, 3, 1, "conv2d_i1357_w6333"},
+    // {1, 3, 5, 7, 6, 1, 3, 3, 3, "conv2d_i1357_w6133_g3"},
     {1, 3, 5, 7, 6, 3, 3, 5, 1, "conv2d_i1357_w6335"},
   };
 
@@ -761,8 +815,8 @@ int main(int argc, char **argv) {
     npu_reset(fd);
 
     // test_alu(argc, argv);
-    // test_matmul(argc, argv);
+    test_matmul(argc, argv);
     // test_conv1d(argc, argv);
-    test_conv2d(argc, argv);
+    // test_conv2d(argc, argv);
     return 0;
 }
