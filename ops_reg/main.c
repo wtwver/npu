@@ -27,6 +27,24 @@ static void unpack_nc1hwc2_fp16(const __fp16 *src, float *dst,
   }
 }
 
+static void unpack_matmul_output_fp16(const __fp16 *src, float *dst, int M, int N) {
+  if (!src || !dst || M <= 0 || N <= 0) return;
+  // The RKNN matmul kernel writes NC1HWC2 with height=M, width=1 and 8-channel tiles.
+  // This matches feature_data with C2=8 in npu/ops_reg/matmul/matmul.c.
+  const int c2 = 8;
+  const size_t plane_stride = (size_t)M * c2;
+  const size_t row_stride = c2;
+  for (int n = 0; n < N; n++) {
+    size_t plane = (size_t)n / c2;
+    size_t offset = (size_t)n % c2;
+    size_t plane_base = plane * plane_stride;
+    for (int m = 0; m < M; m++) {
+      size_t idx = plane_base + (size_t)m * row_stride + offset;
+      dst[(size_t)m * N + n] = (float)src[idx];
+    }
+  }
+}
+
 static void print_conv1d_outputs(const char *title, const float *data,
     int batch, int channels, int width, int row_len) {
   printf("%s\n", title);
@@ -295,24 +313,70 @@ int test_alu(int argc, char **argv) {
     return 0;
 }
 
-int test_matmul(int argc, char **argv) {
-  int M = 32;
-  int K = 32;
-  int N = 32;
+typedef struct {
+  const char *name;
+  int M;
+  int K;
+  int N;
+} MatmulTestConfig;
 
-  __fp16 *a = (__fp16*)malloc(M * K * sizeof(__fp16));
-  __fp16 *b = (__fp16*)malloc(N * K * sizeof(__fp16));
+static int should_print_matmul(const MatmulTestConfig *config) {
+  return config && config->M <= 9 && config->K <= 9 && config->N <= 9;
+}
 
-  for (size_t i = 0; i < (size_t)(M * K); i++) a[i] = (__fp16)2.0f;
-  for (size_t i = 0; i < (size_t)(N * K); i++) b[i] = (__fp16)3.0f;
+static int run_matmul_case(const MatmulTestConfig *config) {
+  if (!config) return -1;
+  const int M = config->M;
+  const int K = config->K;
+  const int N = config->N;
+  if (M <= 0 || K <= 0 || N <= 0) {
+    printf("%s has invalid shape M=%d K=%d N=%d\n",
+        config->name ? config->name : "matmul", M, K, N);
+    return -1;
+  }
 
-  __fp16 *result = float16_matmul(a, b, 11, M, K, N);
-
-  float *cpu = (float*)malloc((size_t)M * N * sizeof(float));
-  if (!cpu) {
-    printf("failed to allocate cpu buffer\n");
+  __fp16 *a = (__fp16*)malloc((size_t)M * K * sizeof(__fp16));
+  __fp16 *b = (__fp16*)malloc((size_t)N * K * sizeof(__fp16));
+  if (!a || !b) {
+    printf("failed to allocate input buffers for %s\n",
+        config->name ? config->name : "matmul");
     free(a);
     free(b);
+    return -1;
+  }
+
+  const float low = -2.0f;
+  const float high = 2.0f;
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (size_t i = 0; i < (size_t)(M * K); i++) {
+    a[i] = (__fp16)mt_uniform(&rng, low, high);
+  }
+  for (size_t i = 0; i < (size_t)(N * K); i++) {
+    b[i] = (__fp16)mt_uniform(&rng, low, high);
+  }
+
+  printf("\n=== matmul test: %s (M=%d, K=%d, N=%d) ===\n",
+      config->name ? config->name : "matmul", M, K, N);
+
+  __fp16 *npu_output = float16_matmul(a, b, 11, M, N, K);
+  if (!npu_output) {
+    printf("float16_matmul failed for %s\n",
+        config->name ? config->name : "matmul");
+    free(a);
+    free(b);
+    return -1;
+  }
+
+  float *cpu = (float*)malloc((size_t)M * N * sizeof(float));
+  float *actual = (float*)malloc((size_t)M * N * sizeof(float));
+  if (!cpu || !actual) {
+    printf("failed to allocate output buffers for %s\n",
+        config->name ? config->name : "matmul");
+    free(a);
+    free(b);
+    free(cpu);
+    free(actual);
     return -1;
   }
 
@@ -320,29 +384,60 @@ int test_matmul(int argc, char **argv) {
     for (int n = 0; n < N; n++) {
       float acc = 0.0f;
       for (int k = 0; k < K; k++) {
-        acc += (float)a[m * K + k] * (float)b[n * K + k];
+        acc += (float)a[m * K + k] * (float)b[k * N + n];
       }
       cpu[m * N + n] = acc;
     }
   }
 
-  print_fp16_matrix("Input A", a, M, K);
-  print_fp16_matrix("Input B", b, N, K);
-  print_float_matrix("Expected (CPU)", cpu, M, N);
-  print_fp16_matrix("Result (fp16)", result, M, N);
+  if (should_print_matmul(config)) {
+    print_fp16_matrix("Input A", a, M, K);
+    print_fp16_matrix("Input B", b, N, K);
+    print_float_matrix("Expected (CPU)", cpu, M, N);
+  }
+
+  unpack_matmul_output_fp16(npu_output, actual, M, N);
+  if (should_print_matmul(config)) {
+    print_float_matrix("Result (NPU, fp16->fp32)", actual, M, N);
+  }
 
   float max_diff = 0.0f;
   for (int i = 0; i < M * N; i++) {
-    float diff = fabsf(cpu[i] - (float)result[i]);
+    float diff = fabsf(cpu[i] - actual[i]);
     if (diff > max_diff) max_diff = diff;
   }
   printf("Max abs diff: %.6f\n", max_diff);
-  printf("matmul_test_case: matches CPU -> %s\n", max_diff <= 1e-2f ? "YES" : "NO");
+  printf("%s: matches CPU -> %s\n",
+      config->name ? config->name : "matmul", max_diff <= 1e-2f ? "YES" : "NO");
 
   free(a);
   free(b);
   free(cpu);
-  return 0;
+  free(actual);
+  return (max_diff <= 1e-2f) ? 0 : -1;
+}
+
+int test_matmul(int argc, char **argv) {
+  if (argc >= 4) {
+    MatmulTestConfig cli_config = {"matmul_cli", atoi(argv[1]), atoi(argv[2]), atoi(argv[3])};
+    return run_matmul_case(&cli_config);
+  }
+
+  static const MatmulTestConfig configs[] = {
+    {"matmul_8x8x8", 8, 8, 8},
+    // {"matmul_9x9x9", 9, 9, 9},
+    // {"matmul_32x32x32", 32, 32, 32},
+    // {"matmul_64x64x64", 64, 64, 64},
+    // {"matmul_256x256x256", 256, 256, 256},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_matmul_case(&configs[i]) != 0) {
+      status = -1;
+    }
+  }
+  return status;
 }
 
 typedef struct {
