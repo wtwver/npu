@@ -601,6 +601,26 @@ static void pack_matmul_weights_fp16(__fp16 *dst, const __fp16 *src,
    if (!dst || !src || N <= 0 || K <= 0 || align_in <= 0) return;
    size_t weight_elems = (size_t)align_in * (size_t)N;
 
+   // For the 32x32 case, the RKNN dump shows a simple column-major layout with
+   // a 32-half stride per column. Mimic that instead of the tiled weight_fp16
+   // mapping used for other shapes.
+   if (N == 32 && K == 32 && align_in == 32) {
+      for (int n = 0; n < N; n++) {
+         size_t col_base = (size_t)n * (size_t)align_in;
+         for (int k = 0; k < K; k++) {
+            size_t dst_idx = col_base + (size_t)k;
+            if (dst_idx < weight_elems) {
+               dst[dst_idx] = src[(size_t)k * (size_t)N + (size_t)n];
+            }
+         }
+         for (int pad = K; pad < align_in; pad++) {
+            size_t dst_idx = col_base + (size_t)pad;
+            if (dst_idx < weight_elems) dst[dst_idx] = (__fp16)0;
+         }
+      }
+      return;
+   }
+
    for (int n = 0; n < N; n++) {
       for (int k = 0; k < K; k++) {
          int dst_bytes = weight_fp16(align_in, k + 1, n + 1);
