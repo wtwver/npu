@@ -6,11 +6,57 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <string.h>
+#include <math.h>
 #include "rknpu-ioctl.h"
 #include "npu_hw.h"
 #include "npu_cna.h"
 #include "npu_dpu.h"
 #include "rkt_registers.h"
+
+typedef struct {
+  uint32_t mt[624];
+  int index;
+} Mt19937;
+
+static void mt_seed(Mt19937 *rng, uint32_t seed) {
+  rng->mt[0] = seed;
+  for (int i = 1; i < 624; i++) {
+    rng->mt[i] = 1812433253U * (rng->mt[i-1] ^ (rng->mt[i-1] >> 30)) + (uint32_t)i;
+  }
+  rng->index = 624;
+}
+
+static uint32_t mt_extract(Mt19937 *rng) {
+  const uint32_t mag01[2] = {0U, 0x9908b0dfU};
+  if (rng->index >= 624) {
+    int kk;
+    for (kk = 0; kk < 624 - 397; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk+1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk + 397] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    for (; kk < 623; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk+1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk + (397 - 624)] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    uint32_t y = (rng->mt[623] & 0x80000000U) | (rng->mt[0] & 0x7fffffffU);
+    rng->mt[623] = rng->mt[396] ^ (y >> 1) ^ mag01[y & 1U];
+    rng->index = 0;
+  }
+
+  uint32_t y = rng->mt[rng->index++];
+  y ^= (y >> 11);
+  y ^= (y << 7) & 0x9d2c5680U;
+  y ^= (y << 15) & 0xefc60000U;
+  y ^= (y >> 18);
+  return y;
+}
+
+static float mt_uniform(Mt19937 *rng, float low, float high) {
+  const double a = (double)(mt_extract(rng) >> 5);
+  const double b = (double)(mt_extract(rng) >> 6);
+  const double random = (a * 67108864.0 + b) / 9007199254740992.0;
+  return (float)(low + (high - low) * random);
+}
 
 typedef struct {
   uint16_t  m;
@@ -22,6 +68,29 @@ typedef struct {
   uint64_t  *tasks;
   uint8_t   fp32tofp16;
 } matmul_params_t;
+
+
+static void print_matrix_fp16(const char *title, const _Float16 *data, int rows, int cols) {
+  printf("%s\n", title);
+  for (int r = 0; r < rows; r++) {
+    printf("  ");
+    for (int c = 0; c < cols; c++) {
+      printf("%8.5f ", (float)data[r * cols + c]);
+    }
+    printf("\n");
+  }
+}
+
+static void print_matrix_float(const char *title, const float *data, int rows, int cols) {
+  printf("%s\n", title);
+  for (int r = 0; r < rows; r++) {
+    printf("  ");
+    for (int c = 0; c < cols; c++) {
+      printf("%8.5f ", data[r * cols + c]);
+    }
+    printf("\n");
+  }
+}
 
 
 void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint32_t flags, uint32_t *handle) {
@@ -554,7 +623,7 @@ int gen_matmul_fp16(matmul_params_t *params, uint64_t input_dma, uint64_t weight
   cna_desc.datain_width = 1;
   cna_desc.datain_height = params->m;
   cna_desc.datain_channel = params->k;
-  cna_desc.dataout_width = 1;
+  cna_desc.dataout_width = params->n;
   cna_desc.dataout_height = params->m;
   cna_desc.dataout_atomics = cna_desc.dataout_width * cna_desc.dataout_height;
 
@@ -639,7 +708,12 @@ int gen_matmul_fp16(matmul_params_t *params, uint64_t input_dma, uint64_t weight
   dpu_desc.in_precision = precision_float16;
   dpu_desc.proc_precision = precision_float16;
   dpu_desc.dst_base_addr = params->output_dma;
-  dpu_desc.dst_surf_stride = cna_desc.dataout_height * cna_desc.dataout_width;
+  {
+    int elem_bytes = (params->fp32tofp16 == 0) ? (int)sizeof(float) : (int)sizeof(__fp16);
+    int stride_units = (params->n * elem_bytes + 15) / 16;  // register expects units of 16 bytes
+    if (stride_units < 1) stride_units = 1;
+    dpu_desc.dst_surf_stride = stride_units;
+  }
   dpu_desc.width = core_desc.dataout_width ;
   dpu_desc.height = core_desc.dataout_height;
   dpu_desc.channel = core_desc.dataout_channel;
@@ -658,15 +732,9 @@ int gen_matmul_fp16(matmul_params_t *params, uint64_t input_dma, uint64_t weight
   dpu_desc.ew_relu_bypass=1;
   dpu_desc.fp32tofp16_en = params->fp32tofp16 & 0x1;
   dpu_desc.out_cvt_scale =1;
-  if (params->fp32tofp16 ==0) {
-    dpu_desc.size_e_2 = 3;
-    dpu_desc.size_e_1 = 3;
-    dpu_desc.size_e_0 = 3;
-  } else {
-    dpu_desc.size_e_2 = 1;
-    dpu_desc.size_e_1 = 1;
-    dpu_desc.size_e_0 = 1;
-  }
+  dpu_desc.size_e_2 = 1;
+  dpu_desc.size_e_1 = 1;
+  dpu_desc.size_e_0 = 1;
   dpu_desc.od_bypass = 1;
   dpu_desc.width_wdma = core_desc.dataout_width;
   dpu_desc.height_wdma = core_desc.dataout_height;
@@ -731,9 +799,11 @@ int main(int argc, char **argv) {
   uint64_t regcmd_dma, regcmd_obj, tasks_dma, tasks_obj, input_dma, input_obj, weights_dma, weights_obj, output_dma, output_obj;
   uint32_t regcmd_handle, tasks_handle, input_handle, weights_handle, output_handle;
   uint32_t regcmd_flink, tasks_flink, input_flink, weights_flink, output_flink;
+  int is_fp16_fp16 = 0;
+  int output_stride_bytes = ((N * (is_fp16_fp16 ? (int)sizeof(__fp16) : (int)sizeof(float)) + 15) / 16) * 16; // stride expressed in bytes, rounded to 16-byte units
   int input_size = M*K*sizeof(__fp16);
   int weights_size = N*K*sizeof(__fp16);
-  int output_size = M*N*(sizeof(float));
+  int output_size = output_stride_bytes * M;
   printf("input_size=%d, weights_size=%d, output_size=%d\n", input_size, weights_size, output_size);
   
   uint64_t *regcmd         = mem_allocate(fd, 1024, &regcmd_dma, &regcmd_obj, 0, &regcmd_handle);
@@ -758,7 +828,6 @@ int main(int argc, char **argv) {
 
   // generate matmul task
   uint64_t npu_regs[112];
-  int is_fp16_fp16 = 0;
 
   matmul_params_t params;
   params.m = M;
@@ -799,16 +868,53 @@ int main(int argc, char **argv) {
   _Float16 *feature_data_fp16 = (_Float16*) input;
   memset((void *)input, 0, M*K*sizeof(_Float16));
   memset((void *)weights, 0, K*N*sizeof(_Float16));
-  memset((void *)output, 0, M*N*(is_fp16_fp16 ? sizeof(_Float16) : sizeof(float)));
+  memset((void *)output, 0, output_size);
 
-  for (int i = 0; i < M*K; i++) { matrixA[i] = (int)(2.0f); }
-  for (int i = 0; i < N*K; i++) { matrixB[i] = (int)(3.0f); }
-  for(int n=1; n<=N; n++) {
-      for(int k=1; k<=K; k++) {
-          weights_fp16[weight_fp16(K,n,k)] = matrixB[((n-1)*K)+(k-1)];
-          // _Float16 is not directly supported by %f in printf, so cast to double for printing
-          // printf("weights_fp16[%d]=%f\n", weight_fp16(K,n,k), (double)matrixB[((n-1)*K)+(k-1)]);
+  const float low = -2.0f;
+  const float high = 2.0f;
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (int m = 0; m < M; m++) {
+    for (int k = 0; k < K; k++) {
+      if (m < 8 && k < 8) {
+        matrixA[m*K + k] = (_Float16)mt_uniform(&rng, low, high);
+      } else {
+        matrixA[m*K + k] = 0;
       }
+    }
+  }
+  for (int k = 0; k < K; k++) {
+    for (int n = 0; n < N; n++) {
+      if (n < 8 && k < 8) {
+        matrixB[k*N + n] = (_Float16)mt_uniform(&rng, low, high);
+      } else {
+        matrixB[k*N + n] = 0;
+      }
+    }
+  }
+  float matrixB_t[(32*32)];
+  float expected[(32*32)];
+  for (int n = 0; n < N; n++) {
+    for (int k = 0; k < K; k++) {
+      matrixB_t[k*N + n] = matrixB[k*N + n];
+    }
+  }
+  for (int m = 0; m < M; m++) {
+    for (int n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int k = 0; k < K; k++) {
+        sum += (float)matrixA[m*K + k] * matrixB_t[k*N + n];
+      }
+      expected[m*N + n] = sum;
+    }
+  }
+  print_matrix_fp16("Input A", matrixA, M, K);
+  print_matrix_fp16("Input B", matrixB, N, K);
+  print_matrix_float("Expected output (CPU)", expected, M, N);
+  for(int n=1; n<=N; n++) {
+    for(int k=1; k<=K; k++) {
+      weights_fp16[weight_fp16(K,n,k)] = matrixB[(k-1)*N + (n-1)];  // Transpose access
+    }
   }
   for (int m=1; m<=M; m++) {
       for (int k=1; k<=K; k++) {
@@ -821,11 +927,26 @@ int main(int argc, char **argv) {
   printf("RKNPU_SUBMIT returned %d\n", ret);
 
   float *output_data_fp16 = (float*) output;
-  for (int m=1; m<=3; m++) {
-    for (int n=1; n<=3; n++) {
-      _Float16 actual = output_data_fp16[feature_data(N, M, 1, 8, n, m, 1)];
-      printf("actual=%f\n", (double)actual);
+  int output_stride_elems = output_stride_bytes / (int)sizeof(float);
+  float actual[(32*32)];
+  for (int m = 1; m <= M; m++) {
+    for (int n = 1; n <= N; n++) {
+      int idx = (m - 1) * output_stride_elems + (n - 1);
+      actual[(m-1)*N + (n-1)] = output_data_fp16[idx];
     }
   }
-  return 0;
+  print_matrix_float("Actual DPU output", actual, M, N);
+  float max_diff = 0.0f;
+  int match = 1;
+  for (int m = 0; m < M; m++) {
+    for (int n = 0; n < N; n++) {
+      float diff = fabsf(expected[m*N + n] - actual[m*N + n]);
+      if (diff > max_diff) max_diff = diff;
+      if (diff > 1e-2f) {
+        match = 0;
+      }
+    }
+  }
+  printf("Max diff CPU vs NPU: %.6f\n", max_diff);
+  return match ? 0 : 1;
 }

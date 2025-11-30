@@ -27,13 +27,12 @@ static void unpack_nc1hwc2_fp16(const __fp16 *src, float *dst,
   }
 }
 
-static void unpack_matmul_output_fp16(const __fp16 *src, float *dst, int M, int N) {
+static void unpack_matmul_output_fp16_with_c2(const __fp16 *src, float *dst,
+    int M, int N, int c2) {
   if (!src || !dst || M <= 0 || N <= 0) return;
-  // The RKNN matmul kernel writes NC1HWC2 with height=M, width=1 and 8-channel tiles.
-  // This matches feature_data with C2=8 in npu/ops_reg/matmul/matmul.c.
-  const int c2 = 8;
-  const size_t plane_stride = (size_t)M * c2;
-  const size_t row_stride = c2;
+  if (c2 <= 0) return;
+  const size_t plane_stride = (size_t)M * (size_t)c2;
+  const size_t row_stride = (size_t)c2;
   for (int n = 0; n < N; n++) {
     size_t plane = (size_t)n / c2;
     size_t offset = (size_t)n % c2;
@@ -43,6 +42,33 @@ static void unpack_matmul_output_fp16(const __fp16 *src, float *dst, int M, int 
       dst[(size_t)m * N + n] = (float)src[idx];
     }
   }
+}
+
+static void unpack_matmul_output_fp16(const __fp16 *src, float *dst, int M, int N) {
+  int c2 = (matmul_params.align_out > 0) ? matmul_params.align_out : 8;
+  unpack_matmul_output_fp16_with_c2(src, dst, M, N, c2);
+}
+
+static void unpack_matmul_output_fp32_with_c2(const float *src, float *dst,
+    int M, int N, int c2) {
+  if (!src || !dst || M <= 0 || N <= 0) return;
+  if (c2 <= 0) return;
+  const size_t plane_stride = (size_t)M * (size_t)c2;
+  const size_t row_stride = (size_t)c2;
+  for (int n = 0; n < N; n++) {
+    size_t plane = (size_t)n / c2;
+    size_t offset = (size_t)n % c2;
+    size_t plane_base = plane * plane_stride;
+    for (int m = 0; m < M; m++) {
+      size_t idx = plane_base + (size_t)m * row_stride + offset;
+      dst[(size_t)m * N + n] = src[idx];
+    }
+  }
+}
+
+static void unpack_matmul_output_fp32(const float *src, float *dst, int M, int N) {
+  int c2 = (matmul_params.align_out > 0) ? matmul_params.align_out : 8;
+  unpack_matmul_output_fp32_with_c2(src, dst, M, N, c2);
 }
 
 static void print_conv1d_outputs(const char *title, const float *data,
@@ -324,6 +350,125 @@ static int should_print_matmul(const MatmulTestConfig *config) {
   return config && config->M <= 9 && config->K <= 9 && config->N <= 9;
 }
 
+static void pack_input_8x8_stride32(__fp16 *dst, const __fp16 *src, int align_in) {
+  if (!dst || !src || align_in <= 0) return;
+  size_t row_stride = (size_t)align_in;
+  for (int m = 0; m < 8; m++) {
+    size_t base = (size_t)m * row_stride;
+    for (int k = 0; k < 8; k++) {
+      dst[base + (size_t)k] = src[(size_t)m * 8 + (size_t)k];
+    }
+    for (int pad = 8; pad < align_in; pad++) {
+      dst[base + (size_t)pad] = (__fp16)0;
+    }
+  }
+}
+
+static void pack_weight_8x8_column_major(__fp16 *dst, const __fp16 *src, int align_in) {
+  if (!dst || !src || align_in <= 0) return;
+  for (int n = 0; n < 8; n++) {
+    size_t col_base = (size_t)n * (size_t)align_in;
+    for (int k = 0; k < 8; k++) {
+      dst[col_base + (size_t)k] = src[(size_t)k * 8 + (size_t)n];
+    }
+    for (int pad = 8; pad < align_in; pad++) {
+      dst[col_base + (size_t)pad] = (__fp16)0;
+    }
+  }
+}
+
+static float* float16_matmul_prepacked(const MatmulTestConfig *config,
+    const __fp16 *packed_input, const __fp16 *packed_weights) {
+  if (!config || !packed_input || !packed_weights) return NULL;
+  MatmulParams layout = make_matmul_params(config->M, config->N, config->K);
+  matmul_params = layout;
+
+  size_t input_elems = (size_t)layout.align_in * layout.out_width_stride * layout.out_height;
+  size_t weight_elems = (size_t)layout.align_in * layout.align_out;
+  size_t output_elems = (size_t)layout.align_out * layout.out_width_stride * layout.out_height;
+  size_t input_size = input_elems * sizeof(__fp16);
+  size_t weights_size = weight_elems * sizeof(__fp16);
+  size_t output_size = output_elems * sizeof(float);
+
+  int fd = getDeviceFd();
+  npu_reset(fd);
+
+  struct MemHandles handles = createRegCmd(fd, input_size, weights_size, output_size, 11);
+  __fp16 *weights_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
+  __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
+  float *output_data = (float*)(handles.output);
+  if (!weights_fp16 || !feature_data_fp16 || !output_data) {
+    printf("failed to allocate matmul prepacked buffers\n");
+    return NULL;
+  }
+
+  memset(weights_fp16, 0, weights_size);
+  memset(feature_data_fp16, 0, input_size);
+  memset(output_data, 0, output_size);
+  memcpy(weights_fp16, packed_weights, weights_size);
+  memcpy(feature_data_fp16, packed_input, input_size);
+
+  int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
+  if (ret < 0) {
+    printf("float16_matmul prepacked submit failed (%d)\n", ret);
+    return NULL;
+  }
+  return output_data;
+}
+
+static int validate_matmul_pack(const __fp16 *b, const MatmulTestConfig *config) {
+  if (!b || !config) return -1;
+  MatmulParams layout = make_matmul_params(config->M, config->N, config->K);
+  if (layout.N != 9 || layout.K != 9) return 0;
+  size_t packed_elems = (size_t)layout.align_in * (size_t)layout.N;
+  __fp16 *packed = (__fp16*)malloc(packed_elems * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc((size_t)layout.K * (size_t)layout.N * sizeof(__fp16));
+  if (!packed || !unpacked) {
+    free(packed);
+    free(unpacked);
+    printf("failed to allocate matmul pack buffers for %s\n",
+        config->name ? config->name : "matmul");
+    return -1;
+  }
+  for (size_t i = 0; i < packed_elems; i++) packed[i] = (__fp16)0;
+  if (layout.N == 9 && layout.K == 9) {
+    pack_matmul_weights_9x9_fp16(packed, b, layout.align_in);
+  } else {
+    pack_matmul_weights_fp16(packed, b, layout.N, layout.K, layout.align_in);
+  }
+  if (layout.N == 9 && layout.K == 9) {
+    for (int n = 0; n < layout.N; n++) {
+      size_t column_base = (size_t)n * (size_t)layout.align_in;
+      for (int k = 0; k < layout.K; k++) {
+        size_t src_idx = column_base + (size_t)k;
+        if (src_idx < packed_elems) {
+          unpacked[(size_t)k * (size_t)layout.N + (size_t)n] = packed[src_idx];
+        }
+      }
+    }
+  } else {
+    for (int k = 0; k < layout.K; k++) {
+      for (int n = 0; n < layout.N; n++) {
+        size_t src_idx = (size_t)k * (size_t)layout.align_in + (size_t)n;
+        unpacked[(size_t)k * (size_t)layout.N + (size_t)n] = packed[src_idx];
+      }
+    }
+  }
+  float max_diff = 0.0f;
+  for (size_t i = 0; i < (size_t)layout.K * (size_t)layout.N; i++) {
+    float diff = fabsf((float)unpacked[i] - (float)b[i]);
+    if (diff > max_diff) max_diff = diff;
+  }
+  free(packed);
+  free(unpacked);
+  if (max_diff > 1e-3f) {
+    printf("%s matmul weight pack mismatch (max diff %.6f)\n",
+        config->name ? config->name : "matmul", max_diff);
+    return -1;
+  }
+  return 0;
+}
+
 static int run_matmul_case(const MatmulTestConfig *config) {
   if (!config) return -1;
   const int M = config->M;
@@ -345,6 +490,8 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     return -1;
   }
 
+  const int use_prepacked_small =
+      ((M == 8 && K == 8 && N == 8) || (M == 9 && K == 9 && N == 9));
   const float low = -2.0f;
   const float high = 2.0f;
   Mt19937 rng;
@@ -356,17 +503,16 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     b[i] = (__fp16)mt_uniform(&rng, low, high);
   }
 
+  if (M == 9 && K == 9 && N == 9) {
+    if (validate_matmul_pack(b, config) != 0) {
+      free(a);
+      free(b);
+      return -1;
+    }
+  }
+
   printf("\n=== matmul test: %s (M=%d, K=%d, N=%d) ===\n",
       config->name ? config->name : "matmul", M, K, N);
-
-  __fp16 *npu_output = float16_matmul(a, b, 11, M, N, K);
-  if (!npu_output) {
-    printf("float16_matmul failed for %s\n",
-        config->name ? config->name : "matmul");
-    free(a);
-    free(b);
-    return -1;
-  }
 
   float *cpu = (float*)malloc((size_t)M * N * sizeof(float));
   float *actual = (float*)malloc((size_t)M * N * sizeof(float));
@@ -396,7 +542,52 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     print_float_matrix("Expected (CPU)", cpu, M, N);
   }
 
-  unpack_matmul_output_fp16(npu_output, actual, M, N);
+  float *npu_output = NULL;
+  if (use_prepacked_small) {
+    MatmulParams layout = make_matmul_params(M, N, K);
+    size_t packed_input_elems =
+        (size_t)layout.align_in * (size_t)layout.out_width_stride * (size_t)layout.out_height;
+    size_t packed_weight_elems = (size_t)layout.align_in * (size_t)layout.align_out;
+    __fp16 *packed_input = (__fp16*)malloc(packed_input_elems * sizeof(__fp16));
+    __fp16 *packed_weight = (__fp16*)malloc(packed_weight_elems * sizeof(__fp16));
+    if (!packed_input || !packed_weight) {
+      printf("failed to allocate packed buffers for %s\n",
+          config->name ? config->name : "matmul");
+      free(a);
+      free(b);
+      free(cpu);
+      free(actual);
+      free(packed_input);
+      free(packed_weight);
+      return -1;
+    }
+    for (size_t i = 0; i < packed_input_elems; i++) packed_input[i] = (__fp16)0;
+    for (size_t i = 0; i < packed_weight_elems; i++) packed_weight[i] = (__fp16)0;
+    if (M == 8 && K == 8 && N == 8) {
+      pack_input_8x8_stride32(packed_input, a, layout.align_in);
+      pack_weight_8x8_column_major(packed_weight, b, layout.align_in);
+    } else if (M == 9 && K == 9 && N == 9) {
+      pack_matmul_input_9x9_fp16(packed_input, a, layout.align_in, layout.out_height);
+      pack_matmul_weights_9x9_fp16(packed_weight, b, layout.align_in);
+    }
+    npu_output = float16_matmul_prepacked(config, packed_input, packed_weight);
+    free(packed_input);
+    free(packed_weight);
+  } else {
+    npu_output = float16_matmul(a, b, 11, M, N, K);
+  }
+
+  if (!npu_output) {
+    printf("float16_matmul failed for %s\n",
+        config->name ? config->name : "matmul");
+    free(a);
+    free(b);
+    free(cpu);
+    free(actual);
+    return -1;
+  }
+
+  unpack_matmul_output_fp32(npu_output, actual, M, N);
   if (should_print_matmul(config)) {
     print_float_matrix("Result (NPU, fp16->fp32)", actual, M, N);
   }
@@ -889,12 +1080,12 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
 
 int test_conv2d(int argc, char **argv) {
   static const Conv2dTestConfig configs[] = {
-    // {1, 3, 5, 7, 6, 3, 2, 1, 1, "conv2d_i1357_w6321"},
-    // {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
-    // {1, 3, 5, 7, 6, 3, 2, 5, 1, "conv2d_i1357_w6325"},
-    // {1, 3, 5, 7, 6, 3, 3, 1, 1, "conv2d_i1357_w6331"},
-    // {1, 3, 5, 7, 6, 3, 3, 3, 1, "conv2d_i1357_w6333"},
-    // {1, 3, 5, 7, 6, 1, 3, 3, 3, "conv2d_i1357_w6133_g3"},
+    {1, 3, 5, 7, 6, 3, 2, 1, 1, "conv2d_i1357_w6321"},
+    {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},
+    {1, 3, 5, 7, 6, 3, 2, 5, 1, "conv2d_i1357_w6325"},
+    {1, 3, 5, 7, 6, 3, 3, 1, 1, "conv2d_i1357_w6331"},
+    {1, 3, 5, 7, 6, 3, 3, 3, 1, "conv2d_i1357_w6333"},
+    {1, 3, 5, 7, 6, 1, 3, 3, 3, "conv2d_i1357_w6133_g3"},
     {1, 3, 5, 7, 6, 3, 3, 5, 1, "conv2d_i1357_w6335"},
   };
 
@@ -910,8 +1101,8 @@ int main(int argc, char **argv) {
     npu_reset(fd);
 
     // test_alu(argc, argv);
-    test_matmul(argc, argv);
     // test_conv1d(argc, argv);
     // test_conv2d(argc, argv);
+    test_matmul(argc, argv);
     return 0;
 }
