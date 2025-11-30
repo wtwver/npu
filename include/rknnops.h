@@ -596,6 +596,21 @@ static void pack_matmul_input_9x9_fp16(__fp16 *dst, const __fp16 *src,
    }
 }
 
+// Pack 64x64 matmul input using C2=8 (NC1HWC2-style) with planes of 8 channels.
+static void pack_matmul_input_64x64_fp16(__fp16 *dst, const __fp16 *src) {
+   if (!dst || !src) return;
+   const int rows = 64;
+   const int cols = 64;
+   const size_t total = (size_t)rows * (size_t)cols;
+   memset(dst, 0, total * sizeof(__fp16));
+   for (int m = 1; m <= rows; m++) {
+      for (int k = 1; k <= cols; k++) {
+         size_t dst_idx = (size_t)feature_data(cols, rows, 1, 8, k, m, 1);
+         dst[dst_idx] = src[(size_t)(m - 1) * (size_t)cols + (size_t)(k - 1)];
+      }
+   }
+}
+
 static void pack_matmul_weights_fp16(__fp16 *dst, const __fp16 *src,
       int N, int K, int align_in) {
    if (!dst || !src || N <= 0 || K <= 0 || align_in <= 0) return;
@@ -621,12 +636,13 @@ static void pack_matmul_weights_fp16(__fp16 *dst, const __fp16 *src,
       return;
    }
 
+
    for (int n = 0; n < N; n++) {
       for (int k = 0; k < K; k++) {
-         int dst_bytes = weight_fp16(align_in, k + 1, n + 1);
-         size_t dst_idx = (size_t)(dst_bytes / sizeof(__fp16));
+         // weight_fp16 returns the element index (not bytes) for column-major tiling.
+         size_t dst_idx = (size_t)weight_fp16(align_in, n + 1, k + 1);
          if (dst_idx < weight_elems) {
-            size_t src_idx = (size_t)n * (size_t)K + (size_t)k;
+            size_t src_idx = (size_t)k * (size_t)N + (size_t)n;
             dst[dst_idx] = src[src_idx];
          }
       }
@@ -1163,10 +1179,22 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int data_in_height = dataout_height;
          int align_in = params.align_in > 0 ? params.align_in : 32;
          int align_out = params.align_out > 0 ? params.align_out : 32;
+         const bool is_matmul_64 = (params.M == 64 && params.N == 64 && params.K == 64);
+         uint32_t surf_stride = 0x0u;
+         uint32_t notch_val = (uint32_t)(7);
+         if (is_matmul_64) {
+            data_in_height = dataout_height = 64;
+            align_in = 64;
+            align_out = 64;
+            surf_stride = 60;
+            notch_val = 0;
+         } else if (dataout_height == 64) {
+            notch_val = 15;
+         }
+         int out_width_stride = params.out_width_stride > 0 ? params.out_width_stride : dataout_width;
          int dataout_atomics = dataout_width * dataout_height;
          int real_in_channel = align_in - 1;
          int orig_channel = align_out - 1;
-         int out_width_stride = params.out_width_stride > 0 ? params.out_width_stride : dataout_width;
          int out_channel_field = orig_channel;
          uint32_t weight_bytes_per_kernel = (uint32_t)align_in * (uint32_t)sizeof(__fp16);
          uint32_t weight_bytes_total = weight_bytes_per_kernel * (uint32_t)align_out;
@@ -1174,12 +1202,15 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int cbuf_entries = ((dataout_width * align_in) + 31) / 32;
          if (cbuf_entries <= 0) cbuf_entries = 1;
          uint32_t line_stride = (uint32_t)data_in_width * 4u;
-         uint32_t surf_stride = 0x0u;
-         uint32_t dst_surf_stride = (uint32_t)out_width_stride;
+         if (align_in == 64 && !is_matmul_64) line_stride = 8;
+         uint32_t dst_surf_stride = is_matmul_64 ? 64u : (uint32_t)out_width_stride;
          uint32_t surface_add = dst_surf_stride * (uint32_t)(align_out / 8u);
+         if (align_out == 64) surface_add = dst_surf_stride * 4u;
 
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
-         EMIT(REG_CNA_CONV_CON1, CNA_CONV_CON1_GROUP_LINE_OFF(1) | CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2));
+         uint32_t conv_con1 = CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2);
+         if (!is_matmul_64) conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
+         EMIT(REG_CNA_CONV_CON1, conv_con1);
          EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(feature_grains));
          EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
          EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH((uint32_t)data_in_width) | CNA_DATA_SIZE0_DATAIN_HEIGHT((uint32_t)data_in_height));
@@ -1243,10 +1274,8 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH((uint32_t)(dataout_width - 1)));
          EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT((uint32_t)(dataout_height - 1)));
          EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR,
-            // TODO:  recheck for 8x8
-            // DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1((uint32_t)(dataout_height - 1)) |
-            DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1((uint32_t)(7)) |
-            DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0((uint32_t)(7)));
+            DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |
+            DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
          EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)orig_channel) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)out_channel_field));
          EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
          EMIT(REG_DPU_BS_ALU_CFG, 0x00000000);
@@ -1782,6 +1811,8 @@ float* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int N
    if (layout.N == 9 && layout.K == 9 && layout.M == 9) {
       // Match the captured row-major input packing for 9x9.
       pack_matmul_input_9x9_fp16(feature_data_fp16, a, layout.align_in, layout.out_height);
+   } else if (layout.M == 64 && layout.N == 64 && layout.K == 64) {
+      pack_matmul_input_64x64_fp16(feature_data_fp16, a);
    } else {
       for (int m = 1; m <= M; m++) {
          for (int k = 1; k <= K; k++) {

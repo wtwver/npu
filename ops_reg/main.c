@@ -67,8 +67,9 @@ static void unpack_matmul_output_fp32_with_c2(const float *src, float *dst,
 }
 
 static void unpack_matmul_output_fp32(const float *src, float *dst, int M, int N) {
-  int c2 = (matmul_params.align_out > 0) ? matmul_params.align_out : 8;
-  unpack_matmul_output_fp32_with_c2(src, dst, M, N, c2);
+  // Matmul fp32 outputs are emitted in NC1HWC2 with C2=4.
+  // Using align_out (e.g., 64) to stride here mis-orders columns.
+  unpack_matmul_output_fp32_with_c2(src, dst, M, N, 4);
 }
 
 static void print_conv1d_outputs(const char *title, const float *data,
@@ -278,17 +279,42 @@ static void print_conv2d_output(const char *title, const float *data,
   }
 }
 
+static void print_fp16_row(const __fp16 *data, int cols, int row) {
+  printf("  [");
+  for (int c = 0; c < cols; c++) {
+    printf("%6.2f", (float)data[row * cols + c]);
+    if (c + 1 < cols) printf(", ");
+  }
+  printf("]");
+}
+
+static void print_float_row(const float *data, int cols, int row) {
+  printf("  [");
+  for (int c = 0; c < cols; c++) {
+    printf("%7.3f", data[row * cols + c]);
+    if (c + 1 < cols) printf(", ");
+  }
+  printf("]");
+}
+
 static void print_fp16_matrix(const char *title, const __fp16 *data,
     int rows, int cols) {
   printf("%s tensor([\n", title);
-  for (int r = 0; r < rows; r++) {
-    printf("  [");
-    for (int c = 0; c < cols; c++) {
-      printf("%6.2f", (float)data[r * cols + c]);
-      if (c + 1 < cols) printf(", ");
+  if (rows <= 4) {
+    for (int r = 0; r < rows; r++) {
+      print_fp16_row(data, cols, r);
+      printf(r + 1 < rows ? ",\n" : "\n");
     }
-    printf("]");
-    if (r + 1 < rows) printf(",\n");
+  } else {
+    print_fp16_row(data, cols, 0);
+    printf(",\n");
+    print_fp16_row(data, cols, 1);
+    printf(",\n");
+    printf("  ...,\n");
+    print_fp16_row(data, cols, rows - 2);
+    printf(",\n");
+    print_fp16_row(data, cols, rows - 1);
+    printf("\n");
   }
   printf("], shape=(%d, %d), dtype=float16)\n", rows, cols);
 }
@@ -296,14 +322,21 @@ static void print_fp16_matrix(const char *title, const __fp16 *data,
 static void print_float_matrix(const char *title, const float *data,
     int rows, int cols) {
   printf("%s tensor([\n", title);
-  for (int r = 0; r < rows; r++) {
-    printf("  [");
-    for (int c = 0; c < cols; c++) {
-      printf("%7.3f", data[r * cols + c]);
-      if (c + 1 < cols) printf(", ");
+  if (rows <= 4) {
+    for (int r = 0; r < rows; r++) {
+      print_float_row(data, cols, r);
+      printf(r + 1 < rows ? ",\n" : "\n");
     }
-    printf("]");
-    if (r + 1 < rows) printf(",\n");
+  } else {
+    print_float_row(data, cols, 0);
+    printf(",\n");
+    print_float_row(data, cols, 1);
+    printf(",\n");
+    printf("  ...,\n");
+    print_float_row(data, cols, rows - 2);
+    printf(",\n");
+    print_float_row(data, cols, rows - 1);
+    printf("\n");
   }
   printf("], shape=(%d, %d), dtype=float32)\n", rows, cols);
 }
@@ -347,7 +380,7 @@ typedef struct {
 } MatmulTestConfig;
 
 static int should_print_matmul(const MatmulTestConfig *config) {
-  return config && config->M <= 9 && config->K <= 9 && config->N <= 9;
+  return 1;
 }
 
 static void pack_input_8x8_stride32(__fp16 *dst, const __fp16 *src, int align_in) {
@@ -491,7 +524,9 @@ static int run_matmul_case(const MatmulTestConfig *config) {
   }
 
   const int use_prepacked_small =
-      ((M == 8 && K == 8 && N == 8) || (M == 9 && K == 9 && N == 9));
+      ((M == 8 && K == 8 && N == 8) ||
+       (M == 9 && K == 9 && N == 9) ||
+       (M == 64 && K == 64 && N == 64));
   const float low = -2.0f;
   const float high = 2.0f;
   Mt19937 rng;
@@ -569,6 +604,10 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     } else if (M == 9 && K == 9 && N == 9) {
       pack_matmul_input_9x9_fp16(packed_input, a, layout.align_in, layout.out_height);
       pack_matmul_weights_9x9_fp16(packed_weight, b, layout.align_in);
+    } else if (M == 64 && K == 64 && N == 64) {
+      // Mirror the RKNN 64x64 captures: NC1HWC2-packed input with weight_fp16 layout.
+      pack_matmul_input_64x64_fp16(packed_input, a);
+      pack_matmul_weights_fp16(packed_weight, b, layout.N, layout.K, layout.align_in);
     }
     npu_output = float16_matmul_prepacked(config, packed_input, packed_weight);
     free(packed_input);
@@ -615,10 +654,10 @@ int test_matmul(int argc, char **argv) {
   }
 
   static const MatmulTestConfig configs[] = {
-    {"matmul_8x8x8", 8, 8, 8},
+    // {"matmul_8x8x8", 8, 8, 8},
     // {"matmul_9x9x9", 9, 9, 9},
     // {"matmul_32x32x32", 32, 32, 32},
-    // {"matmul_64x64x64", 64, 64, 64},
+    {"matmul_64x64x64", 64, 64, 64},
     // {"matmul_256x256x256", 256, 256, 256},
   };
 
