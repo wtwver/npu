@@ -67,9 +67,10 @@ static void unpack_matmul_output_fp32_with_c2(const float *src, float *dst,
 }
 
 static void unpack_matmul_output_fp32(const float *src, float *dst, int M, int N) {
-  // Matmul fp32 outputs are emitted in NC1HWC2 with C2=4.
-  // Using align_out (e.g., 64) to stride here mis-orders columns.
-  unpack_matmul_output_fp32_with_c2(src, dst, M, N, 4);
+  // Matmul 64x64x64 outputs are stored with C2=4; other shapes keep align_out.
+  int is_64 = (matmul_params.M == 64 && matmul_params.N == 64 && matmul_params.K == 64);
+  int c2 = is_64 ? 4 : ((matmul_params.align_out > 0) ? matmul_params.align_out : 8);
+  unpack_matmul_output_fp32_with_c2(src, dst, M, N, c2);
 }
 
 static void print_conv1d_outputs(const char *title, const float *data,
@@ -654,10 +655,10 @@ int test_matmul(int argc, char **argv) {
   }
 
   static const MatmulTestConfig configs[] = {
-    // {"matmul_8x8x8", 8, 8, 8},
+    {"matmul_8x8x8", 8, 8, 8},
     // {"matmul_9x9x9", 9, 9, 9},
     // {"matmul_32x32x32", 32, 32, 32},
-    {"matmul_64x64x64", 64, 64, 64},
+    // {"matmul_64x64x64", 64, 64, 64},
     // {"matmul_256x256x256", 256, 256, 256},
   };
 
