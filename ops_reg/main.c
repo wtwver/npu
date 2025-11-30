@@ -67,9 +67,10 @@ static void unpack_matmul_output_fp32_with_c2(const float *src, float *dst,
 }
 
 static void unpack_matmul_output_fp32(const float *src, float *dst, int M, int N) {
-  // Matmul 64x64x64 outputs are stored with C2=4; other shapes keep align_out.
-  int is_64 = (matmul_params.M == 64 && matmul_params.N == 64 && matmul_params.K == 64);
-  int c2 = is_64 ? 4 : ((matmul_params.align_out > 0) ? matmul_params.align_out : 8);
+  // Matmul 64x64x64 and 256x256x256 outputs are stored with C2=4; other shapes keep align_out.
+  int is_c2_4 = ((matmul_params.M == 64 && matmul_params.N == 64 && matmul_params.K == 64) ||
+                 (matmul_params.M == 256 && matmul_params.N == 256 && matmul_params.K == 256));
+  int c2 = is_c2_4 ? 4 : ((matmul_params.align_out > 0) ? matmul_params.align_out : 8);
   unpack_matmul_output_fp32_with_c2(src, dst, M, N, c2);
 }
 
@@ -411,6 +412,20 @@ static void pack_weight_8x8_column_major(__fp16 *dst, const __fp16 *src, int ali
   }
 }
 
+// Generic NC1HWC2-style packer for matmul input (C2 set by caller, typically 8).
+static void pack_matmul_input_nc1hwc2_fp16(__fp16 *dst, const __fp16 *src,
+    int rows, int cols, int align_in, int c2) {
+  if (!dst || !src || rows <= 0 || cols <= 0 || align_in <= 0 || c2 <= 0) return;
+  const size_t total = (size_t)rows * (size_t)align_in;
+  memset(dst, 0, total * sizeof(__fp16));
+  for (int m = 1; m <= rows; m++) {
+    for (int k = 1; k <= cols; k++) {
+      size_t dst_idx = (size_t)feature_data(align_in, rows, 1, c2, k, m, 1);
+      dst[dst_idx] = src[(size_t)(m - 1) * (size_t)cols + (size_t)(k - 1)];
+    }
+  }
+}
+
 static float* float16_matmul_prepacked(const MatmulTestConfig *config,
     const __fp16 *packed_input, const __fp16 *packed_weights) {
   if (!config || !packed_input || !packed_weights) return NULL;
@@ -527,7 +542,8 @@ static int run_matmul_case(const MatmulTestConfig *config) {
   const int use_prepacked_small =
       ((M == 8 && K == 8 && N == 8) ||
        (M == 9 && K == 9 && N == 9) ||
-       (M == 64 && K == 64 && N == 64));
+       (M == 64 && K == 64 && N == 64) ||
+       (M == 256 && K == 256 && N == 256));
   const float low = -2.0f;
   const float high = 2.0f;
   Mt19937 rng;
@@ -609,6 +625,10 @@ static int run_matmul_case(const MatmulTestConfig *config) {
       // Mirror the RKNN 64x64 captures: NC1HWC2-packed input with weight_fp16 layout.
       pack_matmul_input_64x64_fp16(packed_input, a);
       pack_matmul_weights_fp16(packed_weight, b, layout.N, layout.K, layout.align_in);
+    } else if (M == 256 && K == 256 && N == 256) {
+      // Apply the same NC1HWC2 input packing and weight_fp16 layout as 64x64x64.
+      pack_matmul_input_nc1hwc2_fp16(packed_input, a, M, K, layout.align_in, 8);
+      pack_matmul_weights_fp16(packed_weight, b, layout.N, layout.K, layout.align_in);
     }
     npu_output = float16_matmul_prepacked(config, packed_input, packed_weight);
     free(packed_input);
@@ -655,11 +675,11 @@ int test_matmul(int argc, char **argv) {
   }
 
   static const MatmulTestConfig configs[] = {
-    {"matmul_8x8x8", 8, 8, 8},
+    // {"matmul_8x8x8", 8, 8, 8},
     // {"matmul_9x9x9", 9, 9, 9},
     // {"matmul_32x32x32", 32, 32, 32},
     // {"matmul_64x64x64", 64, 64, 64},
-    // {"matmul_256x256x256", 256, 256, 256},
+    {"matmul_256x256x256", 256, 256, 256},
   };
 
   int status = 0;
