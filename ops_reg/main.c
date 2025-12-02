@@ -343,8 +343,10 @@ static void print_float_matrix(const char *title, const float *data,
   printf("], shape=(%d, %d), dtype=float32)\n", rows, cols);
 }
 
+void breakpoint(){}
+
 int test_alu(int argc, char **argv) {
-    int size = 1 ;
+    int size = 16 ;
     if (argc > 1) {
         size = atoi(argv[1]);
     }
@@ -355,6 +357,10 @@ int test_alu(int argc, char **argv) {
     for (size_t i = 0; i < size; i++) {
         a[i] = 2.3f;
         b[i] = 2.1f;
+        if (i % 2 == 0) {
+            a[i] = -a[i];
+            b[i] = -b[i];
+        } 
     }
     // 4'd0: Max;
     // 4'd1: Min;
@@ -362,13 +368,21 @@ int test_alu(int argc, char **argv) {
     // 4'd3: Div; # overflow issue
     // 4'd4: Minus;
     // CUSTOM 9: MUL
+    // CUSTOM 10: RELU
     // __fp16* result = float16_alu_op(a, b, 2, size);
-    float* result = (float*)float16_alu_op(a, b, 2, size);
+    __fp16* result = float16_alu_op(a, b, 10, size);
     
     printf("Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", a[i]); printf("\n");
     printf("Input1: "); for (size_t i = 0; i < size; i++) printf("%f ", b[i]); printf("\n");
-    printf("Result/Input0: "); for (size_t i = 0; i < size; i++) printf("fp16: %f fp32: %f \n", (__fp16)result[i], result[i]); printf("\n");
+    printf("Result/Input0: ");
+    for (size_t i = 0; i < size; i++) {
+        // float as_fp32 = (float)result[i];
+        printf("%f ", result[i]);
+    }
+    printf("\n");
     
+    breakpoint();
+
     free(a);
     free(b);
     return 0;
@@ -1160,9 +1174,9 @@ int main(int argc, char **argv) {
     int fd = getDeviceFd();
     npu_reset(fd);
 
-    // test_alu(argc, argv);
+    test_alu(argc, argv);
     // test_conv1d(argc, argv);
     // test_conv2d(argc, argv);
-    test_matmul(argc, argv);
+    // test_matmul(argc, argv);
     return 0;
 }
