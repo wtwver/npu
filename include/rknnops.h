@@ -800,7 +800,9 @@ static void pack_conv_weights_fp16(__fp16 *dst, const __fp16 *src,
    }
 }
 
-void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma){
+void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma,
+   size_t input_size_bytes, size_t output_size_bytes){
+   (void)output_size_bytes;
    struct {
       int dst_base_addr_offset;         // REG_DPU_DST_BASE_ADDR
       int data_cube_width;              // REG_DPU_DATA_CUBE_WIDTH
@@ -1338,8 +1340,86 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_PC_VERSION, 0x00000000);
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
       }
-      // RELU
-      else if (current_alu_algorithm == 10) {
+      
+      else if (current_alu_algorithm == 10) {   // RELU
+         size_t input_elems = input_size_bytes / sizeof(__fp16);
+         if (input_elems == 0) input_elems = 1;
+         int channel_field = 7; // 8 channels (C2=8) matches previous fixed config
+         int width_elems = (int)((input_elems + (channel_field + 1) - 1) / (channel_field + 1));
+         if (width_elems < 1) width_elems = 1;
+         int data_cube_width = width_elems - 1;
+         int data_cube_channel = channel_field;
+         int data_cube_height = 0;   // one row
+         int stride_elems = (int)((width_elems + 3) & ~3); // align width to 4 for stride, mirrors old 25->28 behaviour
+         int surf_notch = stride_elems - width_elems;
+         if (surf_notch < 0) surf_notch = 0;
+
+         EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+         EMIT(REG_DPU_RDMA_RDMA_S_POINTER, DPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | DPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | DPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+         EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2) | DPU_FEATURE_MODE_CFG_FLYING_MODE(1));
+         EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+         EMIT(REG_DPU_DST_BASE_ADDR, DPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma));
+         EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE((uint32_t)stride_elems));
+         EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH((uint32_t)data_cube_width));
+         EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT((uint32_t)data_cube_height));
+         EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)data_cube_channel) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)data_cube_channel));
+         // REG_DPU_BS_CFG no DPU_BS_CFG_BS_RELU_BYPASS means RELU
+         EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1));
+         EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_OD_BYPASS(1));
+         EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA((uint32_t)data_cube_channel));
+         EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_WIDTH_WDMA((uint32_t)data_cube_width));
+         EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+         EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+         EMIT(REG_DPU_EW_CVT_SCALE_VALUE, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+         EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+         EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD((uint32_t)stride_elems));
+         emit_raw(&regs, 0x1000 | 0x1, 0x40c4, 0);
+         // EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_WIDTH, DPU_RDMA_RDMA_DATA_CUBE_WIDTH_WIDTH(1));
+         EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_WIDTH, DPU_RDMA_RDMA_DATA_CUBE_WIDTH_WIDTH((uint32_t)data_cube_width));
+         EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_CHANNEL, DPU_RDMA_RDMA_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)data_cube_channel));
+         EMIT(REG_DPU_RDMA_RDMA_SRC_BASE_ADDR, DPU_RDMA_RDMA_SRC_BASE_ADDR_SRC_BASE_ADDR(input_dma));
+         EMIT(REG_DPU_RDMA_RDMA_ERDMA_CFG, DPU_RDMA_RDMA_ERDMA_CFG_ERDMA_DISABLE(1));
+         EMIT(REG_DPU_RDMA_RDMA_FEATURE_MODE_CFG, DPU_RDMA_RDMA_FEATURE_MODE_CFG_IN_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_PROC_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_MRDMA_FP16TOFP32_EN(1) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_FLYING_MODE(1));
+         EMIT(REG_DPU_RDMA_RDMA_SURF_NOTCH, DPU_RDMA_RDMA_SURF_NOTCH_SURF_NOTCH_ADDR((uint32_t)surf_notch));
+         EMIT(REG_DPU_RDMA_RDMA_WEIGHT, DPU_RDMA_RDMA_WEIGHT_E_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_N_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_B_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_M_WEIGHT(1));
+         // EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12));
+
+         emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12) | PC_OPERATION_ENABLE_OP_EN(0));
+         EMIT(REG_PC_VERSION, 0x00020000);
+         
+         // EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+         // EMIT(REG_DPU_RDMA_RDMA_S_POINTER, DPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | DPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | DPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+         // EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2) | DPU_FEATURE_MODE_CFG_FLYING_MODE(1));
+         // EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(2) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
+         // EMIT(REG_DPU_DST_BASE_ADDR, DPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma));
+         // EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(4096));
+         // EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH(4095));
+         // EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL(7) | DPU_DATA_CUBE_CHANNEL_CHANNEL(7));
+         // // REG_DPU_BS_CFG no DPU_BS_CFG_BS_RELU_BYPASS means RELU
+         // EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1));
+         // EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_OD_BYPASS(1));
+         // EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA(7));
+         // // IMPORTANT
+         // EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_WIDTH_WDMA(24));
+         // EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
+         // EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
+         // EMIT(REG_DPU_EW_CVT_SCALE_VALUE, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
+         // EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_FP32TOFP16_EN(1) | DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
+         // EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(4096));
+         // emit_raw(&regs, 0x1000 | 0x1, 0x40c4, 0);
+         // EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_WIDTH, DPU_RDMA_RDMA_DATA_CUBE_WIDTH_WIDTH(1));
+         // EMIT(REG_DPU_RDMA_RDMA_DATA_CUBE_CHANNEL, DPU_RDMA_RDMA_DATA_CUBE_CHANNEL_CHANNEL(7));
+         // EMIT(REG_DPU_RDMA_RDMA_SRC_BASE_ADDR, DPU_RDMA_RDMA_SRC_BASE_ADDR_SRC_BASE_ADDR(input_dma));
+         // EMIT(REG_DPU_RDMA_RDMA_ERDMA_CFG, DPU_RDMA_RDMA_ERDMA_CFG_ERDMA_DISABLE(1));
+         // EMIT(REG_DPU_RDMA_RDMA_FEATURE_MODE_CFG, DPU_RDMA_RDMA_FEATURE_MODE_CFG_IN_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_PROC_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_MRDMA_FP16TOFP32_EN(1) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_FLYING_MODE(1));
+         // // EMIT(REG_DPU_RDMA_RDMA_SURF_NOTCH, DPU_RDMA_RDMA_SURF_NOTCH_SURF_NOTCH_ADDR(3));
+         // EMIT(REG_DPU_RDMA_RDMA_WEIGHT, DPU_RDMA_RDMA_WEIGHT_E_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_N_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_B_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_M_WEIGHT(1));
+         // // EMIT(REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12));
+
+         // emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12) | PC_OPERATION_ENABLE_OP_EN(0));
+         // EMIT(REG_PC_VERSION, 0x00020000);
+      }
+      else if (current_alu_algorithm == 14) { // SILU
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_RDMA_RDMA_S_POINTER, DPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | DPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | DPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2) | DPU_FEATURE_MODE_CFG_FLYING_MODE(1));
@@ -1370,6 +1450,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12) | PC_OPERATION_ENABLE_OP_EN(0));
          EMIT(REG_PC_VERSION, 0x00020000);
       }
+
       else {
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_RDMA_RDMA_S_POINTER, DPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | DPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | DPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
@@ -1507,7 +1588,7 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    regs.size = 0;
    tracked_pc_register_amount_idx = (size_t)-1;
    reset_reg_tracking();
-   regcmd_helper(input_dma, weights_dma, output_dma);
+   regcmd_helper(input_dma, weights_dma, output_dma, input_size, output_size);
    if (reg_task_count == 0 && regs.size > 0) {
       finish_current_task();
    }
@@ -1854,7 +1935,7 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
    rknn_tensor_type dtype = RKNN_TENSOR_FLOAT16;
 
    size_t bytes = (size_t)size * get_type_size(dtype);
-   struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
+   struct MemHandles handles = createRegCmd(fd, bytes, bytes, (size_t)size * size * get_type_size(dtype), alu_algorithm);
    __fp16 *weights_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);

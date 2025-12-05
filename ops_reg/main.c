@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <limits.h>
 #include <math.h>
 #include <string.h>
 #include "rknnops.h"
@@ -299,6 +300,23 @@ static void print_float_row(const float *data, int cols, int row) {
   printf("]");
 }
 
+static void print_fp16_grid(const char *label, const __fp16 *data,
+    int rows, int cols) {
+  if (!data) {
+    printf("%s: (null)\n", label);
+    return;
+  }
+  printf("%s (%dx%d):\n", label, rows, cols);
+  for (int r = 0; r < rows; r++) {
+    printf("  ");
+    for (int c = 0; c < cols; c++) {
+      size_t idx = (size_t)r * cols + c;
+      printf("%7.3f ", (float)data[idx]);
+    }
+    printf("\n");
+  }
+}
+
 static void print_fp16_matrix(const char *title, const __fp16 *data,
     int rows, int cols) {
   printf("%s tensor([\n", title);
@@ -360,7 +378,7 @@ int test_alu(int argc, char **argv) {
         if (i % 2 == 0) {
             a[i] = -a[i];
             b[i] = -b[i];
-        } 
+        }
     }
     // 4'd0: Max;
     // 4'd1: Min;
@@ -369,11 +387,16 @@ int test_alu(int argc, char **argv) {
     // 4'd4: Minus;
     // CUSTOM 9: MUL
     // CUSTOM 10: RELU
+    // CUSTOM 14: SILU
     // __fp16* result = float16_alu_op(a, b, 2, size);
     __fp16* result = float16_alu_op(a, b, 10, size);
     
-    printf("Input0: "); for (size_t i = 0; i < size; i++) printf("%f ", a[i]); printf("\n");
-    printf("Input1: "); for (size_t i = 0; i < size; i++) printf("%f ", b[i]); printf("\n");
+    printf("Input0: ");
+    for (size_t i = 0; i < size; i++) printf("%f ", a[i]);
+    printf("\n");
+    printf("Input1: ");
+    for (size_t i = 0; i < size; i++) printf("%f ", b[i]);
+    printf("\n");
     printf("Result/Input0: ");
     for (size_t i = 0; i < size; i++) {
         // float as_fp32 = (float)result[i];
@@ -381,12 +404,108 @@ int test_alu(int argc, char **argv) {
     }
     printf("\n");
     
+    const float kReluAtol = 1e-3f;
+    int matches = result ? 1 : 0;
+    float max_abs_diff = 0.0f;
+    if (result) {
+        for (size_t i = 0; i < size; i++) {
+            float expected = (float)b[i];
+            if (expected < 0.0f) expected = 0.0f;
+            float actual = (float)result[i];
+            float diff = fabsf(actual - expected);
+            if (diff > max_abs_diff) max_abs_diff = diff;
+            if (diff > kReluAtol) {
+                matches = 0;
+                break;
+            }
+        }
+    }
+    printf("test_alu: matches CPU -> %s (max diff=%.6f)\n",
+        matches ? "YES" : "NO", max_abs_diff);
+
     breakpoint();
 
     free(a);
     free(b);
     return 0;
 }
+
+typedef struct {
+  const char *name;
+  int rows;
+  int cols;
+} ReluTestConfig;
+
+static int run_relu_case(const ReluTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "relu_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0) {
+    printf("%s: invalid shape %dx%d\n", name, rows, cols);
+    return -1;
+  }
+  if (total_elements > INT_MAX) {
+    printf("%s: shape %dx%d exceeds %d elements\n",
+        name, rows, cols, INT_MAX);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *features = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *weights = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!features || !weights) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(features);
+    free(weights);
+    return -1;
+  }
+  printf("%s: allocated %zu elements\n", name, total_elements);
+
+
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (size_t i = 0; i < total_elements; i++) {
+    float value = mt_uniform(&rng, -3.0f, 3.0f);
+    features[i] = (__fp16)value;
+    weights[i] = (__fp16)mt_uniform(&rng, -1.0f, 1.0f);
+  }
+
+  __fp16 *result = float16_alu_op(weights, features, 10, size);
+  if (result == NULL) {
+    printf("%s: float16_alu_op failed\n", name);
+    free(features);
+    free(weights);
+    return -1;
+  }
+
+  printf("Running %s (%dx%d)\n", name, rows, cols);
+  print_fp16_grid("Input (features)", features, rows, cols);
+  print_fp16_grid("Result (RELU)", result, rows, cols);
+
+  const float kReluAtol = 1e-3f;
+  float max_abs_diff = 0.0f;
+  int matches = 1;
+  for (size_t i = 0; i < total_elements; i++) {
+    float expected = (float)features[i];
+    if (expected < 0.0f) expected = 0.0f;
+    float actual = (float)result[i];
+    float diff = fabsf(actual - expected);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+    if (diff > kReluAtol) matches = 0;
+  }
+
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n",
+      name, matches ? "YES" : "NO", max_abs_diff);
+  
+  breakpoint();
+  free(features);
+  free(weights);
+  return matches ? 0 : -1;
+}
+
+
 
 typedef struct {
   const char *name;
@@ -1170,11 +1289,30 @@ int test_conv2d(int argc, char **argv) {
   return status;
 }
 
+int test_relu(int argc, char **argv) {
+  if (argc >= 3) {
+    ReluTestConfig cli_config = {"test_relu_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_relu_case(&cli_config);
+  }
+  static const ReluTestConfig configs[] = {
+      // {"relu_5x5", 5, 5},
+      // {"relu_6x6", 6, 6},
+      // {"relu_14x14", 14, 14},
+      // {"relu_15x15", 15, 15},
+      {"relu_64x64", 64, 64},
+  };
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_relu_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
 int main(int argc, char **argv) {
     int fd = getDeviceFd();
     npu_reset(fd);
 
-    test_alu(argc, argv);
+    test_relu(argc, argv);
     // test_conv1d(argc, argv);
     // test_conv2d(argc, argv);
     // test_matmul(argc, argv);
