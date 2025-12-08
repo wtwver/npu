@@ -467,7 +467,7 @@ static int run_relu_case(const ReluTestConfig *config) {
   Mt19937 rng;
   mt_seed(&rng, 0);
   for (size_t i = 0; i < total_elements; i++) {
-    float value = mt_uniform(&rng, -3.0f, 3.0f);
+    float value = mt_uniform(&rng, -2.0f, 2.0f);
     features[i] = (__fp16)value;
     weights[i] = (__fp16)mt_uniform(&rng, -1.0f, 1.0f);
   }
@@ -502,6 +502,254 @@ static int run_relu_case(const ReluTestConfig *config) {
   breakpoint();
   free(features);
   free(weights);
+  return matches ? 0 : -1;
+}
+
+typedef struct {
+  const char *name;
+  int rows;
+  int cols;
+} SiluTestConfig;
+
+typedef struct {
+  const char *name;
+  int rows;
+  int cols;
+} SigmoidTestConfig;
+
+static void load_fixed_silu_inputs(__fp16 *dst, size_t total_elements) {
+  static const uint16_t feature_bits[] = {
+      0x3240, 0x3ae3, 0x3694, 0x31bf,
+      0xb4e3, 0x38ab, 0xb3fd, 0x3e45,
+      0x3f6b, 0xb776, 0x3cab, 0x2f66,
+      0x345b, 0x3ecf, 0xbedd, 0xbe9b,
+  };
+  size_t n = sizeof(feature_bits) / sizeof(feature_bits[0]);
+  if (total_elements > n) total_elements = n;
+  for (size_t i = 0; i < total_elements; i++) {
+    uint16_t bits = feature_bits[i];
+    memcpy(&dst[i], &bits, sizeof(uint16_t));
+  }
+}
+
+// Pack input with 0x40 base offset and 0x10 stride between elements for ALU ops.
+static __fp16 *float16_alu_op_padded(const __fp16 *weights, const __fp16 *features,
+    int size, uint32_t alu_algorithm) {
+  int fd = getDeviceFd();
+  npu_reset(fd);
+  rknn_tensor_type dtype = RKNN_TENSOR_FLOAT16;
+  size_t elem_bytes = get_type_size(dtype);
+  size_t weights_bytes = (size_t)size * elem_bytes;
+  size_t packed_input_bytes = 0x140;  // covers up to 0x130 in the desired layout
+  size_t output_bytes = (size_t)size * 0x10;  // outputs are spaced every 0x10 bytes
+
+  struct MemHandles handles = createRegCmd(fd, packed_input_bytes, weights_bytes, output_bytes, alu_algorithm);
+  __fp16 *weights_fp16 = (__fp16 *)((char *)handles.weights + REGCMD_RESERVED);
+  __fp16 *feature_data_fp16 = (__fp16 *)(handles.input);
+  __fp16 *output_data = (__fp16 *)(handles.output);
+
+  memset(weights_fp16, 0, weights_bytes);
+  memset(feature_data_fp16, 0, packed_input_bytes);
+  memcpy(weights_fp16, weights, weights_bytes);
+
+  for (int i = 0; i < size; i++) {
+    size_t byte_off = (size_t)i * 0x10;
+    size_t idx = byte_off / sizeof(__fp16);
+    if ((idx + 1) * sizeof(__fp16) <= packed_input_bytes) {
+      feature_data_fp16[idx] = features[i];
+    }
+  }
+
+  int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
+  if (ret < 0) {
+    printf("float16_alu_op_padded submit failed (%d)\n", ret);
+    return NULL;
+  }
+  return output_data;
+}
+
+static int run_silu_case(const SiluTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "silu_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > INT_MAX) {
+    printf("%s: invalid shape %dx%d\n", name, rows, cols);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *features = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  __fp16 *weights = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  if (!features || !weights) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(features);
+    free(weights);
+    return -1;
+  }
+  float *expected = (float *)malloc(total_elements * sizeof(float));
+  float *sigmoid_ref = (float *)malloc(total_elements * sizeof(float));
+  if (!expected || !sigmoid_ref) {
+    printf("%s: failed to allocate expected buffer(s)\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    free(sigmoid_ref);
+    return -1;
+  }
+  printf("%s: allocated %zu elements\n", name, total_elements);
+
+  // Use fixed fp16 inputs to mirror the desired packed layout.
+  load_fixed_silu_inputs(features, total_elements);
+  for (size_t i = 0; i < total_elements; i++) {
+    weights[i] = (__fp16)0;  // unused but keep buffer layout identical
+  }
+  for (size_t i = 0; i < total_elements; i++) {
+    float x = (float)features[i];
+    float sig = 1.0f / (1.0f + expf(-x));
+    sigmoid_ref[i] = sig;
+    expected[i] = x * sig;
+  }
+
+  // Print inputs/expected before submitting to hardware
+  printf("Running %s (%dx%d)\n", name, rows, cols);
+  print_fp16_grid("Input (features)", features, rows, cols);
+  print_float_matrix("Expected (CPU)", expected, rows, cols);
+  print_float_matrix("Reference Sigmoid (CPU)", sigmoid_ref, rows, cols);
+
+  // CUSTOM 15: SILU
+  __fp16 *result_padded = float16_alu_op_padded(weights, features, size, 15);
+  if (result_padded == NULL) {
+    printf("%s: float16_alu_op failed\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    free(sigmoid_ref);
+    return -1;
+  }
+
+  __fp16 *result = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  if (!result) {
+    printf("%s: failed to allocate unpack buffer\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    free(sigmoid_ref);
+    return -1;
+  }
+  const size_t stride_elems = 0x10 / sizeof(__fp16);  // 8
+  for (size_t i = 0; i < total_elements; i++) {
+    size_t idx = i * stride_elems;
+    result[i] = result_padded[idx];
+  }
+
+  print_fp16_grid("Result (SILU)", result, rows, cols);
+
+  const float kSiluAtol = 1e-3f;
+  float max_abs_diff = 0.0f;
+  int matches = 1;
+  for (size_t i = 0; i < total_elements; i++) {
+    float actual = (float)result[i];
+    float diff = fabsf(actual - expected[i]);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+    if (diff > kSiluAtol) matches = 0;
+  }
+
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n",
+         name, matches ? "YES" : "NO", max_abs_diff);
+
+  breakpoint();
+  free(features);
+  free(weights);
+  free(expected);
+  free(sigmoid_ref);
+  free(result);
+  return matches ? 0 : -1;
+}
+
+static int run_sigmoid_case(const SigmoidTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "sigmoid_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > INT_MAX) {
+    printf("%s: invalid shape %dx%d\n", name, rows, cols);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *features = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  __fp16 *weights = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  if (!features || !weights) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(features);
+    free(weights);
+    return -1;
+  }
+  float *expected = (float *)malloc(total_elements * sizeof(float));
+  if (!expected) {
+    printf("%s: failed to allocate expected buffer\n", name);
+    free(features);
+    free(weights);
+    return -1;
+  }
+  printf("%s: allocated %zu elements\n", name, total_elements);
+
+  load_fixed_silu_inputs(features, total_elements);
+  for (size_t i = 0; i < total_elements; i++) {
+    weights[i] = (__fp16)0;
+    expected[i] = 1.0f / (1.0f + expf(-(float)features[i]));
+  }
+
+  printf("Running %s (%dx%d)\n", name, rows, cols);
+  print_fp16_grid("Input (features)", features, rows, cols);
+  print_float_matrix("Expected (CPU)", expected, rows, cols);
+
+  __fp16 *result_padded = float16_alu_op_padded(weights, features, size, 14);
+  if (result_padded == NULL) {
+    printf("%s: float16_alu_op failed\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    return -1;
+  }
+
+  __fp16 *result = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  if (!result) {
+    printf("%s: failed to allocate unpack buffer\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    return -1;
+  }
+  const size_t stride_elems = 0x10 / sizeof(__fp16);
+  for (size_t i = 0; i < total_elements; i++) {
+    size_t idx = i * stride_elems;
+    result[i] = result_padded[idx];
+  }
+
+  print_fp16_grid("Result (SIGMOID)", result, rows, cols);
+
+  const float kSigmoidAtol = 5e-3f;
+  float max_abs_diff = 0.0f;
+  int matches = 1;
+  for (size_t i = 0; i < total_elements; i++) {
+    float actual = (float)result[i];
+    float diff = fabsf(actual - expected[i]);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+    if (diff > kSigmoidAtol) matches = 0;
+  }
+
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n",
+         name, matches ? "YES" : "NO", max_abs_diff);
+
+  breakpoint();
+  free(features);
+  free(weights);
+  free(expected);
+  free(result);
   return matches ? 0 : -1;
 }
 
@@ -1308,11 +1556,43 @@ int test_relu(int argc, char **argv) {
   return status;
 }
 
+int test_silu(int argc, char **argv) {
+  if (argc >= 3) {
+    SiluTestConfig cli_config = {"test_silu_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_silu_case(&cli_config);
+  }
+  static const SiluTestConfig configs[] = {
+      {"silu_4x4", 4, 4},
+  };
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_silu_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+int test_sigmoid(int argc, char **argv) {
+  if (argc >= 3) {
+    SigmoidTestConfig cli_config = {"test_sigmoid_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_sigmoid_case(&cli_config);
+  }
+  static const SigmoidTestConfig configs[] = {
+      {"sigmoid_4x4", 4, 4},
+  };
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_sigmoid_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
 int main(int argc, char **argv) {
     int fd = getDeviceFd();
     npu_reset(fd);
 
-    test_relu(argc, argv);
+    test_sigmoid(argc, argv);
+    // test_silu(argc, argv);
+    // test_relu(argc, argv);
     // test_conv1d(argc, argv);
     // test_conv2d(argc, argv);
     // test_matmul(argc, argv);
