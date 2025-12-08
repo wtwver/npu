@@ -1,3 +1,27 @@
+# https://nvdla.org/hw/v1/ias/lut-programming.html
+
+# NVDLA like rk3588 LUT in sigmoid
+# Second LUT 517 entry from 0 to  +2 
+# sigmoid(0.195254)
+# 0.195254 * 2596 (26898 to hex = 0x6912 = 2596 fp16)
+# = 507 = 0x5FEC
+
+# LUT[507/32] = LUT[16] = 0x 7464 = 2**14 * 1.098
+# Shift 15 bit = 2**-1 * 1.098  = 0.549= sigmoid(0.195254)
+
+# AND
+
+# sigmoid(0.860757)
+# 0.860757 * 2596 (26898 to hex = 0x6912 = 2596 fp16)
+# = 2234 = 0x685D
+
+# LUT[2234/32] = LUT[70] = ?0x759f? = 2**14 * 1.406
+# Shift 15 bit = 2**-1 * 1.406 = 0.703= sigmoid(0.860757)
+
+# AND
+# LUT[0x0000] = 0x7400 = 2**14 *1 
+# Shift 15 bit = 2**-1 * 1 = 0.5= sigmoid(0)
+
 import re
 import numpy as np
 from pathlib import Path
