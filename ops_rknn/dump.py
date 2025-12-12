@@ -544,8 +544,8 @@ def dump_gem(fd, flink):
                     else:
                         break
                 
-                # Only collapse when there are more than two consecutive zero blocks; otherwise print each.
-                if zero_blocks > 2:
+                # Only collapse when there are more than three consecutive zero blocks; otherwise print each.
+                if zero_blocks > 3:
                     print(Colors.highlight(f"[{zero_start:08x}] = 00000000 00000000 00000000 00000000"))
                     print(Colors.highlight(f"... {zero_blocks} blocks ({zero_blocks * 16} bytes) from 0x{zero_start:08x} to 0x{zero_start + zero_blocks * 16 - 1:08x} are all zeros"))
                 else:
@@ -558,11 +558,11 @@ def dump_gem(fd, flink):
                 print(Colors.highlight(f"[{i:08x}] = {here[0]:08x} {here[1]:08x} {here[2]:08x} {here[3]:08x}"))
                 i += 16
 
-        if flink == 1:
+        if flink == 1 or flink == 2 :
             tasks = decode_tasks_from_buffer(instr, g.size, flink=flink)
             emit_task_report(tasks, flink)
-            instr.close()
-            return
+            # instr.close()
+            # return
         instr.close()
     except: pass
 

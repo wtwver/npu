@@ -1,6 +1,7 @@
 #include "rknn_api.h"
 #include <array>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <sys/stat.h>
 
 static bool file_exists(const std::string &path) {
   std::ifstream f(path);
@@ -80,6 +82,11 @@ static void compute_log_softmax(const std::vector<float> &input, std::vector<flo
   compute_softmax(input, expected, width, true);
 }
 
+static std::string to_upper(std::string s) {
+  for (auto &c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  return s;
+}
+
 struct ActivationDescriptor {
   const char *name;
   std::function<void(const std::vector<float> &, std::vector<float> &, int)> compute;
@@ -122,6 +129,9 @@ static const std::vector<ActivationDescriptor> ACTIVATIONS = {
   }},
   {"sigmoid", [](const std::vector<float> &in, std::vector<float> &out, int) {
      compute_elementwise(in, out, [](float x) { return 1.0f / (1.0f + std::exp(-x)); });
+  }},
+  {"tanh", [](const std::vector<float> &in, std::vector<float> &out, int) {
+     compute_elementwise(in, out, [](float x) { return std::tanh(x); });
   }},
   {"logsigmoid", [](const std::vector<float> &in, std::vector<float> &out, int) {
      compute_elementwise(in, out, [](float x) { return -std::log1p(std::exp(-x)); });
@@ -291,6 +301,11 @@ int main(int argc, char **argv) {
 
     std::vector<float> expected(total);
     desc->compute(input_f, expected, flat_w);
+    // Match NPU precision by rounding CPU reference to float16
+    std::vector<float> expected_fp16(total);
+    for (int64_t i = 0; i < total; i++) {
+      expected_fp16[i] = static_cast<float>(static_cast<__fp16>(expected[i]));
+    }
 
     float *result = static_cast<float *>(out.buf);
     std::vector<float> output(result, result + total);
@@ -298,19 +313,20 @@ int main(int argc, char **argv) {
               << dims[0] << "x" << dims[1] << "x" << dims[2] << "x" << dims[3] << std::endl;
     print_tensor("input  :", input_f);
     print_tensor("output :", output);
-    print_tensor("expect :", expected);
+    print_tensor("expect :", expected_fp16);
 
     bool ok = true;
     float max_diff = 0.f;
+    const float tol = 5e-3f;  // allow typical fp16 rounding error
     for (int64_t i = 0; i < total; i++) {
-      float diff = std::abs(output[i] - expected[i]);
+      float diff = std::abs(output[i] - expected_fp16[i]);
       max_diff = std::max(max_diff, diff);
-      if (diff > 1e-3f) {
+      if (diff > tol) {
         ok = false;
         break;
       }
     }
-    std::cout << "NPU result match CPU: " << (ok ? "YES" : "NO") << std::endl;
+    std::cout << to_upper(activation_name) << " NPU result match CPU: " << (ok ? "YES" : "NO") << std::endl;
     std::cout << "Max abs diff: " << max_diff << std::endl;
 
     rknn_outputs_release(ctx, 1, &out);

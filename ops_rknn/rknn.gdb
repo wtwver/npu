@@ -1,13 +1,5 @@
-# ------------------------------------------------------------------
-# 1. Breakpoints
-# ------------------------------------------------------------------
 break rknn_run
-break rknn_destroy
-
-# ------------------------------------------------------------------
-# 2. Commands that run automatically when the breakpoint is hit
-# ------------------------------------------------------------------
-commands 1
+commands 
     printf "rknn_run============\n"
     shell python3 dump.py 1
     shell python3 dump.py 2 
@@ -16,6 +8,7 @@ commands 1
     continue
 end
 
+break rknn_destroy
 commands 2
     printf "rknn_destroy============\n"
     shell python3 dump.py 3
@@ -26,8 +19,5 @@ commands 2
     continue
 end
 
-# ------------------------------------------------------------------
-# 3. Start the program
-# ------------------------------------------------------------------
 run
 q

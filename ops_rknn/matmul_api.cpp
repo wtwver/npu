@@ -9,6 +9,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -61,38 +62,66 @@ static bool attr_matches_dims(const rknn_matmul_tensor_attr& attr,
   return true;
 }
 
+template <typename Getter>
+static void print_tensor_as_list(const char* label, int rows, int cols,
+                                 Getter getter) {
+  std::cout << "  " << label << " (shape=" << rows << "x" << cols << "): [";
+  bool first = true;
+  for (int r = 0; r < rows; ++r) {
+    for (int c = 0; c < cols; ++c) {
+      if (!first) {
+        std::cout << ", ";
+      }
+      first = false;
+      std::cout << getter(r, c);
+    }
+  }
+  std::cout << "]\n";
+}
+
 static void print_fp16_matrix(const char* label, const __fp16* data, int rows,
                               int cols, int stride) {
-  std::cout << "  " << label << " (" << rows << "x" << cols << "):" << std::endl;
-  for (int r = 0; r < rows; ++r) {
-    std::cout << "    ";
-    for (int c = 0; c < cols; ++c) {
-      size_t idx = static_cast<size_t>(r) * stride + c;
-      float val = static_cast<float>(data[idx]);
-      std::cout << val;
-      if (c + 1 < cols) {
-        std::cout << " ";
-      }
-    }
-    std::cout << std::endl;
-  }
+  print_tensor_as_list(label, rows, cols,
+                       [data, stride](int r, int c) -> float {
+                         size_t idx = static_cast<size_t>(r) * stride + c;
+                         return static_cast<float>(data[idx]);
+                       });
 }
 
 static void print_float_matrix(const char* label, const float* data, int rows,
                                int cols, int stride) {
-  std::cout << "  " << label << " (" << rows << "x" << cols << "):" << std::endl;
-  for (int r = 0; r < rows; ++r) {
-    std::cout << "    ";
-    for (int c = 0; c < cols; ++c) {
-      size_t idx = static_cast<size_t>(r) * stride + c;
-      float val = idx < static_cast<size_t>(rows) * stride ? data[idx] : 0.0f;
-      std::cout << val;
-      if (c + 1 < cols) {
-        std::cout << " ";
-      }
-    }
-    std::cout << std::endl;
-  }
+  print_tensor_as_list(label, rows, cols,
+                       [data, rows, stride](int r, int c) -> float {
+                         size_t idx = static_cast<size_t>(r) * stride + c;
+                         if (idx >= static_cast<size_t>(rows) * stride) {
+                           return 0.0f;
+                         }
+                         return data[idx];
+                       });
+}
+
+static void print_int8_matrix(const char* label, const int8_t* data, int rows,
+                              int cols, int stride) {
+  print_tensor_as_list(label, rows, cols,
+                       [data, rows, stride](int r, int c) -> int32_t {
+                         size_t idx = static_cast<size_t>(r) * stride + c;
+                         if (idx >= static_cast<size_t>(rows) * stride) {
+                           return 0;
+                         }
+                         return static_cast<int32_t>(data[idx]);
+                       });
+}
+
+static void print_int32_matrix(const char* label, const int32_t* data, int rows,
+                               int cols, int stride) {
+  print_tensor_as_list(label, rows, cols,
+                       [data, rows, stride](int r, int c) -> int32_t {
+                         size_t idx = static_cast<size_t>(r) * stride + c;
+                         if (idx >= static_cast<size_t>(rows) * stride) {
+                           return 0;
+                         }
+                         return data[idx];
+                       });
 }
 
 struct Mt19937 {
@@ -228,8 +257,8 @@ struct MatmulCase {
 static const std::vector<MatmulCase> kMatmulCases = {
     // {"matmul_fp16_8x8", 8, 8, 8, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_9x9", 9, 9, 9, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
-    {"matmul_fp16_32x32", 32, 32, 32, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
-    // {"matmul_fp16_64x64", 64, 64, 64, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_32x32", 32, 32, 32, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    {"matmul_fp16_64x64", 64, 64, 64, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_256x256", 256, 256, 256, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_int8_64x64", 64, 64, 64, RKNN_INT8_MM_INT8_TO_INT32, MatmulPrecision::kInt8},
 };
@@ -282,8 +311,6 @@ static bool run_float16_case(const MatmulCase& cfg) {
   const float high = 2.0f;
   const int align_k = 32;  // value alignment for RK3588 fp16 K
   const int align_n = 32;  // value alignment for RK3588 fp16 N
-  const bool print_full_matrices =
-      (cfg.M == 32 && cfg.N == 32 && cfg.K == 32);
   const int aligned_M = cfg.M;
   const int aligned_K = align_up(cfg.K, align_k);
   const int aligned_N = align_up(cfg.N, align_n);
@@ -291,22 +318,22 @@ static bool run_float16_case(const MatmulCase& cfg) {
   auto weight_fp16 = make_random_matrix<__fp16>(cfg.K, cfg.N, &rng, low, high);
   bool special_9x9 = (cfg.M == 32 && cfg.N == 32 && cfg.K == 32);
   const int special_size = 9;
-  if (special_9x9) {
-    for (int m = 0; m < cfg.M; ++m) {
-      for (int k = 0; k < cfg.K; ++k) {
-        if (m >= special_size || k >= special_size) {
-          input_fp16[static_cast<size_t>(m) * cfg.K + k] = __fp16(0);
-        }
-      }
-    }
-    for (int k = 0; k < cfg.K; ++k) {
-      for (int n = 0; n < cfg.N; ++n) {
-        if (k >= special_size || n >= special_size) {
-          weight_fp16[static_cast<size_t>(k) * cfg.N + n] = __fp16(0);
-        }
-      }
-    }
-  }
+  // if (special_9x9) {
+  //   for (int m = 0; m < cfg.M; ++m) {
+  //     for (int k = 0; k < cfg.K; ++k) {
+  //       if (m >= special_size || k >= special_size) {
+  //         input_fp16[static_cast<size_t>(m) * cfg.K + k] = __fp16(0);
+  //       }
+  //     }
+  //   }
+  //   for (int k = 0; k < cfg.K; ++k) {
+  //     for (int n = 0; n < cfg.N; ++n) {
+  //       if (k >= special_size || n >= special_size) {
+  //         weight_fp16[static_cast<size_t>(k) * cfg.N + n] = __fp16(0);
+  //       }
+  //     }
+  //   }
+  // }
 
   std::vector<float> input_host(input_fp16.size());
   std::vector<float> weight_host(weight_fp16.size());
@@ -320,12 +347,10 @@ static bool run_float16_case(const MatmulCase& cfg) {
       pad_matrix(input_fp16, cfg.M, cfg.K, aligned_M, aligned_K);
   auto padded_weight =
       pad_matrix(weight_fp16, cfg.K, cfg.N, aligned_K, aligned_N);
-  if (print_full_matrices) {
-    print_fp16_matrix("Input A padded", padded_input.data(), aligned_M, aligned_K,
-                      aligned_K);
-    print_fp16_matrix("Input B padded", padded_weight.data(), aligned_K, aligned_N,
-                      aligned_N);
-  }
+  print_fp16_matrix("Input A padded", padded_input.data(), aligned_M, aligned_K,
+                    aligned_K);
+  print_fp16_matrix("Input B padded", padded_weight.data(), aligned_K, aligned_N,
+                    aligned_N);
 
   rknn_matmul_ctx ctx = 0;
   MatmulCtxGuard ctx_guard(&ctx);
@@ -449,6 +474,7 @@ static bool run_float16_case(const MatmulCase& cfg) {
     return false;
   }
   ret = rknn_mem_sync(ctx, memA.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
+  // std::this_thread::sleep_for(std::chrono::milliseconds(10));
   if (ret != 0) {
     std::cerr << "rknn_mem_sync A failed: " << ret << std::endl;
     return false;
@@ -469,6 +495,7 @@ static bool run_float16_case(const MatmulCase& cfg) {
     return false;
   }
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   auto start = std::chrono::high_resolution_clock::now();
   ret = rknn_matmul_run(ctx);
   auto end = std::chrono::high_resolution_clock::now();
@@ -504,29 +531,13 @@ static bool run_float16_case(const MatmulCase& cfg) {
   if (output_stride <= 0) {
     output_stride = aligned_N;
   }
-  if (print_full_matrices) {
-    std::cout << "  Output matrix (" << cfg.M << "x" << cfg.N << "):" << std::endl;
-    for (int m = 0; m < cfg.M; ++m) {
-      std::cout << "    ";
-      for (int n = 0; n < cfg.N; ++n) {
-        size_t data_idx = static_cast<size_t>(m) * output_stride + n;
-        float val = data_idx < output.size() ? output[data_idx] : 0.0f;
-        std::cout << val;
-        if (n + 1 < cfg.N) {
-          std::cout << " ";
-        }
-      }
-      std::cout << std::endl;
-    }
-  }
+  print_float_matrix("Actual output", output.data(), cfg.M, cfg.N, output_stride);
 
   std::vector<float> expected(output_count);
   compute_expected_fp32(input_host, weight_host, cfg.M, cfg.N, cfg.K,
                         expected);
   std::vector<float> expected_fullsum = expected;
-  if (print_full_matrices) {
-    print_float_matrix("Expected output", expected.data(), cfg.M, cfg.N, cfg.N);
-  }
+  print_float_matrix("Expected output", expected.data(), cfg.M, cfg.N, cfg.N);
 
   bool passed = true;
   float max_error = 0.0f;
@@ -587,6 +598,11 @@ static bool run_int8_case(const MatmulCase& cfg) {
       pad_matrix(input_int8, cfg.M, cfg.K, cfg.M, aligned_K);
   auto padded_weight =
       pad_matrix(weight_int8, cfg.K, cfg.N, aligned_K, aligned_N);
+
+  print_int8_matrix("Input A padded", padded_input.data(), cfg.M, aligned_K,
+                    aligned_K);
+  print_int8_matrix("Input B padded", padded_weight.data(), aligned_K,
+                    aligned_N, aligned_N);
 
   rknn_matmul_ctx ctx = 0;
   MatmulCtxGuard ctx_guard(&ctx);
@@ -695,9 +711,13 @@ static bool run_int8_case(const MatmulCase& cfg) {
       std::min<size_t>(memC->size, output.size() * sizeof(int32_t));
   std::memcpy(output.data(), memC->virt_addr, copy_bytes);
 
+  print_int32_matrix("Actual output", output.data(), cfg.M, cfg.N, aligned_N);
+
   std::vector<int32_t> expected(output_count);
   compute_expected_int32(input_int8, weight_int8, cfg.M, cfg.N, cfg.K,
                          expected);
+
+  print_int32_matrix("Expected output", expected.data(), cfg.M, cfg.N, cfg.N);
 
   bool passed = true;
   size_t compare_count = expected.size();
