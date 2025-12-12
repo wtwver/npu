@@ -5,7 +5,11 @@ __pycache__
 *.rknn
 .venv/*
 *dump*
+ops_reg/matmul/dump/*
 ops_reg/main
+ops_reg/matmul/matmul
+ops_reg/matmul/matmul_long
 ops_rknn/conv1d_simple
 ops_rknn/conv2d_multi
+ops_rknn/run_output.txt
 ops_rknn/run_output.txt
