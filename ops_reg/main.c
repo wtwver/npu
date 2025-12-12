@@ -430,6 +430,77 @@ int test_alu(int argc, char **argv) {
     return 0;
 }
 
+static int test_div(int argc, char **argv) {
+  int size = 16;
+  if (argc > 1) size = atoi(argv[1]);
+  if (size <= 0 || size > 256) {
+    printf("test_div: invalid size %d\n", size);
+    return -1;
+  }
+
+  __fp16 *a = (__fp16*)malloc((size_t)size * sizeof(__fp16));
+  __fp16 *b = (__fp16*)malloc((size_t)size * sizeof(__fp16));
+  if (!a || !b) {
+    printf("test_div: failed to allocate %d elements\n", size);
+    free(a);
+    free(b);
+    return -1;
+  }
+
+  for (int i = 0; i < size; i++) {
+    float av = (i & 1) ? 2.3f : -2.3f;
+    float bv = (i & 2) ? 2.1f : -2.1f;
+    a[i] = (__fp16)av;
+    b[i] = (__fp16)bv;
+  }
+
+  __fp16 *result = float16_alu_op(a, b, 3, size);
+  if (!result) {
+    printf("test_div: float16_alu_op failed\n");
+    free(a);
+    free(b);
+    return -1;
+  }
+
+  printf("Input A: ");
+  for (int i = 0; i < size; i++) printf("%7.4f ", (float)a[i]);
+  printf("\n");
+  printf("Input B: ");
+  for (int i = 0; i < size; i++) printf("%7.4f ", (float)b[i]);
+  printf("\n");
+
+  float max_abs_diff_fp16 = 0.0f;
+  float max_abs_diff_fp32 = 0.0f;
+  for (int i = 0; i < size; i++) {
+    float expected_fp16 = (float)(__fp16)((float)a[i] / (float)b[i]);
+    float expected_fp32 = (float)a[i] / (float)b[i];
+    float actual_fp16 = (float)result[i];
+    float actual_fp32 = ((float*)result)[i];
+    float diff_fp16 = fabsf(actual_fp16 - expected_fp16);
+    float diff_fp32 = fabsf(actual_fp32 - expected_fp32);
+    if (diff_fp16 > max_abs_diff_fp16) max_abs_diff_fp16 = diff_fp16;
+    if (diff_fp32 > max_abs_diff_fp32) max_abs_diff_fp32 = diff_fp32;
+  }
+
+  printf("Result (as fp16): ");
+  for (int i = 0; i < size; i++) printf("%7.4f ", (float)result[i]);
+  printf("\n");
+  printf("Result (as fp32): ");
+  for (int i = 0; i < size; i++) printf("%7.4f ", ((float*)result)[i]);
+  printf("\n");
+
+  const float kDivAtolFp16 = 1e-2f;
+  const float kDivAtolFp32 = 1e-3f;
+  int matches_fp16 = max_abs_diff_fp16 <= kDivAtolFp16;
+  int matches_fp32 = max_abs_diff_fp32 <= kDivAtolFp32;
+
+  printf("test_div: matches CPU fp16 -> %s (max diff=%.6f)\n", matches_fp16 ? "YES" : "NO", max_abs_diff_fp16);
+  printf("test_div: matches CPU fp32 -> %s (max diff=%.6f)\n", matches_fp32 ? "YES" : "NO", max_abs_diff_fp32);
+  free(a);
+  free(b);
+  return (matches_fp16 || matches_fp32) ? 0 : -1;
+}
+
 typedef struct {
   const char *name;
   int rows;
@@ -1590,7 +1661,8 @@ int main(int argc, char **argv) {
     int fd = getDeviceFd();
     npu_reset(fd);
 
-    test_sigmoid(argc, argv);
+    test_div(argc, argv);
+    // test_sigmoid(argc, argv);
     // test_silu(argc, argv);
     // test_relu(argc, argv);
     // test_conv1d(argc, argv);
