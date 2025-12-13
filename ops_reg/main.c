@@ -447,9 +447,12 @@ static int test_div(int argc, char **argv) {
     return -1;
   }
 
+  Mt19937 rng;
+  mt_seed(&rng, 0);
   for (int i = 0; i < size; i++) {
-    float av = (i & 1) ? 2.3f : -2.3f;
-    float bv = (i & 2) ? 2.1f : -2.1f;
+    float av = mt_uniform(&rng, -2.0f, 2.0f);
+    float bv = mt_uniform(&rng, -2.0f, 2.0f);
+    if (fabsf(bv) < 1e-3f) bv = 1.0f;
     a[i] = (__fp16)av;
     b[i] = (__fp16)bv;
   }
@@ -457,6 +460,33 @@ static int test_div(int argc, char **argv) {
   __fp16 *result = float16_alu_op(a, b, 3, size);
   if (!result) {
     printf("test_div: float16_alu_op failed\n");
+    free(a);
+    free(b);
+    return -1;
+  }
+
+  float *expected_fp16 = (float*)malloc((size_t)size * sizeof(float));
+  float *expected_fp32 = (float*)malloc((size_t)size * sizeof(float));
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);  // outputs spaced every 0x10 bytes
+  const size_t stride_fp32 = 0x10 / sizeof(float);
+  __fp16 *unpacked_fp16 = (__fp16*)malloc((size_t)size * sizeof(__fp16));
+  float *unpacked_fp32 = (float*)malloc((size_t)size * sizeof(float));
+  if (!expected_fp16 || !expected_fp32) {
+    printf("test_div: failed to allocate expected buffers\n");
+    free(expected_fp16);
+    free(expected_fp32);
+    free(unpacked_fp16);
+    free(unpacked_fp32);
+    free(a);
+    free(b);
+    return -1;
+  }
+  if (!unpacked_fp16 || !unpacked_fp32) {
+    printf("test_div: failed to allocate unpack buffers\n");
+    free(expected_fp16);
+    free(expected_fp32);
+    free(unpacked_fp16);
+    free(unpacked_fp32);
     free(a);
     free(b);
     return -1;
@@ -472,21 +502,30 @@ static int test_div(int argc, char **argv) {
   float max_abs_diff_fp16 = 0.0f;
   float max_abs_diff_fp32 = 0.0f;
   for (int i = 0; i < size; i++) {
-    float expected_fp16 = (float)(__fp16)((float)a[i] / (float)b[i]);
-    float expected_fp32 = (float)a[i] / (float)b[i];
-    float actual_fp16 = (float)result[i];
-    float actual_fp32 = ((float*)result)[i];
-    float diff_fp16 = fabsf(actual_fp16 - expected_fp16);
-    float diff_fp32 = fabsf(actual_fp32 - expected_fp32);
+    unpacked_fp16[i] = result[i * stride_fp16];
+    unpacked_fp32[i] = ((float*)result)[i * stride_fp32];
+    expected_fp16[i] = (float)(__fp16)((float)a[i] / (float)b[i]);
+    expected_fp32[i] = (float)a[i] / (float)b[i];
+    float actual_fp16 = (float)unpacked_fp16[i];
+    float actual_fp32 = unpacked_fp32[i];
+    float diff_fp16 = fabsf(actual_fp16 - expected_fp16[i]);
+    float diff_fp32 = fabsf(actual_fp32 - expected_fp32[i]);
     if (diff_fp16 > max_abs_diff_fp16) max_abs_diff_fp16 = diff_fp16;
     if (diff_fp32 > max_abs_diff_fp32) max_abs_diff_fp32 = diff_fp32;
   }
 
+  printf("Expected (as fp16): ");
+  for (int i = 0; i < size; i++) printf("%7.4f ", expected_fp16[i]);
+  printf("\n");
+  printf("Expected (as fp32): ");
+  for (int i = 0; i < size; i++) printf("%7.4f ", expected_fp32[i]);
+  printf("\n");
+
   printf("Result (as fp16): ");
-  for (int i = 0; i < size; i++) printf("%7.4f ", (float)result[i]);
+  for (int i = 0; i < size; i++) printf("%7.4f ", (float)unpacked_fp16[i]);
   printf("\n");
   printf("Result (as fp32): ");
-  for (int i = 0; i < size; i++) printf("%7.4f ", ((float*)result)[i]);
+  for (int i = 0; i < size; i++) printf("%7.4f ", unpacked_fp32[i]);
   printf("\n");
 
   const float kDivAtolFp16 = 1e-2f;
@@ -496,6 +535,12 @@ static int test_div(int argc, char **argv) {
 
   printf("test_div: matches CPU fp16 -> %s (max diff=%.6f)\n", matches_fp16 ? "YES" : "NO", max_abs_diff_fp16);
   printf("test_div: matches CPU fp32 -> %s (max diff=%.6f)\n", matches_fp32 ? "YES" : "NO", max_abs_diff_fp32);
+
+  breakpoint();
+  free(unpacked_fp16);
+  free(unpacked_fp32);
+  free(expected_fp16);
+  free(expected_fp32);
   free(a);
   free(b);
   return (matches_fp16 || matches_fp32) ? 0 : -1;
