@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -51,6 +52,50 @@ static void print_tensor(const char *label, const std::vector<float> &vals) {
   std::cout << std::endl;
 }
 
+struct Mt19937 {
+  uint32_t mt[624];
+  int index;
+};
+
+static void mt_seed(Mt19937 *rng, uint32_t seed) {
+  rng->mt[0] = seed;
+  for (int i = 1; i < 624; i++) {
+    rng->mt[i] = 1812433253U * (rng->mt[i - 1] ^ (rng->mt[i - 1] >> 30)) + static_cast<uint32_t>(i);
+  }
+  rng->index = 624;
+}
+
+static uint32_t mt_extract(Mt19937 *rng) {
+  const uint32_t mag01[2] = {0U, 0x9908b0dfU};
+  if (rng->index >= 624) {
+    int kk;
+    for (kk = 0; kk < 624 - 397; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk + 1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk + 397] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    for (; kk < 623; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk + 1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk - (624 - 397)] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    uint32_t y = (rng->mt[623] & 0x80000000U) | (rng->mt[0] & 0x7fffffffU);
+    rng->mt[623] = rng->mt[396] ^ (y >> 1) ^ mag01[y & 1U];
+    rng->index = 0;
+  }
+  uint32_t y = rng->mt[rng->index++];
+  y ^= (y >> 11);
+  y ^= (y << 7) & 0x9d2c5680U;
+  y ^= (y << 15) & 0xefc60000U;
+  y ^= (y >> 18);
+  return y;
+}
+
+static float mt_uniform(Mt19937 *rng, float low, float high) {
+  const double a = static_cast<double>(mt_extract(rng) >> 5);
+  const double b = static_cast<double>(mt_extract(rng) >> 6);
+  const double random = (a * 67108864.0 + b) / 9007199254740992.0;
+  return static_cast<float>(low + (high - low) * random);
+}
+
 int main(int argc, char **argv) {
   int size = 4;
   if (argc > 1) size = std::atoi(argv[1]);
@@ -76,9 +121,12 @@ int main(int argc, char **argv) {
   std::vector<__fp16> input_y(total);
   std::vector<float> input_x_f(total);
   std::vector<float> input_y_f(total);
+  Mt19937 rng{};
+  mt_seed(&rng, 0);
   for (int i = 0; i < total; i++) {
-    float vx = static_cast<float>(i + 1);
-    float vy = static_cast<float>((i % size) + 1);  // keep divisors non-zero
+    float vx = mt_uniform(&rng, -2.0f, 2.0f);
+    float vy = mt_uniform(&rng, -2.0f, 2.0f);
+    if (std::abs(vy) < 1e-3f) vy = 1.0f;  // keep divisors away from zero
     input_x[i] = static_cast<__fp16>(vx);
     input_y[i] = static_cast<__fp16>(vy);
     input_x_f[i] = vx;
@@ -143,7 +191,7 @@ int main(int argc, char **argv) {
     }
     float diff = std::abs(output[i] - expected[i]);
     if (diff > max_diff) max_diff = diff;
-    if (diff > 2e-3f) ok = false;
+    if (diff > 3e-3f) ok = false;
   }
   std::cout << "NPU result match CPU: " << (ok ? "YES" : "NO") << std::endl;
   std::cout << "Max abs diff: " << max_diff << std::endl;

@@ -14,8 +14,8 @@ end
 break rknn_destroy
 commands 
     printf "break rknn_destroy============\n"
-    shell python3 dump.py 3
-    shell python3 dump.py 4
+    #shell python3 dump.py 3
+    #shell python3 dump.py 4
     shell python3 dump.py 5
     printf "end break rknn_destroy============\n"
     continue
@@ -28,7 +28,7 @@ import re
 from pathlib import Path
 
 SUBMIT_COUNT = 0
-KEEP_TASKS = 2  # tweak here to adjust how many tasks are kept
+KEEP_TASKS = 3  # tweak here to adjust how many tasks are kept
 
 IOC_NRBITS = 8
 IOC_TYPEBITS = 8
@@ -185,7 +185,7 @@ def _patch_submit(addr):
     inf.write_memory(addr + 12, (KEEP_TASKS).to_bytes(4, "little"))  # task_number
     for idx in range(5):
       base = addr + 64 + idx * 8
-      start_bytes = (1).to_bytes(4, "little")
+      start_bytes = (0).to_bytes(4, "little")
       number_bytes = (KEEP_TASKS if idx == 0 else 0).to_bytes(4, "little")
       inf.write_memory(base, start_bytes)
       inf.write_memory(base + 4, number_bytes)
@@ -410,8 +410,9 @@ class IoctlDecoder:
       )
       if macro[0] == "DRM_IOCTL_RKNPU_SUBMIT":
         cls.submit_count += 1
-        if cls.submit_count >= 2:
-          _patch_submit(regs["arg"])
+        if cls.submit_count >= 0:
+          pass
+          #_patch_submit(regs["arg"])
         else:
           print("  submit #1 detected; skipping patch (will patch next submit if any)")
         submit_data = _decode_submit(regs["arg"])
@@ -436,4 +437,4 @@ commands
 end
 
 r
-
+q
