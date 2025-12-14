@@ -2167,9 +2167,9 @@ int main(int argc, char **argv) {
     int fd = getDeviceFd();
     npu_reset(fd);
 
-    test_max(argc, argv);
+    // test_max(argc, argv);
     // test_div(argc, argv);
-    // test_cmplt(argc, argv);
+    test_cmplt(argc, argv);
     // test_add(argc, argv);
     // test_minus(argc, argv);
     // test_sigmoid(argc, argv);
