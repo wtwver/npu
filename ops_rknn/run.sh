@@ -80,9 +80,23 @@
 #    ./pool | tee run_output.txt
 # fi
 
-g++ -o div div.cpp -I../include -lrknnrt -std=c++11
+# g++ -o div div.cpp -I../include -lrknnrt -std=c++11
+# if [ $# -gt 0 ]; then
+#    gdb -x rknn.gdb ./div | tee run_output.txt
+# else
+#    ./div | tee run_output.txt
+# fi
+
+# g++ -o cmplt cmplt.cpp -I../include -lrknnrt -std=c++11
+# if [ $# -gt 0 ]; then
+#    gdb -x rknn.gdb ./cmplt | tee run_output.txt
+# else
+#    ./cmplt | tee run_output.txt
+# fi
+
+g++ -o minus minus.cpp -I../include -lrknnrt -std=c++11
 if [ $# -gt 0 ]; then
-   gdb -x rknn.gdb ./div | tee run_output.txt
+   gdb -x rknn.gdb ./minus | tee run_output.txt
 else
-   ./div | tee run_output.txt
+   ./minus | tee run_output.txt
 fi

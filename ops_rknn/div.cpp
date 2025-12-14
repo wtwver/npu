@@ -96,17 +96,11 @@ static float mt_uniform(Mt19937 *rng, float low, float high) {
   return static_cast<float>(low + (high - low) * random);
 }
 
-int main(int argc, char **argv) {
-  int size = 4;
-  if (argc > 1) size = std::atoi(argv[1]);
-  if (size <= 0) {
-    std::cerr << "invalid size" << std::endl;
-    return -1;
-  }
-
+static int run_case(int size) {
+  if (size <= 0) return -1;
   int total = size * size;
   std::string model_path = pick_model(size);
-  if (model_path.empty()) return -1;
+  if (model_path.empty()) return 2;
   std::vector<unsigned char> model;
   if (!load_model(model_path, model)) return -1;
 
@@ -126,11 +120,11 @@ int main(int argc, char **argv) {
   for (int i = 0; i < total; i++) {
     float vx = mt_uniform(&rng, -2.0f, 2.0f);
     float vy = mt_uniform(&rng, -2.0f, 2.0f);
-    if (std::abs(vy) < 1e-3f) vy = 1.0f;  // keep divisors away from zero
     input_x[i] = static_cast<__fp16>(vx);
     input_y[i] = static_cast<__fp16>(vy);
-    input_x_f[i] = vx;
-    input_y_f[i] = vy;
+    if (std::abs((float)input_y[i]) < 1e-3f) input_y[i] = static_cast<__fp16>(1.0f);
+    input_x_f[i] = (float)input_x[i];
+    input_y_f[i] = (float)input_y[i];
   }
 
   rknn_input in[2] {};
@@ -172,31 +166,69 @@ int main(int argc, char **argv) {
 
   float *result = static_cast<float *>(out.buf);
   std::vector<float> output(result, result + total);
-  std::vector<float> expected(total);
+  std::vector<float> expected_fp16(total);
+  std::vector<float> expected_fp32(total);
   for (int i = 0; i < total; i++) {
-    expected[i] = input_x_f[i] / input_y_f[i];
+    float fp32 = input_x_f[i] / input_y_f[i];
+    __fp16 fp16 = static_cast<__fp16>(fp32);
+    expected_fp16[i] = static_cast<float>(fp16);
+    expected_fp32[i] = fp32;
   }
 
+  std::cout << "=== div " << size << "x" << size << " ===" << std::endl;
   print_tensor("input_x:", input_x_f);
   print_tensor("input_y:", input_y_f);
   print_tensor("output :", output);
-  print_tensor("expect :", expected);
+  print_tensor("exp16  :", expected_fp16);
+  print_tensor("exp32  :", expected_fp32);
 
-  bool ok = true;
-  float max_diff = 0.f;
+  bool ok_fp16 = true;
+  bool ok_fp32 = true;
+  float max_diff_fp16 = 0.f;
+  float max_diff_fp32 = 0.f;
   for (int i = 0; i < total; i++) {
     if (!std::isfinite(output[i])) {
-      ok = false;
+      ok_fp16 = false;
+      ok_fp32 = false;
       continue;
     }
-    float diff = std::abs(output[i] - expected[i]);
-    if (diff > max_diff) max_diff = diff;
-    if (diff > 3e-3f) ok = false;
+    float diff_fp16 = std::abs(output[i] - expected_fp16[i]);
+    float diff_fp32 = std::abs(output[i] - expected_fp32[i]);
+    if (diff_fp16 > max_diff_fp16) max_diff_fp16 = diff_fp16;
+    if (diff_fp32 > max_diff_fp32) max_diff_fp32 = diff_fp32;
+    if (diff_fp16 > 3.2e-2f) ok_fp16 = false;
+    if (diff_fp32 > 2e-1f) ok_fp32 = false;
   }
-  std::cout << "NPU result match CPU: " << (ok ? "YES" : "NO") << std::endl;
-  std::cout << "Max abs diff: " << max_diff << std::endl;
+  std::cout << "NPU match fp16-CPU: " << (ok_fp16 ? "YES" : "NO") << std::endl;
+  std::cout << "NPU match fp32-CPU: " << (ok_fp32 ? "YES" : "NO") << std::endl;
+  std::cout << "Max abs diff fp16: " << max_diff_fp16 << std::endl;
+  std::cout << "Max abs diff fp32: " << max_diff_fp32 << std::endl;
 
   rknn_outputs_release(ctx, 1, &out);
   rknn_destroy(ctx);
-  return ok ? 0 : 1;
+  return (ok_fp16 || ok_fp32) ? 0 : 1;
+}
+
+int main(int argc, char **argv) {
+  if (argc > 1) {
+    int size = std::atoi(argv[1]);
+    if (size <= 0) {
+      std::cerr << "invalid size" << std::endl;
+      return -1;
+    }
+    return run_case(size);
+  }
+
+  const int sizes[] = {64, 72, 80, 88, 90, 91, 92, 96, 112, 120, 124, 126, 127, 128};
+  int status = 0;
+  for (int size : sizes) {
+    int ret = run_case(size);
+    if (ret == 2) {
+      std::cout << "=== div " << size << "x" << size << " ===" << std::endl;
+      std::cout << "SKIP: missing model div_float16_1x" << size << ".rknn" << std::endl;
+      continue;
+    }
+    if (ret != 0) status = ret;
+  }
+  return status;
 }

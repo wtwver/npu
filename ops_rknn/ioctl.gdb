@@ -411,8 +411,7 @@ class IoctlDecoder:
       if macro[0] == "DRM_IOCTL_RKNPU_SUBMIT":
         cls.submit_count += 1
         if cls.submit_count >= 0:
-          pass
-          #_patch_submit(regs["arg"])
+          _patch_submit(regs["arg"])
         else:
           print("  submit #1 detected; skipping patch (will patch next submit if any)")
         submit_data = _decode_submit(regs["arg"])
