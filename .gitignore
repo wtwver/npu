@@ -11,5 +11,14 @@ ops_reg/matmul/matmul
 ops_reg/matmul/matmul_long
 ops_rknn/conv1d_simple
 ops_rknn/conv2d_multi
+ops_rknn/div
+ops_rknn/idiv
+ops_rknn/max
+ops_rknn/min
+ops_rknn/minus
+ops_rknn/add
+ops_rknn/cmplt
+ops_rknn/cmpne
+ops_rknn/where
 ops_rknn/run_output.txt
-ops_rknn/run_output.txt
+ops_rknn/models/*

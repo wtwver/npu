@@ -467,16 +467,22 @@ typedef struct {
   int cols;
 } MinusTestConfig;
 
-typedef struct {
-  const char *name;
-  int rows;
-  int cols;
-} AddTestConfig;
+	typedef struct {
+	  const char *name;
+	  int rows;
+	  int cols;
+	} AddTestConfig;
 
-static int run_div_case(const DivTestConfig *config) {
-  if (!config) return -1;
-  const char *name = config->name ? config->name : "div_case";
-  int rows = config->rows > 0 ? config->rows : 1;
+	typedef struct {
+	  const char *name;
+	  int rows;
+	  int cols;
+	} MaxTestConfig;
+
+	static int run_div_case(const DivTestConfig *config) {
+	  if (!config) return -1;
+	  const char *name = config->name ? config->name : "div_case";
+	  int rows = config->rows > 0 ? config->rows : 1;
   int cols = config->cols > 0 ? config->cols : 1;
   size_t total_elements = (size_t)rows * cols;
   if (total_elements == 0 || total_elements > 65536) {
@@ -586,28 +592,84 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
 	  for (int i = 0; i < size; i++) {
 	    float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
 	    a[i] = (__fp16)(-2.0f + 4.0f * t);
+	    // b[i] = a[i];
 	    b[i] = (__fp16)(2.0f - 4.0f * t);
 	  }
-	  b[0] = (__fp16)0.0f;
+    b[0] = a[0] ;
 
-	  __fp16 *result = float16_alu_op(a, b, 16, size);
-	  if (!result) {
-	    printf("%s: float16_alu_op failed\n", name);
+	  set_minus_params(rows, cols);
+	  __fp16 *part1_result = float16_alu_op(a, b, 16, size);
+	  if (!part1_result) {
+	    printf("%s: float16_alu_op cmplt_part1 failed\n", name);
 	    free(a); free(b); free(unpacked);
     return -1;
   }
 
   const size_t stride_fp16 = 0x10 / sizeof(__fp16);
-  for (int i = 0; i < size; i++) unpacked[i] = result[(size_t)i * stride_fp16];
+  __fp16 *part1_unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!part1_unpacked) {
+    printf("%s: failed to allocate cmplt_part1 buffer\n", name);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+  for (int i = 0; i < size; i++) part1_unpacked[i] = part1_result[(size_t)i * stride_fp16];
+
+  int part2_size = 16;
+  if (size > part2_size) {
+    printf("%s: cmplt_part2 only supports up to %d elements, got %d\n", name, part2_size, size);
+    free(part1_unpacked);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+  __fp16 *part2_input = (__fp16*)calloc((size_t)part2_size, sizeof(__fp16));
+  __fp16 *part2_weights = (__fp16*)calloc((size_t)part2_size, sizeof(__fp16));
+  if (!part2_input || !part2_weights) {
+    printf("%s: failed to allocate cmplt_part2 buffers\n", name);
+    free(part2_input);
+    free(part2_weights);
+    free(part1_unpacked);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+  for (int i = 0; i < size; i++) part2_input[i] = part1_unpacked[i];
+
+  __fp16 *part2_result = float16_alu_op(part2_weights, part2_input, 17, part2_size);
+  if (!part2_result) {
+    printf("%s: float16_alu_op cmplt_part2 failed\n", name);
+    free(part2_input);
+    free(part2_weights);
+    free(part1_unpacked);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+  for (int i = 0; i < size; i++) unpacked[i] = part2_result[(size_t)i * stride_fp16];
+  free(part2_input);
+  free(part2_weights);
 
   float max_abs_diff_ab = 0.0f;
   float max_abs_diff_ba = 0.0f;
+  __fp16 *expected_ab_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *expected_ba_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *actual_bool_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!expected_ab_fp16 || !expected_ba_fp16) {
+    printf("%s: failed to allocate expected buffers\n", name);
+    free(expected_ab_fp16);
+    free(expected_ba_fp16);
+    free(actual_bool_fp16);
+    free(part1_unpacked);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
   for (int i = 0; i < size; i++) {
     float expected_ab = ((float)a[i] < (float)b[i]) ? 1.0f : 0.0f;
     float expected_ba = ((float)b[i] < (float)a[i]) ? 1.0f : 0.0f;
+    expected_ab_fp16[i] = (__fp16)expected_ab;
+    expected_ba_fp16[i] = (__fp16)expected_ba;
     float actual = (float)unpacked[i];
-    float diff_ab = fabsf(actual - expected_ab);
-    float diff_ba = fabsf(actual - expected_ba);
+    float actual_bool = actual > 0.0f ? 1.0f : 0.0f;
+    actual_bool_fp16[i] = (__fp16)actual_bool;
+    float diff_ab = fabsf(actual_bool - expected_ab);
+    float diff_ba = fabsf(actual_bool - expected_ba);
     if (diff_ab > max_abs_diff_ab) max_abs_diff_ab = diff_ab;
     if (diff_ba > max_abs_diff_ba) max_abs_diff_ba = diff_ba;
   }
@@ -619,7 +681,11 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
   if (total_elements <= 64) {
     print_fp16_grid("Input A", a, rows, cols);
     print_fp16_grid("Input B", b, rows, cols);
+    print_fp16_grid("cmplt_part1 (as fp16)", part1_unpacked, rows, cols);
     print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+    // print_fp16_grid("Result (bool)", actual_bool_fp16, rows, cols);
+    print_fp16_grid("Expected (A<B)", expected_ab_fp16, rows, cols);
+    // print_fp16_grid("Expected (B<A)", expected_ba_fp16, rows, cols);
   } else {
     printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
   }
@@ -632,6 +698,10 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
   }
 
   breakpoint();
+  free(part1_unpacked);
+  free(expected_ab_fp16);
+  free(expected_ba_fp16);
+  free(actual_bool_fp16);
   free(a); free(b); free(unpacked);
   return (matches_ab || matches_ba) ? 0 : -1;
 }
@@ -677,6 +747,71 @@ static int run_add_case(const AddTestConfig *config) {
   float max_abs_diff = 0.0f;
   for (int i = 0; i < size; i++) {
     float expected = (float)a[i] + (float)b[i];
+    float actual = (float)unpacked[i];
+    float diff = fabsf(actual - expected);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+  }
+
+  const float kAtol = 1e-3f;
+  int matches = max_abs_diff <= kAtol;
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input A", a, rows, cols);
+    print_fp16_grid("Input B", b, rows, cols);
+    print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
+
+  breakpoint();
+  free(a); free(b); free(unpacked);
+  return matches ? 0 : -1;
+}
+
+static int run_max_case(const MaxTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "max_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *a = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *b = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!a || !b || !unpacked) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+	  for (int i = 0; i < size; i++) {
+	    a[i] = (__fp16)mt_uniform(&rng, -2.0f, 2.0f);
+	    b[i] = (__fp16)mt_uniform(&rng, -2.0f, 2.0f);
+	  }
+
+	  set_max_params(rows, cols);
+	  __fp16 *result = float16_alu_op(a, b, 0, size);
+	  if (!result) {
+	    printf("%s: float16_alu_op failed\n", name);
+	    free(a); free(b); free(unpacked);
+	    return -1;
+	  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  for (int i = 0; i < size; i++) unpacked[i] = result[(size_t)i * stride_fp16];
+
+  float max_abs_diff = 0.0f;
+  for (int i = 0; i < size; i++) {
+    float expected = fmaxf((float)a[i], (float)b[i]);
     float actual = (float)unpacked[i];
     float diff = fabsf(actual - expected);
     if (diff > max_abs_diff) max_abs_diff = diff;
@@ -849,6 +984,25 @@ static int test_minus(int argc, char **argv) {
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
     if (run_minus_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+int test_max(int argc, char **argv) {
+  if (argc >= 3) {
+    MaxTestConfig cli = {"max_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_max_case(&cli);
+  }
+
+  static const MaxTestConfig configs[] = {
+    {"max_1x1", 1, 1},
+    {"max_2x2", 2, 2},
+    {"max_8x8", 8, 8},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_max_case(&configs[i]) != 0) status = -1;
   }
   return status;
 }
@@ -2013,10 +2167,11 @@ int main(int argc, char **argv) {
     int fd = getDeviceFd();
     npu_reset(fd);
 
+    test_max(argc, argv);
     // test_div(argc, argv);
     // test_cmplt(argc, argv);
     // test_add(argc, argv);
-    test_minus(argc, argv);
+    // test_minus(argc, argv);
     // test_sigmoid(argc, argv);
     // test_silu(argc, argv);
     // test_relu(argc, argv);
