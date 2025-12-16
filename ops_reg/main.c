@@ -455,11 +455,19 @@ typedef struct {
   int cols;
 } DivTestConfig;
 
+	typedef struct {
+	  const char *name;
+	  int rows;
+	  int cols;
+	  int a_broadcast_cols;
+	  int b_broadcast_cols;
+	} CmpltTestConfig;
+
 typedef struct {
   const char *name;
   int rows;
   int cols;
-} CmpltTestConfig;
+} CmpeqTestConfig;
 
 typedef struct {
   const char *name;
@@ -573,6 +581,8 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
   const char *name = config->name ? config->name : "cmplt_case";
   int rows = config->rows > 0 ? config->rows : 1;
   int cols = config->cols > 0 ? config->cols : 1;
+  int a_broadcast_cols = config->a_broadcast_cols;
+  int b_broadcast_cols = config->b_broadcast_cols;
   size_t total_elements = (size_t)rows * cols;
   if (total_elements == 0 || total_elements > 65536) {
     printf("%s: invalid element count %zu\n", name, total_elements);
@@ -589,62 +599,71 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
     return -1;
   }
 
-	  for (int i = 0; i < size; i++) {
-	    float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
-	    a[i] = (__fp16)(-2.0f + 4.0f * t);
-	    // b[i] = a[i];
-	    b[i] = (__fp16)(2.0f - 4.0f * t);
-	  }
-    b[0] = a[0] ;
+    if (a_broadcast_cols) {
+      for (int i = 0; i < size; i++) {
+        int c = i % cols;
+        float t = cols > 1 ? (float)c / (float)(cols - 1) : 0.0f;
+        a[i] = (__fp16)(-2.0f + 4.0f * t);
+      }
+    } else {
+      for (int i = 0; i < size; i++) {
+        float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
+        a[i] = (__fp16)(-2.0f + 4.0f * t);
+      }
+    }
+    if (b_broadcast_cols) {
+      for (int i = 0; i < size; i++) {
+        int c = i % cols;
+        float t = cols > 1 ? (float)c / (float)(cols - 1) : 0.0f;
+        b[i] = (__fp16)(2.0f - 4.0f * t);
+      }
+    } else {
+      for (int i = 0; i < size; i++) {
+        float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
+        b[i] = (__fp16)(2.0f - 4.0f * t);
+      }
+    }
+    b[0] = a[0];
 
-	  set_minus_params(rows, cols);
-	  __fp16 *part1_result = float16_alu_op(a, b, 16, size);
-	  if (!part1_result) {
-	    printf("%s: float16_alu_op cmplt_part1 failed\n", name);
-	    free(a); free(b); free(unpacked);
-    return -1;
-  }
+		  set_minus_params(rows, cols);
+		  __fp16 *diff_packed = float16_alu_op(a, b, 4, size);
+		  if (!diff_packed) {
+		    printf("%s: float16_alu_op cmplt_sub failed\n", name);
+		    free(a); free(b); free(unpacked);
+		    return -1;
+		  }
 
   const size_t stride_fp16 = 0x10 / sizeof(__fp16);
-  __fp16 *part1_unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
-  if (!part1_unpacked) {
-    printf("%s: failed to allocate cmplt_part1 buffer\n", name);
+  printf("%s: alu4 first=%f\n", name, (float)diff_packed[0]);
+  __fp16 *diff = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *intermediate = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *zeros = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  if (!diff || !intermediate || !zeros) {
+    printf("%s: failed to allocate cmplt buffers\n", name);
+    free(diff);
+    free(intermediate);
+    free(zeros);
     free(a); free(b); free(unpacked);
     return -1;
   }
-  for (int i = 0; i < size; i++) part1_unpacked[i] = part1_result[(size_t)i * stride_fp16];
+  const float eps = 0x1p-14f;
+  for (int i = 0; i < size; i++) {
+    intermediate[i] = diff_packed[(size_t)i * stride_fp16];
+    float v = (float)intermediate[i] - eps;
+    diff[i] = (__fp16)v;
+  }
+  if (total_elements <= 64) print_fp16_grid("Intermediate Result (as fp16)", intermediate, rows, cols);
 
-  int part2_size = 16;
-  if (size > part2_size) {
-    printf("%s: cmplt_part2 only supports up to %d elements, got %d\n", name, part2_size, size);
-    free(part1_unpacked);
-    free(a); free(b); free(unpacked);
-    return -1;
-  }
-  __fp16 *part2_input = (__fp16*)calloc((size_t)part2_size, sizeof(__fp16));
-  __fp16 *part2_weights = (__fp16*)calloc((size_t)part2_size, sizeof(__fp16));
-  if (!part2_input || !part2_weights) {
-    printf("%s: failed to allocate cmplt_part2 buffers\n", name);
-    free(part2_input);
-    free(part2_weights);
-    free(part1_unpacked);
-    free(a); free(b); free(unpacked);
-    return -1;
-  }
-  for (int i = 0; i < size; i++) part2_input[i] = part1_unpacked[i];
-
-  __fp16 *part2_result = float16_alu_op(part2_weights, part2_input, 17, part2_size);
-  if (!part2_result) {
-    printf("%s: float16_alu_op cmplt_part2 failed\n", name);
-    free(part2_input);
-    free(part2_weights);
-    free(part1_unpacked);
-    free(a); free(b); free(unpacked);
-    return -1;
-  }
-  for (int i = 0; i < size; i++) unpacked[i] = part2_result[(size_t)i * stride_fp16];
-  free(part2_input);
-  free(part2_weights);
+		  __fp16 *result_packed = float16_alu_op(zeros, diff, 16, size);
+		  if (!result_packed) {
+		    printf("%s: float16_alu_op cmplt_cmp failed\n", name);
+		    free(diff);
+		    free(intermediate);
+		    free(zeros);
+		    free(a); free(b); free(unpacked);
+		    return -1;
+		  }
+  for (int i = 0; i < size; i++) unpacked[i] = result_packed[(size_t)i * stride_fp16];
 
   float max_abs_diff_ab = 0.0f;
   float max_abs_diff_ba = 0.0f;
@@ -656,7 +675,9 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
     free(expected_ab_fp16);
     free(expected_ba_fp16);
     free(actual_bool_fp16);
-    free(part1_unpacked);
+    free(diff);
+    free(intermediate);
+    free(zeros);
     free(a); free(b); free(unpacked);
     return -1;
   }
@@ -681,7 +702,6 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
   if (total_elements <= 64) {
     print_fp16_grid("Input A", a, rows, cols);
     print_fp16_grid("Input B", b, rows, cols);
-    print_fp16_grid("cmplt_part1 (as fp16)", part1_unpacked, rows, cols);
     print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
     // print_fp16_grid("Result (bool)", actual_bool_fp16, rows, cols);
     print_fp16_grid("Expected (A<B)", expected_ab_fp16, rows, cols);
@@ -698,12 +718,86 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
   }
 
   breakpoint();
-  free(part1_unpacked);
+  free(diff);
+  free(intermediate);
+  free(zeros);
   free(expected_ab_fp16);
   free(expected_ba_fp16);
   free(actual_bool_fp16);
   free(a); free(b); free(unpacked);
   return (matches_ab || matches_ba) ? 0 : -1;
+}
+
+static int run_cmpeq_case(const CmpeqTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "cmpeq_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *a = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *b = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!a || !b || !unpacked) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+
+  for (int i = 0; i < size; i++) {
+    float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
+    float v = -2.0f + 4.0f * t;
+    a[i] = (__fp16)v;
+    if ((i & 3) == 0) b[i] = a[i];
+    else b[i] = (__fp16)(v + 1.0f);
+  }
+  b[0] = 0 ;
+  b[1] = -1 ;
+
+  set_minus_params(rows, cols);
+  __fp16 *result = float16_alu_op(a, b, 18, size);
+  if (!result) {
+    printf("%s: float16_alu_op failed\n", name);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  printf("%s: alu18 first=%f\n", name, (float)result[0]);
+  for (int i = 0; i < size; i++) unpacked[i] = result[(size_t)i * stride_fp16];
+
+  float max_abs_diff = 0.0f;
+  for (int i = 0; i < size; i++) {
+    uint16_t a_bits = 0, b_bits = 0;
+    memcpy(&a_bits, &a[i], sizeof(a_bits));
+    memcpy(&b_bits, &b[i], sizeof(b_bits));
+    float expected = (a_bits == b_bits) ? 1.0f : 0.0f;
+    float actual = ((float)unpacked[i] > 0.0f) ? 1.0f : 0.0f;
+    float diff = fabsf(actual - expected);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+  }
+
+  const float kAtol = 1e-3f;
+  int matches = max_abs_diff <= kAtol;
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input A", a, rows, cols);
+    print_fp16_grid("Input B", b, rows, cols);
+    print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
+
+  breakpoint();
+  free(a); free(b); free(unpacked);
+  return matches ? 0 : -1;
 }
 
 static int run_add_case(const AddTestConfig *config) {
@@ -933,19 +1027,38 @@ static int test_div(int argc, char **argv) {
 
 static int test_cmplt(int argc, char **argv) {
   if (argc >= 3) {
-    CmpltTestConfig cli = {"cmplt_cli", atoi(argv[1]), atoi(argv[2])};
+    CmpltTestConfig cli = {"cmplt_cli", atoi(argv[1]), atoi(argv[2]), 0, 0};
     return run_cmplt_case(&cli);
   }
 
   static const CmpltTestConfig configs[] = {
     // {"cmplt_1x1", 1, 1}, 
-    {"cmplt_2x2", 2, 2},
-    // {"cmplt_8x8", 8, 8},
+    // {"cmplt_3", 1, 3, 0, 0},
+    // {"cmplt_1", 1, 1, 0, 0},
+    {"cmplt_2x2", 2, 2, 0, 0},
+    // {"cmplt_12x5", 12, 5, 0, 0},
   };
 
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
     if (run_cmplt_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+static int test_cmpeq(int argc, char **argv) {
+  if (argc >= 3) {
+    CmpeqTestConfig cli = {"cmpeq_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_cmpeq_case(&cli);
+  }
+
+  static const CmpeqTestConfig configs[] = {
+    {"cmpeq_2x2", 2, 2},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_cmpeq_case(&configs[i]) != 0) status = -1;
   }
   return status;
 }
@@ -2154,6 +2267,7 @@ int test_sigmoid(int argc, char **argv) {
     return run_sigmoid_case(&cli_config);
   }
   static const SigmoidTestConfig configs[] = {
+      // {"sigmoid_2x2", 2, 2},
       {"sigmoid_4x4", 4, 4},
   };
   int status = 0;
@@ -2170,6 +2284,7 @@ int main(int argc, char **argv) {
     // test_max(argc, argv);
     // test_div(argc, argv);
     test_cmplt(argc, argv);
+    // test_cmpeq(argc, argv);
     // test_add(argc, argv);
     // test_minus(argc, argv);
     // test_sigmoid(argc, argv);
