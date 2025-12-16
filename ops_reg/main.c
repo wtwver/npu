@@ -623,7 +623,6 @@ static int run_cmplt_case(const CmpltTestConfig *config) {
         b[i] = (__fp16)(2.0f - 4.0f * t);
       }
     }
-    b[0] = a[0];
 
 		  set_minus_params(rows, cols);
 		  __fp16 *diff_packed = float16_alu_op(a, b, 4, size);
@@ -756,28 +755,93 @@ static int run_cmpeq_case(const CmpeqTestConfig *config) {
     if ((i & 3) == 0) b[i] = a[i];
     else b[i] = (__fp16)(v + 1.0f);
   }
-  b[0] = 0 ;
-  b[1] = -1 ;
+  b[0] = a[0] ;
+  b[1] = a[1] ;
 
   set_minus_params(rows, cols);
-  __fp16 *result = float16_alu_op(a, b, 18, size);
-  if (!result) {
-    printf("%s: float16_alu_op failed\n", name);
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  __fp16 *ones = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *diff = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *intermediate = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *zeros = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  if (!ones || !diff || !intermediate || !zeros) {
+    printf("%s: failed to allocate cmpeq buffers\n", name);
+    free(ones);
+    free(diff);
+    free(intermediate);
+    free(zeros);
     free(a); free(b); free(unpacked);
     return -1;
   }
+  for (int i = 0; i < size; i++) ones[i] = (__fp16)1.0f;
 
-  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
-  printf("%s: alu18 first=%f\n", name, (float)result[0]);
-  for (int i = 0; i < size; i++) unpacked[i] = result[(size_t)i * stride_fp16];
+  __fp16 *stage1_packed = float16_alu_op(a, b, 4, size);
+  if (!stage1_packed) {
+    printf("%s: float16_alu_op cmpeq_stage1 failed\n", name);
+    free(ones);
+    free(diff);
+    free(intermediate);
+    free(zeros);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+  printf("%s: stage1(alu4) first=%f\n", name, (float)stage1_packed[0]);
+  for (int i = 0; i < size; i++) {
+    intermediate[i] = stage1_packed[(size_t)i * stride_fp16];
+    diff[i] = intermediate[i];
+  }
+  if (total_elements <= 64) print_fp16_grid("Stage1 Result (as fp16)", intermediate, rows, cols);
+
+  // Stage 2: ALU op 17 (implemented elsewhere) on Stage1 output.
+  __fp16 *stage2_packed = float16_alu_op(zeros, diff, 17, size);
+  if (!stage2_packed) {
+    printf("%s: float16_alu_op cmpeq_stage2 failed\n", name);
+    free(ones);
+    free(diff);
+    free(intermediate);
+    free(zeros);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+  printf("%s: stage2(alu17) first=%f\n", name, (float)stage2_packed[0]);
+  for (int i = 0; i < size; i++) {
+    intermediate[i] = stage2_packed[(size_t)i * stride_fp16];
+    diff[i] = intermediate[i];
+  }
+  if (total_elements <= 64) print_fp16_grid("Stage2 Result (as fp16)", intermediate, rows, cols);
+
+  // Stage 3: ALU op 18 on Stage2 output.
+  __fp16 *result_packed = float16_alu_op(zeros, diff, 18, size);
+  if (!result_packed) {
+    printf("%s: float16_alu_op cmpeq_stage3 failed\n", name);
+    free(ones);
+    free(diff);
+    free(intermediate);
+    free(zeros);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
+  printf("%s: stage3(alu18) first=%f\n", name, (float)result_packed[0]);
+  for (int i = 0; i < size; i++) unpacked[i] = result_packed[(size_t)i * stride_fp16];
 
   float max_abs_diff = 0.0f;
+  __fp16 *expected_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!expected_fp16) {
+    printf("%s: failed to allocate expected buffer\n", name);
+    free(ones);
+    free(diff);
+    free(intermediate);
+    free(zeros);
+    free(a); free(b); free(unpacked);
+    return -1;
+  }
   for (int i = 0; i < size; i++) {
     uint16_t a_bits = 0, b_bits = 0;
     memcpy(&a_bits, &a[i], sizeof(a_bits));
     memcpy(&b_bits, &b[i], sizeof(b_bits));
     float expected = (a_bits == b_bits) ? 1.0f : 0.0f;
-    float actual = ((float)unpacked[i] > 0.0f) ? 1.0f : 0.0f;
+    expected_fp16[i] = (__fp16)expected;
+    float actual = (float)unpacked[i];
     float diff = fabsf(actual - expected);
     if (diff > max_abs_diff) max_abs_diff = diff;
   }
@@ -789,6 +853,7 @@ static int run_cmpeq_case(const CmpeqTestConfig *config) {
     print_fp16_grid("Input A", a, rows, cols);
     print_fp16_grid("Input B", b, rows, cols);
     print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+    print_fp16_grid("Expected (A==B)", expected_fp16, rows, cols);
   } else {
     printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
   }
@@ -796,6 +861,11 @@ static int run_cmpeq_case(const CmpeqTestConfig *config) {
   printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
 
   breakpoint();
+  free(expected_fp16);
+  free(ones);
+  free(diff);
+  free(intermediate);
+  free(zeros);
   free(a); free(b); free(unpacked);
   return matches ? 0 : -1;
 }
@@ -2283,8 +2353,8 @@ int main(int argc, char **argv) {
 
     // test_max(argc, argv);
     // test_div(argc, argv);
-    test_cmplt(argc, argv);
-    // test_cmpeq(argc, argv);
+    // test_cmplt(argc, argv);
+    test_cmpeq(argc, argv);
     // test_add(argc, argv);
     // test_minus(argc, argv);
     // test_sigmoid(argc, argv);
