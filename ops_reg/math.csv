@@ -1,0 +1,32 @@
+Ops.cmplt,,,,,,
+"op1 fused EW minus,exp shift -1",2*(B-A),-4,-2,0,2,4
+"op2 fused BS minus, BS mul, BS relux",-5.97E-08,"""-2-0.0000000597""","""-1-0.0000000597""",-5.97E-08,"""1-0.0000000597""","""2-0.0000000597"""
+,mul inf,"""-inf""","""-inf""","""-inf""",inf,inf
+,relux1,0,0,0,1,1
+,,,,,,
+Ops.equal,,,,,,
+EW minus,B-A,-4,-2,0,2,4
+BS mul,inf,"""-inf""","""-inf""",nan,inf,inf
+,exp shift 15,-1,-1,1.001,1,1
+,-1,-2,-2,0.001,0,0
+,relu,0,0,0.001,0,0
+,mul 1000,0,0,1,0,0
+,,,,,,
+Ops.where ,,,,,,
+ax + b(1 - x),BS (x * -1)+1,,,,,
+,EW * b,,,,,
+,EW a * x,,,,,
+,EW  ,,,,,
+,,,,,,
+Ops.cast,,,,,,
+,input,1.1,2.3,2.6,3.9,
+digit1,LUT1,0.1,0.7,0.4,0.9,
+digit2,1-LUT1,0.9,0.3,0.6,0.1,
+result1,input-digit1,1,1.6,2.2,3,
+result2,input-digit2,0.2,2,2,3.8,
+,,,,,,
+,result1 LUT1,0,0.6,0.2,0,
+,MUL larget int,0,inf,inf,0,
+mask,relu1,0,1,1,0,
+,,,,,,
+,"where(mask, result2, result1)",1,2,2,3,
