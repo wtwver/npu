@@ -22,3 +22,4 @@ ops_rknn/cmpne
 ops_rknn/where
 ops_rknn/run_output.txt
 ops_rknn/models/*
+main

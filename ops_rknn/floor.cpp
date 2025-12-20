@@ -16,8 +16,9 @@ static bool file_exists(const std::string &path) {
 }
 
 static std::string pick_model(int width) {
-  std::string exact = "models/where_float16_1x" + std::to_string(width) + ".rknn";
+  std::string exact = "models/floor_float16_1x" + std::to_string(width) + ".rknn";
   if (file_exists(exact)) return exact;
+  if (width == 1) return exact;
   std::cerr << "Missing model for width " << width << " (" << exact << ")" << std::endl;
   return "";
 }
@@ -82,6 +83,48 @@ static bool query_io(rknn_context ctx, std::vector<rknn_tensor_attr> &inputs, st
   return true;
 }
 
+struct Mt19937 {
+  uint32_t mt[624];
+  int index;
+};
+
+static void mt_seed(Mt19937 *rng, uint32_t seed) {
+  rng->mt[0] = seed;
+  for (int i = 1; i < 624; i++) rng->mt[i] = 1812433253U * (rng->mt[i - 1] ^ (rng->mt[i - 1] >> 30)) + static_cast<uint32_t>(i);
+  rng->index = 624;
+}
+
+static uint32_t mt_extract(Mt19937 *rng) {
+  const uint32_t mag01[2] = {0U, 0x9908b0dfU};
+  if (rng->index >= 624) {
+    int kk;
+    for (kk = 0; kk < 624 - 397; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk + 1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk + 397] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    for (; kk < 623; kk++) {
+      uint32_t y = (rng->mt[kk] & 0x80000000U) | (rng->mt[kk + 1] & 0x7fffffffU);
+      rng->mt[kk] = rng->mt[kk - (624 - 397)] ^ (y >> 1) ^ mag01[y & 1U];
+    }
+    uint32_t y = (rng->mt[623] & 0x80000000U) | (rng->mt[0] & 0x7fffffffU);
+    rng->mt[623] = rng->mt[396] ^ (y >> 1) ^ mag01[y & 1U];
+    rng->index = 0;
+  }
+  uint32_t y = rng->mt[rng->index++];
+  y ^= (y >> 11);
+  y ^= (y << 7) & 0x9d2c5680U;
+  y ^= (y << 15) & 0xefc60000U;
+  y ^= (y >> 18);
+  return y;
+}
+
+static float mt_uniform(Mt19937 *rng, float low, float high) {
+  const double a = static_cast<double>(mt_extract(rng) >> 5);
+  const double b = static_cast<double>(mt_extract(rng) >> 6);
+  const double random = (a * 67108864.0 + b) / 9007199254740992.0;
+  return static_cast<float>(low + (high - low) * random);
+}
+
 static int run_case(int size) {
   if (size <= 0) return -1;
   int total = size * size;
@@ -98,62 +141,28 @@ static int run_case(int size) {
   }
 
   std::vector<rknn_tensor_attr> in_attrs, out_attrs;
-  if (!query_io(ctx, in_attrs, out_attrs) || out_attrs.size() < 1) {
+  if (!query_io(ctx, in_attrs, out_attrs) || in_attrs.size() < 1 || out_attrs.size() < 1) {
     rknn_destroy(ctx);
     return -1;
   }
-  rknn_tensor_type out_type = out_attrs[0].type;
 
-  std::vector<__fp16> input_x(total);
-  std::vector<__fp16> input_y(total);
-  std::vector<__fp16> input_a(total);
-  std::vector<__fp16> input_b(total);
-  std::vector<float> input_x_f(total);
-  std::vector<float> input_y_f(total);
-  std::vector<float> input_a_f(total);
-  std::vector<float> input_b_f(total);
+  std::vector<__fp16> input(total);
+  std::vector<float> input_f(total);
+  Mt19937 rng{};
+  mt_seed(&rng, 0);
   for (int i = 0; i < total; i++) {
-    float vx = std::sin(i * 0.17f) * 2.0f;
-    float vy = std::cos(i * 0.31f) * 2.0f;
-    float va = 1.0f;
-    float vb = 0.0f;
-    input_x[i] = static_cast<__fp16>(vx);
-    input_y[i] = static_cast<__fp16>(vy);
-    input_a[i] = static_cast<__fp16>(va);
-    input_b[i] = static_cast<__fp16>(vb);
-    input_x_f[i] = static_cast<float>(input_x[i]);
-    input_y_f[i] = static_cast<float>(input_y[i]);
-    input_a_f[i] = static_cast<float>(input_a[i]);
-    input_b_f[i] = static_cast<float>(input_b[i]);
+    __fp16 hv = static_cast<__fp16>(mt_uniform(&rng, -2.0f, 2.0f));
+    input[i] = hv;
+    input_f[i] = (float)hv;
   }
 
-  std::vector<float> output(total);
-  rknn_input in[4] {};
-  in[0].index = 0;
-  in[0].type = RKNN_TENSOR_FLOAT16;
-  in[0].fmt = RKNN_TENSOR_NHWC;
-  in[0].buf = input_x.data();
-  in[0].size = input_x.size() * sizeof(__fp16);
-
-  in[1].index = 1;
-  in[1].type = RKNN_TENSOR_FLOAT16;
-  in[1].fmt = RKNN_TENSOR_NHWC;
-  in[1].buf = input_y.data();
-  in[1].size = input_y.size() * sizeof(__fp16);
-
-  in[2].index = 2;
-  in[2].type = RKNN_TENSOR_FLOAT16;
-  in[2].fmt = RKNN_TENSOR_NHWC;
-  in[2].buf = input_a.data();
-  in[2].size = input_a.size() * sizeof(__fp16);
-
-  in[3].index = 3;
-  in[3].type = RKNN_TENSOR_FLOAT16;
-  in[3].fmt = RKNN_TENSOR_NHWC;
-  in[3].buf = input_b.data();
-  in[3].size = input_b.size() * sizeof(__fp16);
-
-  ret = rknn_inputs_set(ctx, 4, in);
+  rknn_input in {};
+  in.index = 0;
+  in.type = RKNN_TENSOR_FLOAT16;
+  in.fmt = in_attrs[0].fmt;
+  in.buf = input.data();
+  in.size = input.size() * sizeof(__fp16);
+  ret = rknn_inputs_set(ctx, 1, &in);
   if (ret < 0) {
     std::cerr << "rknn_inputs_set failed: " << ret << std::endl;
     rknn_destroy(ctx);
@@ -168,7 +177,7 @@ static int run_case(int size) {
   }
 
   rknn_output out {};
-  out.want_float = (out_type == RKNN_TENSOR_FLOAT16 || out_type == RKNN_TENSOR_FLOAT32);
+  out.want_float = 1;
   out.index = 0;
   ret = rknn_outputs_get(ctx, 1, &out, nullptr);
   if (ret < 0) {
@@ -177,38 +186,34 @@ static int run_case(int size) {
     return -1;
   }
 
-  if (out.want_float) {
-    float *result = static_cast<float *>(out.buf);
-    std::copy(result, result + total, output.begin());
-  } else {
-    std::cerr << "unsupported output type: " << out_type << std::endl;
-    rknn_outputs_release(ctx, 1, &out);
-    rknn_destroy(ctx);
-    return -1;
+  float *result = static_cast<float *>(out.buf);
+  std::vector<float> output(result, result + total);
+  std::vector<float> expected_fp16(total);
+  for (int i = 0; i < total; i++) {
+    __fp16 fp16 = static_cast<__fp16>(std::floor(input_f[i]));
+    expected_fp16[i] = static_cast<float>(fp16);
   }
-  rknn_outputs_release(ctx, 1, &out);
 
-  std::vector<float> expected(total);
-  for (int i = 0; i < total; i++) expected[i] = (input_x_f[i] < input_y_f[i]) ? 1.0f : 0.0f;
-
-  std::cout << "=== where " << size << "x" << size << " (" << model_path << ") ===" << std::endl;
-  print_tensor("input_x:", input_x_f);
-  print_tensor("input_y:", input_y_f);
-  print_tensor("input_a:", input_a_f);
-  print_tensor("input_b:", input_b_f);
-  print_tensor("output :", output);
-  print_tensor("expect :", expected);
+  std::cout << "=== floor " << size << "x" << size << " ===" << std::endl;
+  print_tensor("input :", input_f);
+  print_tensor("output:", output);
+  print_tensor("exp16 :", expected_fp16);
 
   bool ok = true;
-  float max_abs = 0.f;
+  float max_diff = 0.f;
   for (int i = 0; i < total; i++) {
-    float diff = std::abs(output[i] - expected[i]);
-    if (diff > max_abs) max_abs = diff;
-    if (diff > 1e-3f) ok = false;
+    if (!std::isfinite(output[i])) {
+      ok = false;
+      continue;
+    }
+    float diff = std::abs(output[i] - expected_fp16[i]);
+    if (diff > max_diff) max_diff = diff;
+    if (diff > 3.2e-2f) ok = false;
   }
-  std::cout << "NPU result match CPU: " << (ok ? "YES" : "NO") << std::endl;
-  std::cout << "Max abs diff: " << max_abs << std::endl;
+  std::cout << "NPU result match CPU(fp16): " << (ok ? "YES" : "NO") << std::endl;
+  std::cout << "Max abs diff: " << max_diff << std::endl;
 
+  rknn_outputs_release(ctx, 1, &out);
   rknn_destroy(ctx);
   return ok ? 0 : 1;
 }
@@ -223,17 +228,17 @@ int main(int argc, char **argv) {
     return run_case(size);
   }
 
-  // const int sizes[] = {2, 4, 8, 16, 64};
-  const int sizes[] = {4};
+  const int sizes[] = {1, 4, 8, 16, 32, 64};
   int status = 0;
   for (int size : sizes) {
     int ret = run_case(size);
     if (ret == 2) {
-      std::cout << "=== where " << size << "x" << size << " ===" << std::endl;
-      std::cout << "SKIP: missing model where_float16_1x" << size << ".rknn" << std::endl;
+      std::cout << "=== floor " << size << "x" << size << " ===" << std::endl;
+      std::cout << "SKIP: missing model floor_float16_1x" << size << ".rknn" << std::endl;
       continue;
     }
     if (ret != 0) status = ret;
   }
   return status;
 }
+

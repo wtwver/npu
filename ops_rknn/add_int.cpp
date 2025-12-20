@@ -16,11 +16,11 @@ static bool file_exists(const std::string &path) {
 }
 
 static std::string pick_model(int width) {
-  std::string exact = "models/div_int16_1x" + std::to_string(width) + ".rknn";
+  std::string exact = "models/add_int32_1x" + std::to_string(width) + ".rknn";
   if (file_exists(exact)) return exact;
-  exact = "models/div_int32_1x" + std::to_string(width) + ".rknn";
-  if (file_exists(exact)) return exact;
-  std::cerr << "Missing model for width " << width << " (" << exact << ")" << std::endl;
+  std::string generic = "models/add_int32_1x1.rknn";
+  if (file_exists(generic)) return generic;
+  std::cerr << "Missing model for width " << width << " (" << exact << " or " << generic << ")" << std::endl;
   return "";
 }
 
@@ -47,14 +47,6 @@ static bool load_model(const std::string &path, std::vector<unsigned char> &data
 }
 
 static void print_tensor(const char *label, const std::vector<int32_t> &vals) {
-  std::cout << label;
-  size_t limit = std::min<size_t>(vals.size(), 16);
-  for (size_t i = 0; i < limit; i++) std::cout << " " << vals[i];
-  if (vals.size() > limit) std::cout << " ...";
-  std::cout << std::endl;
-}
-
-static void print_tensor(const char *label, const std::vector<int16_t> &vals) {
   std::cout << label;
   size_t limit = std::min<size_t>(vals.size(), 16);
   for (size_t i = 0; i < limit; i++) std::cout << " " << vals[i];
@@ -92,22 +84,48 @@ static bool query_io(rknn_context ctx, std::vector<rknn_tensor_attr> &inputs, st
   return true;
 }
 
-static bool run_scalar(rknn_context ctx, const std::vector<rknn_tensor_attr> &in_attrs, rknn_tensor_type out_type,
-                       int16_t x, int16_t y, int32_t &out) {
-  if (y == 0) return false;
+static bool read_scalar_output(rknn_context ctx, rknn_tensor_type out_type, int32_t &out) {
+  rknn_output rk_out {};
+  rk_out.index = 0;
+  rk_out.want_float = (out_type == RKNN_TENSOR_INT32 || out_type == RKNN_TENSOR_UINT32 ||
+                       out_type == RKNN_TENSOR_FLOAT16 || out_type == RKNN_TENSOR_FLOAT32);
+  int ret = rknn_outputs_get(ctx, 1, &rk_out, nullptr);
+  if (ret < 0) {
+    std::cerr << "rknn_outputs_get failed: " << ret << std::endl;
+    return false;
+  }
+  bool ok = true;
+  if (rk_out.want_float) {
+    float v = *static_cast<float *>(rk_out.buf);
+    if (!std::isfinite(v)) ok = false;
+    out = static_cast<int32_t>(std::trunc(v));
+  } else if (out_type == RKNN_TENSOR_INT32) {
+    out = *static_cast<int32_t *>(rk_out.buf);
+  } else if (out_type == RKNN_TENSOR_UINT32) {
+    out = static_cast<int32_t>(*static_cast<uint32_t *>(rk_out.buf));
+  } else {
+    ok = false;
+  }
+  rknn_outputs_release(ctx, 1, &rk_out);
+  return ok;
+}
 
+static bool run_scalar(rknn_context ctx, const std::vector<rknn_tensor_attr> &in_attrs, rknn_tensor_type out_type,
+                       int16_t x, uint16_t y, int32_t &out) {
+  int32_t x_i32 = static_cast<int32_t>(x);
+  int32_t y_i32 = static_cast<int32_t>(y);
   rknn_input in[2] {};
   in[0].index = 0;
-  in[0].type = RKNN_TENSOR_INT16;
-  in[0].fmt = in_attrs.size() > 0 ? in_attrs[0].fmt : RKNN_TENSOR_NCHW;
-  in[0].buf = &x;
-  in[0].size = sizeof(int16_t);
+  in[0].type = RKNN_TENSOR_INT32;
+  in[0].fmt = RKNN_TENSOR_NHWC;
+  in[0].buf = &x_i32;
+  in[0].size = sizeof(int32_t);
 
   in[1].index = 1;
-  in[1].type = RKNN_TENSOR_INT16;
-  in[1].fmt = in_attrs.size() > 1 ? in_attrs[1].fmt : RKNN_TENSOR_NCHW;
-  in[1].buf = &y;
-  in[1].size = sizeof(int16_t);
+  in[1].type = RKNN_TENSOR_INT32;
+  in[1].fmt = RKNN_TENSOR_NHWC;
+  in[1].buf = &y_i32;
+  in[1].size = sizeof(int32_t);
 
   int ret = rknn_inputs_set(ctx, 2, in);
   if (ret < 0) {
@@ -121,28 +139,7 @@ static bool run_scalar(rknn_context ctx, const std::vector<rknn_tensor_attr> &in
     return false;
   }
 
-  rknn_output rk_out {};
-  rk_out.index = 0;
-  rk_out.want_float = (out_type == RKNN_TENSOR_INT32 || out_type == RKNN_TENSOR_FLOAT16 || out_type == RKNN_TENSOR_FLOAT32);
-  ret = rknn_outputs_get(ctx, 1, &rk_out, nullptr);
-  if (ret < 0) {
-    std::cerr << "rknn_outputs_get failed: " << ret << std::endl;
-    return false;
-  }
-
-  if (rk_out.want_float) {
-    float v = *static_cast<float *>(rk_out.buf);
-    if (!std::isfinite(v)) {
-      rknn_outputs_release(ctx, 1, &rk_out);
-      return false;
-    }
-    out = static_cast<int32_t>(std::trunc(v));
-  } else {
-    rknn_outputs_release(ctx, 1, &rk_out);
-    return false;
-  }
-  rknn_outputs_release(ctx, 1, &rk_out);
-  return true;
+  return read_scalar_output(ctx, out_type, out);
 }
 
 static int run_case(int size) {
@@ -168,13 +165,16 @@ static int run_case(int size) {
   rknn_tensor_type out_type = out_attrs[0].type;
 
   std::vector<int16_t> input_x(total);
-  std::vector<int16_t> input_y(total);
+  std::vector<uint16_t> input_y(total);
+  std::vector<int32_t> input_x_i32(total);
+  std::vector<int32_t> input_y_i32(total);
   for (int i = 0; i < total; i++) {
-    int32_t x = static_cast<int32_t>(i * 3 - total);
-    int32_t y = static_cast<int32_t>((i % 7) - 3);
-    if (y == 0) y = 1;
-    input_x[i] = static_cast<int16_t>(x);
-    input_y[i] = static_cast<int16_t>(y);
+    int16_t x = static_cast<int16_t>(i * 3 - total);
+    uint16_t y = static_cast<uint16_t>(i * 5);
+    input_x[i] = x;
+    input_y[i] = y;
+    input_x_i32[i] = static_cast<int32_t>(x);
+    input_y_i32[i] = static_cast<int32_t>(y);
   }
 
   std::vector<int32_t> output(total);
@@ -188,18 +188,25 @@ static int run_case(int size) {
       output[i] = v;
     }
   } else {
+    std::vector<int32_t> feed_x(total);
+    std::vector<int32_t> feed_y(total);
+    for (int i = 0; i < total; i++) {
+      feed_x[i] = input_x_i32[i];
+      feed_y[i] = input_y_i32[i];
+    }
+
     rknn_input in[2] {};
     in[0].index = 0;
-    in[0].type = RKNN_TENSOR_INT16;
-    in[0].fmt = in_attrs.size() > 0 ? in_attrs[0].fmt : RKNN_TENSOR_NCHW;
-    in[0].buf = input_x.data();
-    in[0].size = input_x.size() * sizeof(int16_t);
+    in[0].type = RKNN_TENSOR_INT32;
+    in[0].fmt = RKNN_TENSOR_NHWC;
+    in[0].buf = feed_x.data();
+    in[0].size = feed_x.size() * sizeof(int32_t);
 
     in[1].index = 1;
-    in[1].type = RKNN_TENSOR_INT16;
-    in[1].fmt = in_attrs.size() > 1 ? in_attrs[1].fmt : RKNN_TENSOR_NCHW;
-    in[1].buf = input_y.data();
-    in[1].size = input_y.size() * sizeof(int16_t);
+    in[1].type = RKNN_TENSOR_INT32;
+    in[1].fmt = RKNN_TENSOR_NHWC;
+    in[1].buf = feed_y.data();
+    in[1].size = feed_y.size() * sizeof(int32_t);
 
     ret = rknn_inputs_set(ctx, 2, in);
     if (ret < 0) {
@@ -216,8 +223,9 @@ static int run_case(int size) {
     }
 
     rknn_output out {};
-    out.want_float = (out_type == RKNN_TENSOR_INT32 || out_type == RKNN_TENSOR_FLOAT16 || out_type == RKNN_TENSOR_FLOAT32);
     out.index = 0;
+    out.want_float = (out_type == RKNN_TENSOR_INT32 || out_type == RKNN_TENSOR_UINT32 ||
+                      out_type == RKNN_TENSOR_FLOAT16 || out_type == RKNN_TENSOR_FLOAT32);
     ret = rknn_outputs_get(ctx, 1, &out, nullptr);
     if (ret < 0) {
       std::cerr << "rknn_outputs_get failed: " << ret << std::endl;
@@ -225,49 +233,60 @@ static int run_case(int size) {
       return -1;
     }
 
+    bool ok = true;
     if (out.want_float) {
       if (out.size < static_cast<uint32_t>(total * sizeof(float))) {
         std::cerr << "unexpected output size: " << out.size << std::endl;
-        rknn_outputs_release(ctx, 1, &out);
-        rknn_destroy(ctx);
-        return -1;
+        ok = false;
+      } else {
+        float *result = static_cast<float *>(out.buf);
+        for (int i = 0; i < total; i++) output[i] = static_cast<int32_t>(std::trunc(result[i]));
       }
-      float *result = static_cast<float *>(out.buf);
-      for (int i = 0; i < total; i++) {
-        if (!std::isfinite(result[i])) {
-          rknn_outputs_release(ctx, 1, &out);
-          rknn_destroy(ctx);
-          return -1;
-        }
-        output[i] = static_cast<int32_t>(std::trunc(result[i]));
+    } else if (out_type == RKNN_TENSOR_INT32) {
+      if (out.size < static_cast<uint32_t>(total * sizeof(int32_t))) {
+        std::cerr << "unexpected output size: " << out.size << std::endl;
+        ok = false;
+      } else {
+        int32_t *result = static_cast<int32_t *>(out.buf);
+        std::copy(result, result + total, output.begin());
+      }
+    } else if (out_type == RKNN_TENSOR_UINT32) {
+      if (out.size < static_cast<uint32_t>(total * sizeof(uint32_t))) {
+        std::cerr << "unexpected output size: " << out.size << std::endl;
+        ok = false;
+      } else {
+        uint32_t *result = static_cast<uint32_t *>(out.buf);
+        for (int i = 0; i < total; i++) output[i] = static_cast<int32_t>(result[i]);
       }
     } else {
       std::cerr << "unsupported output type: " << out_type << std::endl;
-      rknn_outputs_release(ctx, 1, &out);
+      ok = false;
+    }
+    rknn_outputs_release(ctx, 1, &out);
+    if (!ok) {
       rknn_destroy(ctx);
       return -1;
     }
-    rknn_outputs_release(ctx, 1, &out);
   }
 
   std::vector<int32_t> expected(total);
-  for (int i = 0; i < total; i++) expected[i] = static_cast<int32_t>(input_x[i]) / static_cast<int32_t>(input_y[i]);
+  for (int i = 0; i < total; i++) expected[i] = input_x_i32[i] + input_y_i32[i];
 
-  std::cout << "=== idiv " << size << "x" << size << " ===" << std::endl;
-  print_tensor("input_x:", input_x);
-  print_tensor("input_y:", input_y);
-  print_tensor("output :", output);
-  print_tensor("expect :", expected);
+  std::cout << "=== add_int " << size << "x" << size << " (" << model_path << ") ===" << std::endl;
+  print_tensor("input_x(int16) :", input_x_i32);
+  print_tensor("input_y(uint16):", input_y_i32);
+  print_tensor("output         :", output);
+  print_tensor("expect         :", expected);
 
   bool ok = true;
-  int32_t max_abs_diff = 0;
+  int32_t max_abs = 0;
   for (int i = 0; i < total; i++) {
     int32_t diff = std::abs(output[i] - expected[i]);
-    if (diff > max_abs_diff) max_abs_diff = diff;
+    if (diff > max_abs) max_abs = diff;
     if (diff != 0) ok = false;
   }
   std::cout << "NPU result match CPU: " << (ok ? "YES" : "NO") << std::endl;
-  std::cout << "Max abs diff: " << max_abs_diff << std::endl;
+  std::cout << "Max abs diff: " << max_abs << std::endl;
 
   rknn_destroy(ctx);
   return ok ? 0 : 1;
@@ -283,13 +302,13 @@ int main(int argc, char **argv) {
     return run_case(size);
   }
 
-  const int sizes[] = {1, 4, 8, 16, 32, 64};
+  const int sizes[] = {1, 2, 4, 8, 16, 64};
   int status = 0;
   for (int size : sizes) {
     int ret = run_case(size);
     if (ret == 2) {
-      std::cout << "=== idiv " << size << "x" << size << " ===" << std::endl;
-      std::cout << "SKIP: missing model div_int32_1x" << size << ".rknn" << std::endl;
+      std::cout << "=== add_int " << size << "x" << size << " ===" << std::endl;
+      std::cout << "SKIP: missing model add_int32_1x" << size << ".rknn (and add_int32_1x1.rknn)" << std::endl;
       continue;
     }
     if (ret != 0) status = ret;
