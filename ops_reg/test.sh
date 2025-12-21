@@ -38,6 +38,6 @@ cmpneq
 roundoff
 where
 sigmoid
-# relu
+relu
 # silu
 EOF

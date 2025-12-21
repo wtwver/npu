@@ -2451,9 +2451,23 @@ static int run_relu_case(const ReluTestConfig *config) {
     return -1;
   }
 
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!unpacked) {
+    printf("%s: failed to allocate unpack buffer\n", name);
+    free(features);
+    free(weights);
+    return -1;
+  }
+
+  // ALU outputs are spaced every 0x10 bytes; unpack to contiguous fp16.
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  for (size_t i = 0; i < total_elements; i++) {
+    unpacked[i] = result[i * stride_fp16];
+  }
+
   printf("Running %s (%dx%d)\n", name, rows, cols);
   print_fp16_grid("Input (features)", features, rows, cols);
-  print_fp16_grid("Result (RELU)", result, rows, cols);
+  print_fp16_grid("Result (RELU)", unpacked, rows, cols);
 
   const float kReluAtol = 1e-3f;
   float max_abs_diff = 0.0f;
@@ -2461,7 +2475,7 @@ static int run_relu_case(const ReluTestConfig *config) {
   for (size_t i = 0; i < total_elements; i++) {
     float expected = (float)features[i];
     if (expected < 0.0f) expected = 0.0f;
-    float actual = (float)result[i];
+    float actual = (float)unpacked[i];
     float diff = fabsf(actual - expected);
     if (diff > max_abs_diff) max_abs_diff = diff;
     if (diff > kReluAtol) matches = 0;
@@ -2471,6 +2485,7 @@ static int run_relu_case(const ReluTestConfig *config) {
       name, matches ? "YES" : "NO", max_abs_diff);
   
   breakpoint();
+  free(unpacked);
   free(features);
   free(weights);
   return matches ? 0 : -1;
@@ -3515,10 +3530,10 @@ int test_relu(int argc, char **argv) {
   }
   static const ReluTestConfig configs[] = {
       {"relu_5x5", 5, 5},
-      // {"relu_6x6", 6, 6},
-      // {"relu_14x14", 14, 14},
-      // {"relu_15x15", 15, 15},
-      // {"relu_64x64", 64, 64},
+      {"relu_6x6", 6, 6},
+      {"relu_14x14", 14, 14},
+      {"relu_15x15", 15, 15},
+      {"relu_64x64", 64, 64},
   };
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
