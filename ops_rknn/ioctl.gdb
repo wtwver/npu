@@ -6,12 +6,22 @@ commands
     shell python3 patch_task_buffer.py --mode=none --reg-flink 2 --write-offset 0x5178 --write-value 0x1001000003804070 --write-length 8
 
     printf "break rknn_run============\n"
-    shell python3 dump.py 2 | grep -v "0x00000000"
+    shell python3 dump.py 2 | grep EMIT | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | sed 's/^.*EMIT(/EMIT(/' | grep -v "0x00000000" > /tmp/ops_rknn_gem2 
     printf "end break rknn_run============\n"
     continue
 end
 
-break rknn_destroy
+# break rknn_destroy
+# commands 
+#     printf "break rknn_destroy============\n"
+#     #shell python3 dump.py 3
+#     #shell python3 dump.py 4
+#     shell python3 dump.py 5
+#     printf "end break rknn_destroy============\n"
+#     continue
+# end
+
+break breakpoint
 commands 
     printf "break rknn_destroy============\n"
     #shell python3 dump.py 3
@@ -28,7 +38,7 @@ import re
 from pathlib import Path
 
 SUBMIT_COUNT = 0
-KEEP_TASKS = 3  # tweak here to adjust how many tasks are kept
+KEEP_TASKS = 1  # tweak here to adjust how many tasks are kept
 
 IOC_NRBITS = 8
 IOC_TYPEBITS = 8
@@ -411,6 +421,7 @@ class IoctlDecoder:
       if macro[0] == "DRM_IOCTL_RKNPU_SUBMIT":
         cls.submit_count += 1
         if cls.submit_count >= 0:
+          pass
           _patch_submit(regs["arg"])
         else:
           print("  submit #1 detected; skipping patch (will patch next submit if any)")

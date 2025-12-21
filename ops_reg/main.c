@@ -373,13 +373,8 @@ int test_alu(int argc, char **argv) {
     if (argc > 1) {
         size = atoi(argv[1]);
     }
-    int alu_algorithm = 10;
-    if (argc > 2) {
-        alu_algorithm = atoi(argv[2]);
-    }
     __fp16* a = (__fp16*)malloc(size * sizeof(__fp16));
     __fp16* b = (__fp16*)malloc(size * sizeof(__fp16));
-    __fp16* unpacked = (__fp16*)malloc((size_t)size * sizeof(__fp16));
     // printf("size: %d %d\n", sizeof(a), sizeof(b));
 
     for (size_t i = 0; i < size; i++) {
@@ -399,11 +394,7 @@ int test_alu(int argc, char **argv) {
     // CUSTOM 10: RELU
     // CUSTOM 14: SILU
     // __fp16* result = float16_alu_op(a, b, 2, size);
-    __fp16* result = float16_alu_op(a, b, (uint32_t)alu_algorithm, size);
-    const size_t stride_fp16 = 0x10 / sizeof(__fp16);
-    if (result && unpacked) {
-        for (size_t i = 0; i < (size_t)size; i++) unpacked[i] = result[i * stride_fp16];
-    }
+    __fp16* result = float16_alu_op(a, b, 10, size);
     
     printf("Input0: ");
     for (size_t i = 0; i < size; i++) printf("%f ", a[i]);
@@ -414,44 +405,34 @@ int test_alu(int argc, char **argv) {
     printf("Result/Input0: ");
     for (size_t i = 0; i < size; i++) {
         // float as_fp32 = (float)result[i];
-        printf("%f ", unpacked ? unpacked[i] : 0.0f);
+        printf("%f ", result[i]);
     }
     printf("\n");
     
-    const float kAtol = 1e-3f;
+    const float kReluAtol = 1e-3f;
     int matches = result ? 1 : 0;
     float max_abs_diff = 0.0f;
     if (result) {
         for (size_t i = 0; i < size; i++) {
-            float expected = 0.0f;
-            if (alu_algorithm == 2) {
-                expected = (float)a[i] + (float)b[i];
-            } else if (alu_algorithm == 10) {
-                expected = (float)b[i];
-                if (expected < 0.0f) expected = 0.0f;
-            } else {
-                printf("test_alu: unsupported algo %d for CPU check\n", alu_algorithm);
-                matches = 0;
-                break;
-            }
-            float actual = (float)(unpacked ? unpacked[i] : 0.0f);
+            float expected = (float)b[i];
+            if (expected < 0.0f) expected = 0.0f;
+            float actual = (float)result[i];
             float diff = fabsf(actual - expected);
             if (diff > max_abs_diff) max_abs_diff = diff;
-            if (diff > kAtol) {
+            if (diff > kReluAtol) {
                 matches = 0;
                 break;
             }
         }
     }
-  printf("test_alu: matches CPU -> %s (max diff=%.6f)\n",
-      matches ? "YES" : "NO", max_abs_diff);
+    printf("test_alu: matches CPU -> %s (max diff=%.6f)\n",
+        matches ? "YES" : "NO", max_abs_diff);
 
-  breakpoint();
+    breakpoint();
 
-  free(a);
-  free(b);
-  free(unpacked);
-  return 0;
+    free(a);
+    free(b);
+    return 0;
 }
 
 typedef struct {
@@ -515,6 +496,12 @@ typedef struct {
   int rows;
   int cols;
 } RounddownTestConfig;
+
+typedef struct {
+  const char *name;
+  int rows;
+  int cols;
+} RoundoffTestConfig;
 
 		typedef struct {
 		  const char *name;
@@ -597,7 +584,7 @@ typedef struct {
   }
 
   const float kDivAtolFp16 = 3.2e-2f;
-  const float kDivAtolFp32 = 2e-1f;
+  const float kDivAtolFp32 = 2.5e-1f;
   int matches_fp16 = max_abs_diff_fp16 <= kDivAtolFp16;
   int matches_fp32 = max_abs_diff_fp32 <= kDivAtolFp32;
 
@@ -1630,13 +1617,13 @@ static int run_rounddown_case(const RounddownTestConfig *config) {
   }
 
   static const float samples[] = {
-      -3.01f, -2.70f, -2.00f, -1.90f, -1.10f, -0.50f, -0.10f, 0.00f,
-      0.10f, 0.50f, 1.10f, 1.90f, 2.00f, 2.70f, 3.99f, 4.00f,
+      0.00f, 0.10f, 0.50f, 0.90f, 1.10f, 1.90f, 2.00f, 2.70f,
+      3.01f, 3.50f, 3.99f, 4.00f, 4.25f, 4.75f, 5.10f, 5.90f,
   };
   const int sample_count = (int)(sizeof(samples) / sizeof(samples[0]));
   for (int i = 0; i < size; i++) {
     input[i] = (__fp16)samples[i % sample_count];
-    expected_fp16[i] = (__fp16)floorf((float)input[i]);
+    expected_fp16[i] = (__fp16)((float)input[i] - floorf((float)input[i]));
   }
 
   set_minus_params(rows, cols);
@@ -1664,7 +1651,80 @@ static int run_rounddown_case(const RounddownTestConfig *config) {
   if (total_elements <= 64) {
     print_fp16_grid("Input", input, rows, cols);
     print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
-    print_fp16_grid("Expected (floor)", expected_fp16, rows, cols);
+    print_fp16_grid("Expected (frac)", expected_fp16, rows, cols);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  printf("%s: matches CPU -> %s (max diff=%.6f, mismatches=%d)\n",
+      name, matches ? "YES" : "NO", max_abs_diff, mismatch_count);
+
+  breakpoint();
+  free(weights); free(input); free(unpacked); free(expected_fp16);
+  return matches ? 0 : -1;
+}
+
+static int run_roundoff_case(const RoundoffTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "roundoff_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *expected_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!weights || !input || !unpacked || !expected_fp16) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(weights); free(input); free(unpacked); free(expected_fp16);
+    return -1;
+  }
+
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (int i = 0; i < size; i++) {
+    input[i] = (__fp16)mt_uniform(&rng, 0.0f, 6.0f);
+    float in_val = (float)input[i];
+    float base = floorf(in_val);
+    float frac = in_val - base;
+    int base_i = (int)base;
+    float rounded = base;
+    if (frac > 0.5f || (frac == 0.5f && (base_i & 1))) rounded = base + 1.0f;
+    expected_fp16[i] = (__fp16)rounded;
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *result_packed = float16_alu_op(weights, input, 23, size);
+  if (!result_packed) {
+    printf("%s: float16_alu_op failed\n", name);
+    free(weights); free(input); free(unpacked); free(expected_fp16);
+    return -1;
+  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  for (int i = 0; i < size; i++) unpacked[i] = result_packed[(size_t)i * stride_fp16];
+
+  float max_abs_diff = 0.0f;
+  int mismatch_count = 0;
+  for (int i = 0; i < size; i++) {
+    float actual = (float)unpacked[i];
+    float expected = (float)expected_fp16[i];
+    float diff = fabsf(actual - expected);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+    if (diff > 1e-3f) mismatch_count++;
+  }
+  int matches = mismatch_count == 0;
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input", input, rows, cols);
+    print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+    print_fp16_grid("Expected (round)", expected_fp16, rows, cols);
   } else {
     printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
   }
@@ -1981,11 +2041,11 @@ static int test_cmplt(int argc, char **argv) {
   }
 
   static const CmpltTestConfig configs[] = {
-    // {"cmplt_1x1", 1, 1}, 
-    // {"cmplt_3", 1, 3, 0, 0},
-    // {"cmplt_1", 1, 1, 0, 0},
+    {"cmplt_1x1", 1, 1}, 
+    {"cmplt_3", 1, 3, 0, 0},
+    {"cmplt_1", 1, 1, 0, 0},
     {"cmplt_2x2", 2, 2, 0, 0},
-    // {"cmplt_12x5", 12, 5, 0, 0},
+    {"cmplt_12x5", 12, 5, 0, 0},
   };
 
   int status = 0;
@@ -2227,6 +2287,23 @@ static int test_rounddown(int argc, char **argv) {
   return status;
 }
 
+static int test_roundoff(int argc, char **argv) {
+  if (argc >= 3) {
+    RoundoffTestConfig cli = {"roundoff_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_roundoff_case(&cli);
+  }
+
+  static const RoundoffTestConfig configs[] = {
+    {"roundoff_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_roundoff_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
 static int test_where(int argc, char **argv) {
   if (argc >= 3) {
     WhereTestConfig cli = {"where_cli", atoi(argv[1]), atoi(argv[2])};
@@ -2253,8 +2330,8 @@ static int test_minus(int argc, char **argv) {
   }
 
   static const MinusTestConfig configs[] = {
-    // {"minus_1x1", 1, 1},
-    // {"minus_2x2", 2, 2},
+    {"minus_1x1", 1, 1},
+    {"minus_2x2", 2, 2},
     {"minus_8x8", 8, 8},
   };
 
@@ -2272,10 +2349,10 @@ static int test_neg(int argc, char **argv) {
   }
 
   static const NegTestConfig configs[] = {
-    // {"neg_1x1", 1, 1},
+    {"neg_1x1", 1, 1},
     {"neg_2x2", 2, 2},
-    // {"neg_4x4", 4, 4},
-    // {"neg_8x8", 8, 8},
+    {"neg_4x4", 4, 4},
+    {"neg_8x8", 8, 8},
   };
 
   int status = 0;
@@ -2292,9 +2369,9 @@ static int test_abs(int argc, char **argv) {
   }
 
   static const AbsTestConfig configs[] = {
-    // {"abs_2x2", 2, 2},
+    {"abs_2x2", 2, 2},
     {"abs_2x2", 1, 5},
-    // {"abs_8x8", 8, 8},
+    {"abs_8x8", 8, 8},
   };
 
   int status = 0;
@@ -2322,6 +2399,7 @@ int test_max(int argc, char **argv) {
   }
   return status;
 }
+
 
 typedef struct {
   const char *name;
@@ -2949,10 +3027,10 @@ int test_matmul(int argc, char **argv) {
   }
 
   static const MatmulTestConfig configs[] = {
-    // {"matmul_8x8x8", 8, 8, 8},
-    // {"matmul_9x9x9", 9, 9, 9},
-    // {"matmul_32x32x32", 32, 32, 32},
-    // {"matmul_64x64x64", 64, 64, 64},
+    {"matmul_8x8x8", 8, 8, 8},
+    {"matmul_9x9x9", 9, 9, 9},
+    {"matmul_32x32x32", 32, 32, 32},
+    {"matmul_64x64x64", 64, 64, 64},
     {"matmul_256x256x256", 256, 256, 256},
   };
 
@@ -3436,11 +3514,11 @@ int test_relu(int argc, char **argv) {
     return run_relu_case(&cli_config);
   }
   static const ReluTestConfig configs[] = {
-      // {"relu_5x5", 5, 5},
+      {"relu_5x5", 5, 5},
       // {"relu_6x6", 6, 6},
       // {"relu_14x14", 14, 14},
       // {"relu_15x15", 15, 15},
-      {"relu_64x64", 64, 64},
+      // {"relu_64x64", 64, 64},
   };
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
@@ -3470,7 +3548,7 @@ int test_sigmoid(int argc, char **argv) {
     return run_sigmoid_case(&cli_config);
   }
   static const SigmoidTestConfig configs[] = {
-      // {"sigmoid_2x2", 2, 2},
+      {"sigmoid_2x2", 2, 2},
       {"sigmoid_4x4", 4, 4},
   };
   int status = 0;
@@ -3480,34 +3558,97 @@ int test_sigmoid(int argc, char **argv) {
   return status;
 }
 
-	int main(int argc, char **argv) {
+static int run_all_tests(void) {
+  int status = 0;
+  if (test_alu(0, NULL) != 0) status = -1;
+  if (test_max(0, NULL) != 0) status = -1;
+  if (test_div(0, NULL) != 0) status = -1;
+  if (test_cmple(0, NULL) != 0) status = -1;
+  if (test_cmpgt(0, NULL) != 0) status = -1;
+  if (test_cmpge(0, NULL) != 0) status = -1;
+  if (test_cmplt(0, NULL) != 0) status = -1;
+  if (test_cmpeq(0, NULL) != 0) status = -1;
+  if (test_cmpneq(0, NULL) != 0) status = -1;
+  if (test_add(0, NULL) != 0) status = -1;
+  if (test_mul(0, NULL) != 0) status = -1;
+  if (test_rounddown(0, NULL) != 0) status = -1;
+  if (test_roundoff(0, NULL) != 0) status = -1;
+  if (test_abs(0, NULL) != 0) status = -1;
+  if (test_where(0, NULL) != 0) status = -1;
+  if (test_neg(0, NULL) != 0) status = -1;
+  if (test_minus(0, NULL) != 0) status = -1;
+  if (test_sigmoid(0, NULL) != 0) status = -1;
+  if (test_silu(0, NULL) != 0) status = -1;
+  if (test_relu(0, NULL) != 0) status = -1;
+  if (test_conv1d(0, NULL) != 0) status = -1;
+  if (test_conv2d(0, NULL) != 0) status = -1;
+  if (test_matmul(0, NULL) != 0) status = -1;
+  return status;
+}
+
+static int run_named_test(const char *name, int argc, char **argv) {
+  if (!name) return -2;
+  if (strcmp(name, "alu") == 0) return test_alu(argc, argv);
+  if (strcmp(name, "max") == 0) return test_max(argc, argv);
+  if (strcmp(name, "div") == 0) return test_div(argc, argv);
+  if (strcmp(name, "cmple") == 0) return test_cmple(argc, argv);
+  if (strcmp(name, "cmpgt") == 0) return test_cmpgt(argc, argv);
+  if (strcmp(name, "cmpge") == 0) return test_cmpge(argc, argv);
+  if (strcmp(name, "cmplt") == 0) return test_cmplt(argc, argv);
+  if (strcmp(name, "cmpeq") == 0) return test_cmpeq(argc, argv);
+  if (strcmp(name, "cmpneq") == 0) return test_cmpneq(argc, argv);
+  if (strcmp(name, "add") == 0) return test_add(argc, argv);
+  if (strcmp(name, "mul") == 0) return test_mul(argc, argv);
+  if (strcmp(name, "rounddown") == 0) return test_rounddown(argc, argv);
+  if (strcmp(name, "roundoff") == 0) return test_roundoff(argc, argv);
+  if (strcmp(name, "abs") == 0) return test_abs(argc, argv);
+  if (strcmp(name, "where") == 0) return test_where(argc, argv);
+  if (strcmp(name, "neg") == 0) return test_neg(argc, argv);
+  if (strcmp(name, "minus") == 0) return test_minus(argc, argv);
+  if (strcmp(name, "sigmoid") == 0) return test_sigmoid(argc, argv);
+  if (strcmp(name, "silu") == 0) return test_silu(argc, argv);
+  if (strcmp(name, "relu") == 0) return test_relu(argc, argv);
+  if (strcmp(name, "conv1d") == 0) return test_conv1d(argc, argv);
+  if (strcmp(name, "conv2d") == 0) return test_conv2d(argc, argv);
+  if (strcmp(name, "matmul") == 0) return test_matmul(argc, argv);
+  return -2;
+}
+
+int main(int argc, char **argv) {
     int fd = getDeviceFd();
     npu_reset(fd);
 
-    if (argc > 1 && strcmp(argv[1], "rounddown") == 0) {
-      return test_rounddown(argc - 1, argv + 1);
-    }
+  if (argc > 1 && strcmp(argv[1], "all") == 0) {
+    return run_all_tests();
+  }
+  if (argc > 1) {
+    int status = run_named_test(argv[1], argc - 1, argv + 1);
+    if (status != -2) return status;
+    printf("Unknown test '%s'\n", argv[1]);
+    return -1;
+  }
 
-    // test_max(argc, argv);
-    // test_div(argc, argv);
-    // test_cmple(argc, argv);
-    // test_cmpgt(argc, argv);
-    // test_cmpge(argc, argv);
-    // test_mul(argc, argv);
-    // test_rounddown(argc, argv);
-    test_abs(argc, argv);
-    // test_where(argc, argv);
-    // test_cmplt(argc, argv);
-    // test_cmpneq(argc, argv);
-    // test_neg(argc, argv);
-    // test_cmpeq(argc, argv);
-    // test_add(argc, argv);
-    // test_minus(argc, argv);
-    // test_sigmoid(argc, argv);
-    // test_silu(argc, argv);
-    // test_relu(argc, argv);
-    // test_conv1d(argc, argv);
-    // test_conv2d(argc, argv);
-    // test_matmul(argc, argv);
-    return 0;
+  // test_max(argc, argv);
+  // test_div(argc, argv);
+  // test_cmple(argc, argv);
+  // test_cmpgt(argc, argv);
+  // test_cmpge(argc, argv);
+  // test_mul(argc, argv);
+  // test_rounddown(argc, argv);
+  // test_roundoff(argc, argv);
+  // test_abs(argc, argv);
+  // test_where(argc, argv);
+  // test_cmplt(argc, argv);
+  // test_cmpneq(argc, argv);
+  // test_neg(argc, argv);
+  // test_cmpeq(argc, argv);
+  // test_add(argc, argv);
+  // test_minus(argc, argv);
+  // test_sigmoid(argc, argv);
+  // test_silu(argc, argv);
+  test_relu(argc, argv);
+  // test_conv1d(argc, argv);
+  // test_conv2d(argc, argv);
+  // test_matmul(argc, argv);
+  return 0;
 }

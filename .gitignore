@@ -20,6 +20,14 @@ ops_rknn/add
 ops_rknn/cmplt
 ops_rknn/cmpne
 ops_rknn/where
+ops_rknn/abs
+ops_rknn/add_int
+ops_rknn/cast
+ops_rknn/ceil
+ops_rknn/floor
+ops_rknn/recip
+ops_rknn/tanh
+ops_rknn/neg
 ops_rknn/run_output.txt
 ops_rknn/models/*
 main
