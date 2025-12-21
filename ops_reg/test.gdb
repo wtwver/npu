@@ -35,14 +35,14 @@ end
 
 break breakpoint 
 commands
-  # printf "\n[gem3 (input)]\n"
-  # shell python dump.py 3 | grep -E "\[00.*]" | tee /tmp/ops_reg_input
+  printf "\n[gem3 (input)]\n"
+  shell python dump.py 3 | grep -E "\[00.*]" | tee /tmp/ops_reg_input
 
   printf "\n[gem4 (output)]\n"
   shell python dump.py 4 | grep -E "\[00.*]" | tee /tmp/ops_reg_output
 
-  printf "\n[gem12 (output)]\n"
-  shell python dump.py 12 | grep -E "\[00.*]" | tee /tmp/ops_reg_output3
+  printf "\n[gem8 (output)]\n"
+  shell python dump.py 8 | grep -E "\[00.*]" | tee /tmp/ops_reg_output3
   continue
 end
 

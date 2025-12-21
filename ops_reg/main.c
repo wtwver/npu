@@ -294,7 +294,7 @@ static void print_fp16_row(const __fp16 *data, int cols, int row) {
 static void print_float_row(const float *data, int cols, int row) {
   printf("  [");
   for (int c = 0; c < cols; c++) {
-    printf("%7.3f", data[row * cols + c]);
+    printf("%9.6f", data[row * cols + c]);
     if (c + 1 < cols) printf(", ");
   }
   printf("]");
@@ -2604,10 +2604,10 @@ static int run_silu_case(const SiluTestConfig *config) {
   print_float_matrix("Expected (CPU)", expected, rows, cols);
   print_float_matrix("Reference Sigmoid (CPU)", sigmoid_ref, rows, cols);
 
-  // CUSTOM 15: SILU
-  __fp16 *result_padded = float16_alu_op_padded(weights, features, size, 15);
-  if (result_padded == NULL) {
-    printf("%s: float16_alu_op failed\n", name);
+  // Stage 1: SILU (algo 15) with padded I/O layout (fp32 output).
+  __fp16 *stage1_padded = float16_alu_op_padded(weights, features, size, 15);
+  if (stage1_padded == NULL) {
+    printf("%s: float16_alu_op_padded failed\n", name);
     free(features);
     free(weights);
     free(expected);
@@ -2615,19 +2615,80 @@ static int run_silu_case(const SiluTestConfig *config) {
     return -1;
   }
 
-  __fp16 *result = (__fp16 *)malloc(total_elements * sizeof(__fp16));
-  if (!result) {
-    printf("%s: failed to allocate unpack buffer\n", name);
+  float *stage1_fp32 = (float *)malloc(total_elements * sizeof(float));
+  if (!stage1_fp32) {
+    printf("%s: failed to allocate stage1 buffer\n", name);
     free(features);
     free(weights);
     free(expected);
     free(sigmoid_ref);
     return -1;
   }
+  const size_t stride_fp32 = 0x10 / sizeof(float);  // 4
+  const float *stage1_padded_fp32 = (const float *)stage1_padded;
+  for (size_t i = 0; i < total_elements; i++) {
+    stage1_fp32[i] = stage1_padded_fp32[i * stride_fp32];
+  }
+
+  __fp16 *stage1_fp16 = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  if (!stage1_fp16) {
+    printf("%s: failed to allocate stage1 fp16 buffer\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    free(sigmoid_ref);
+    free(stage1_fp32);
+    return -1;
+  }
+  for (size_t i = 0; i < total_elements; i++) {
+    stage1_fp16[i] = (__fp16)stage1_fp32[i];
+  }
+
+  // Stage 2: MUL stage1 by constant.
+  __fp16 *scale = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  if (!scale) {
+    printf("%s: failed to allocate scale buffer\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    free(sigmoid_ref);
+    free(stage1_fp32);
+    free(stage1_fp16);
+    return -1;
+  }
+  for (size_t i = 0; i < total_elements; i++) {
+    scale[i] = (__fp16)0.0001766241f;
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *stage2_packed = float16_alu_op(stage1_fp16, scale, 9, size);
+  if (!stage2_packed) {
+    printf("%s: float16_alu_op (mul) failed\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    free(sigmoid_ref);
+    free(stage1_fp32);
+    free(stage1_fp16);
+    free(scale);
+    return -1;
+  }
+
+  __fp16 *result = (__fp16 *)malloc(total_elements * sizeof(__fp16));
+  if (!result) {
+    printf("%s: failed to allocate result buffer\n", name);
+    free(features);
+    free(weights);
+    free(expected);
+    free(sigmoid_ref);
+    free(stage1_fp32);
+    free(stage1_fp16);
+    free(scale);
+    return -1;
+  }
   const size_t stride_elems = 0x10 / sizeof(__fp16);  // 8
   for (size_t i = 0; i < total_elements; i++) {
-    size_t idx = i * stride_elems;
-    result[i] = result_padded[idx];
+    result[i] = stage2_packed[i * stride_elems];
   }
 
   print_fp16_grid("Result (SILU)", result, rows, cols);
@@ -2650,6 +2711,9 @@ static int run_silu_case(const SiluTestConfig *config) {
   free(weights);
   free(expected);
   free(sigmoid_ref);
+  free(stage1_fp32);
+  free(stage1_fp16);
+  free(scale);
   free(result);
   return matches ? 0 : -1;
 }
@@ -3660,8 +3724,8 @@ int main(int argc, char **argv) {
   // test_add(argc, argv);
   // test_minus(argc, argv);
   // test_sigmoid(argc, argv);
-  // test_silu(argc, argv);
-  test_relu(argc, argv);
+  test_silu(argc, argv);
+  // test_relu(argc, argv);
   // test_conv1d(argc, argv);
   // test_conv2d(argc, argv);
   // test_matmul(argc, argv);
