@@ -9,8 +9,8 @@ commands
    printf "\n[gem2 (matmul weight)]\n"
    shell python dump.py 2 | tee /tmp/ops_reg_weight
 
-#   printf "\n[gem3 (matmul input)]\n"
-#   shell python dump.py 3 | grep -E "\[00.*]" | tee /tmp/ops_reg_input
+   printf "\n[gem3 (matmul input)]\n"
+   shell python dump.py 3 | grep -E "\[00.*]" | tee /tmp/ops_reg_input
 
 #   printf "\n[gem4 (output before submit)]\n"
 #   shell python dump.py 4 | grep -E "\[00.*]" | tee /tmp/ops_reg_output

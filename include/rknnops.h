@@ -878,6 +878,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          case 20: goto alu_case_cmple;
          case 22: goto alu_case_abs;
          case 23: goto alu_case_roundoff;
+         case 24: goto alu_case_maxpool;
          default: goto alu_case_default;
       }
 
@@ -1263,7 +1264,8 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_DPU_RDMA_RDMA_EW_SURF_STRIDE, DPU_RDMA_RDMA_EW_SURF_STRIDE_EW_SURF_STRIDE((uint32_t)stride_field));
          EMIT(REG_DPU_RDMA_RDMA_FEATURE_MODE_CFG, DPU_RDMA_RDMA_FEATURE_MODE_CFG_IN_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_PROC_PRECISION(2) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_MRDMA_FP16TOFP32_EN(1) | DPU_RDMA_RDMA_FEATURE_MODE_CFG_FLYING_MODE(1));
          EMIT(REG_DPU_RDMA_RDMA_WEIGHT, DPU_RDMA_RDMA_WEIGHT_E_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_N_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_B_WEIGHT(1) | DPU_RDMA_RDMA_WEIGHT_M_WEIGHT(1));
-         emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12));
+         // Enable PPU + PPU_RDMA only (disable DPU/DPU_RDMA).
+         emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(48));
          goto alu_case_done;
       }
       alu_case_sigmoid: { // sigmoid
@@ -4158,7 +4160,34 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(12));
          goto alu_case_done;
       }
-
+      alu_case_maxpool: {
+         EMIT(REG_PPU_S_POINTER, PPU_S_POINTER_POINTER_PP_MODE(1) | PPU_S_POINTER_EXECUTER_PP_EN(1) | PPU_S_POINTER_POINTER_PP_EN(1));
+         EMIT(REG_PPU_RDMA_RDMA_S_POINTER, PPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | PPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | PPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+         EMIT(REG_PPU_DATA_CUBE_IN_WIDTH, PPU_DATA_CUBE_IN_WIDTH_CUBE_IN_WIDTH(3));
+         EMIT(REG_PPU_DATA_CUBE_IN_HEIGHT, PPU_DATA_CUBE_IN_HEIGHT_CUBE_IN_HEIGHT(3));
+         EMIT(REG_PPU_DATA_CUBE_IN_CHANNEL, PPU_DATA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(7));
+         EMIT(REG_PPU_DATA_CUBE_OUT_WIDTH, PPU_DATA_CUBE_OUT_WIDTH_CUBE_OUT_WIDTH(2));
+         EMIT(REG_PPU_DATA_CUBE_OUT_HEIGHT, PPU_DATA_CUBE_OUT_HEIGHT_CUBE_OUT_HEIGHT(2));
+         EMIT(REG_PPU_DATA_CUBE_OUT_CHANNEL, PPU_DATA_CUBE_OUT_CHANNEL_CUBE_OUT_CHANNEL(7));
+         EMIT(REG_PPU_OPERATION_MODE_CFG, PPU_OPERATION_MODE_CFG_FLYING_MODE(1) | PPU_OPERATION_MODE_CFG_POOLING_METHOD(1));
+         EMIT(REG_PPU_POOLING_KERNEL_CFG, PPU_POOLING_KERNEL_CFG_KERNEL_HEIGHT(1) | PPU_POOLING_KERNEL_CFG_KERNEL_WIDTH(1));
+         EMIT(REG_PPU_DST_BASE_ADDR, PPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma/16));
+         EMIT(REG_PPU_DST_SURF_STRIDE, PPU_DST_SURF_STRIDE_DST_SURF_STRIDE(12));
+         EMIT(REG_PPU_DATA_FORMAT, PPU_DATA_FORMAT_INDEX_ADD(12) | PPU_DATA_FORMAT_PROC_PRECISION(2));
+         EMIT(REG_PPU_MISC_CTRL, PPU_MISC_CTRL_BURST_LEN(3));
+         EMIT(REG_PPU_RDMA_RDMA_CUBE_IN_WIDTH, PPU_RDMA_RDMA_CUBE_IN_WIDTH_CUBE_IN_WIDTH(3));
+         EMIT(REG_PPU_RDMA_RDMA_CUBE_IN_HEIGHT, PPU_RDMA_RDMA_CUBE_IN_HEIGHT_CUBE_IN_HEIGHT(3));
+         EMIT(REG_PPU_RDMA_RDMA_CUBE_IN_CHANNEL, PPU_RDMA_RDMA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(7));
+         EMIT(REG_PPU_RDMA_RDMA_SRC_BASE_ADDR, input_dma);
+         EMIT(REG_PPU_RDMA_RDMA_SRC_LINE_STRIDE, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(4));
+         EMIT(REG_PPU_RDMA_RDMA_SRC_SURF_STRIDE, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(16));
+         EMIT(REG_PPU_RDMA_RDMA_DATA_FORMAT, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(2));
+         EMIT(REG_PPU_RDMA_RDMA_OPERATION_ENABLE, PPU_RDMA_RDMA_OPERATION_ENABLE_OP_EN(1));
+         EMIT(REG_PPU_OPERATION_ENABLE, PPU_OPERATION_ENABLE_OP_EN(1));
+         // Enable PPU + PPU_RDMA only (disable DPU/DPU_RDMA).
+         emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(48));
+         goto alu_case_done;
+      }
       alu_case_default: {
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          EMIT(REG_DPU_RDMA_RDMA_S_POINTER, DPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | DPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | DPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
@@ -4336,8 +4365,14 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
       bool is_small = (alu_algorithm == 13) && (i % 2 == 0 && i != 0);
       task->flags = 0;
       task->op_idx = 1;
-      task->enable_mask = is_small ? 0x60 : 0xd;
-      task->int_mask = is_small ? 0xc00 : 0x300;
+      uint32_t enable_mask = is_small ? 0x60 : 0xd;
+      uint32_t int_mask = is_small ? 0xc00 : 0x300;
+      if (current_alu_algorithm == 24) {
+         enable_mask = 0x60; // PPU + PPU_RDMA
+         int_mask = 0xc00;   // PPU group interrupts
+      }
+      task->enable_mask = enable_mask;
+      task->int_mask = int_mask;
       task->int_clear = 0x1ffff;
       task->int_status = 0;
       task->regcfg_amount = (uint32_t)reg_task_lengths[i];

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -375,6 +376,25 @@ static std::vector<float> nchw_fp16_to_nchw(const __fp16* src, const Shape& logi
   return dst;
 }
 
+static void print_tensor_nchw(const char* label, const std::vector<float>& data, const Shape& shape, size_t max_elems) {
+  std::cout << "  " << label << " shape (NCHW): " << shape.n << "x" << shape.c << "x" << shape.h << "x" << shape.w << std::endl;
+  size_t total = data.size();
+  size_t count = std::min(total, max_elems);
+  std::cout << "  " << label << " values (" << count;
+  if (total > max_elems) {
+    std::cout << " of " << total;
+  }
+  std::cout << "):";
+  for (size_t i = 0; i < count; ++i) {
+    if (i % shape.w == 0) std::cout << "\n    ";
+    std::cout << std::fixed << std::setprecision(4) << data[i] << " ";
+  }
+  if (total > max_elems) {
+    std::cout << "\n    ...";
+  }
+  std::cout << std::endl;
+}
+
 static bool run_pool_test(const PoolConfig& cfg) {
   std::cout << "\n" << std::string(72, '=') << std::endl;
   std::cout << "TEST: " << cfg.description << " [" << pool_type_string(cfg.type) << "]" << std::endl;
@@ -447,11 +467,12 @@ static bool run_pool_test(const PoolConfig& cfg) {
 
   Mt19937 rng;
   mt_seed(&rng, 0);
-  std::vector<__fp16> input_nchw = generate_input(input_shape, &rng);
+  std::vector<__fp16> input_nchw = generate_input(input_shape, &rng, -2.0f, 2.0f);
   std::vector<float> input_float = to_float(input_nchw);
 
   std::cout << "  Input shape (NCHW): " << input_shape.n << "x" << input_shape.c
             << "x" << input_shape.h << "x" << input_shape.w << std::endl;
+  print_tensor_nchw("Input", input_float, input_shape, 64);
 
   // Prepare input buffer respecting native layout.
   const std::vector<__fp16>* formatted_input = &input_nchw;
@@ -577,6 +598,8 @@ static bool run_pool_test(const PoolConfig& cfg) {
   const float abs_tol = 3.5e-2f;
   const float rel_tol = 5e-3f;
   bool ok = true;
+  print_tensor_nchw("Output", output_nchw, expected_shape, 64);
+  print_tensor_nchw("Expected", expected, expected_shape, 64);
   for (size_t i = 0; i < expected.size(); ++i) {
     float error = std::abs(output_nchw[i] - expected[i]);
     float tol = std::max(abs_tol, rel_tol * std::max(1.0f, std::abs(expected[i])));

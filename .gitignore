@@ -28,6 +28,7 @@ ops_rknn/floor
 ops_rknn/recip
 ops_rknn/tanh
 ops_rknn/neg
+ops_rknn/pool
 ops_rknn/run_output.txt
 ops_rknn/models/*
 main
