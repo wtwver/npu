@@ -883,13 +883,14 @@ static int run_avgpool_case(const AvgpoolTestConfig *config) {
     return -1;
   }
 
+  Mt19937 rng;
+  mt_seed(&rng, 0);
   for (int i = 0; i < size; i++) {
-    float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
-    input[i] = (__fp16)(1.0f + 3.0f * t);
+    input[i] = (__fp16)mt_uniform(&rng, -2.0f, 2.0f);
   }
 
   set_minus_params(rows, cols);
-  __fp16 *stage1_packed = float16_alu_op(weights, input, 99, size);
+  __fp16 *stage1_packed = float16_alu_op(weights, input, 25, size);
   if (!stage1_packed) {
     printf("%s: float16_alu_op stage1 failed\n", name);
     free(weights); free(input); free(stage1); free(unpacked);
@@ -897,24 +898,66 @@ static int run_avgpool_case(const AvgpoolTestConfig *config) {
   }
 
   const size_t stride_fp16 = 0x10 / sizeof(__fp16);
-  for (int i = 0; i < size; i++) {
-    stage1[i] = stage1_packed[(size_t)i * stride_fp16];
-    unpacked[i] = stage1[i];
+  int out_rows = rows > 1 ? (rows - 1) : 0;
+  int out_cols = cols > 1 ? (cols - 1) : 0;
+  size_t out_elems = (size_t)out_rows * out_cols;
+  __fp16 *output_view = (__fp16*)malloc(out_elems * sizeof(__fp16));
+  if (!output_view) {
+    printf("%s: failed to allocate output view\n", name);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+  for (size_t i = 0; i < out_elems; i++) {
+    output_view[i] = stage1_packed[i * stride_fp16];
   }
 
   if (total_elements <= 64) {
     print_fp16_grid("Input", input, rows, cols);
-    print_fp16_grid("Stage1 (alu99)", stage1, rows, cols);
-    print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+    print_fp16_grid("Output (avgpool)", output_view, out_rows, out_cols);
   } else {
     printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
   }
 
-  printf("%s: matches CPU -> NO (no CPU reference yet)\n", name);
+  __fp16 *expected = (__fp16*)malloc(out_elems * sizeof(__fp16));
+  if (!expected) {
+    printf("%s: failed to allocate CPU reference buffers\n", name);
+    free(expected);
+    free(output_view);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  for (int r = 0; r < out_rows; r++) {
+    for (int c = 0; c < out_cols; c++) {
+      float sum = 0.0f;
+      for (int kr = 0; kr < 2; kr++) {
+        for (int kc = 0; kc < 2; kc++) {
+          size_t idx = (size_t)(r + kr) * cols + (c + kc);
+          sum += (float)input[idx];
+        }
+      }
+      size_t out_idx = (size_t)r * out_cols + c;
+      expected[out_idx] = (__fp16)(sum * 0.25f);
+    }
+  }
+
+  if (out_elems <= 64) {
+    print_fp16_grid("Expected (CPU avgpool)", expected, out_rows, out_cols);
+  }
+
+  float max_abs_diff = 0.0f;
+  for (size_t i = 0; i < out_elems; i++) {
+    float diff = fabsf((float)output_view[i] - (float)expected[i]);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+  }
+  const float kAtol = 1e-3f;
+  int matches = max_abs_diff <= kAtol;
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
 
   breakpoint();
+  free(expected); free(output_view);
   free(weights); free(input); free(stage1); free(unpacked);
-  return 0;
+  return matches ? 0 : -1;
 }
 
 static int run_cmplt_case(const CmpltTestConfig *config) {
@@ -4156,6 +4199,7 @@ int main(int argc, char **argv) {
   // test_conv1d(argc, argv);
   // test_conv2d(argc, argv);
   // test_matmul(argc, argv);
-  test_maxpool(argc, argv);
+  // test_maxpool(argc, argv);
+  test_avgpool(argc, argv);
   return 0;
 }

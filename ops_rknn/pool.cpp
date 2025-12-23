@@ -625,12 +625,12 @@ static bool run_pool_test(const PoolConfig& cfg) {
 
 int main() {
   std::vector<PoolConfig> test_cases = {
-    {"max_pool2d_float16_1x4", PoolType::Max,
-     1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
-     "MaxPool2d 2x2 stride1 on 1x1x4x4"},
-    // {"avg_pool2d_float16_1x4", PoolType::Avg,
+    // {"max_pool2d_float16_1x4", PoolType::Max,
     //  1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
-    //  "AvgPool2d 2x2 stride1 on 1x1x4x4"},
+    //  "MaxPool2d 2x2 stride1 on 1x1x4x4"},
+    {"avg_pool2d_float16_1x4", PoolType::Avg,
+     1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
+     "AvgPool2d 2x2 stride1 on 1x1x4x4"},
     // {"min_pool2d_float16_1x4", PoolType::Min,
     //  1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
     //  "MinPool2d 2x2 stride1 on 1x1x4x4"},

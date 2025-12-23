@@ -45,6 +45,7 @@ rounddown
 where
 sigmoid
 relu
-# maxpool
+maxpool
+avgpool
 silu
 EOF
