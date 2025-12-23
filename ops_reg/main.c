@@ -317,6 +317,23 @@ static void print_fp16_grid(const char *label, const __fp16 *data,
   }
 }
 
+static void print_fp32_grid(const char *label, const float *data,
+    int rows, int cols) {
+  if (!data) {
+    printf("%s: (null)\n", label);
+    return;
+  }
+  printf("%s (%dx%d):\n", label, rows, cols);
+  for (int r = 0; r < rows; r++) {
+    printf("  ");
+    for (int c = 0; c < cols; c++) {
+      size_t idx = (size_t)r * cols + c;
+      printf("%7.3f ", data[idx]);
+    }
+    printf("\n");
+  }
+}
+
 static void print_fp16_matrix(const char *title, const __fp16 *data,
     int rows, int cols) {
   printf("%s tensor([\n", title);
@@ -503,16 +520,30 @@ typedef struct {
   int cols;
 } RoundoffTestConfig;
 
+typedef struct {
+  const char *name;
+  int rows;
+  int cols;
+} MaxpoolTestConfig;
+
+typedef struct {
+  const char *name;
+  int rows;
+  int cols;
+} AvgpoolTestConfig;
+
 		typedef struct {
 		  const char *name;
 		  int rows;
 		  int cols;
 		} MaxTestConfig;
 
+static float roundoff_ref(float in_val);
+
 	static int run_div_case(const DivTestConfig *config) {
-	  if (!config) return -1;
-	  const char *name = config->name ? config->name : "div_case";
-	  int rows = config->rows > 0 ? config->rows : 1;
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "div_case";
+  int rows = config->rows > 0 ? config->rows : 1;
   int cols = config->cols > 0 ? config->cols : 1;
   size_t total_elements = (size_t)rows * cols;
   if (total_elements == 0 || total_elements > 65536) {
@@ -590,12 +621,251 @@ typedef struct {
 
   printf("%s: matches CPU fp16 -> %s (max diff=%.6f)\n", name, matches_fp16 ? "YES" : "NO", max_abs_diff_fp16);
   printf("%s: matches CPU fp32 -> %s (max diff=%.6f)\n", name, matches_fp32 ? "YES" : "NO", max_abs_diff_fp32);
+  printf("%s: matches CPU -> %s\n", name, (matches_fp16 || matches_fp32) ? "YES" : "NO");
 
   breakpoint();
   free(unpacked_fp16);
   free(a);
   free(b);
   return (matches_fp16 || matches_fp32) ? 0 : -1;
+}
+
+static int run_idiv_case(const DivTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "idiv_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *a = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *b = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *div_unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *offset = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *rounddown_stage = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *expected_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  float *result_fp32 = (float*)malloc(total_elements * sizeof(float));
+  if (!a || !b || !div_unpacked || !offset || !rounddown_stage ||
+      !weights || !unpacked || !expected_fp16 || !result_fp32) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(a); free(b); free(div_unpacked); free(offset); free(rounddown_stage);
+    free(weights); free(unpacked); free(expected_fp16); free(result_fp32);
+    return -1;
+  }
+
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (int i = 0; i < size; i++) {
+    float av = mt_uniform(&rng, 0.0f, 512.0f);
+    float bv = mt_uniform(&rng, 1.0f, 16.0f);
+    a[i] = (__fp16)av;
+    b[i] = (__fp16)bv;
+    offset[i] = (__fp16)0.5f;
+    float div_val = (float)a[i] / (float)b[i];
+    expected_fp16[i] = (__fp16)roundoff_ref(div_val - 0.5f);
+  }
+
+  set_div_params(rows, cols);
+  __fp16 *div_packed = float16_alu_op(a, b, 3, size);
+  if (!div_packed) {
+    printf("%s: float16_alu_op div failed\n", name);
+    free(a); free(b); free(div_unpacked); free(offset); free(rounddown_stage);
+    free(weights); free(unpacked); free(expected_fp16); free(result_fp32);
+    return -1;
+  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  for (int i = 0; i < size; i++) {
+    div_unpacked[i] = div_packed[(size_t)i * stride_fp16];
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *stage1_packed = float16_alu_op(offset, div_unpacked, 4, size);
+  if (!stage1_packed) {
+    printf("%s: float16_alu_op rounddown stage1 failed\n", name);
+    free(a); free(b); free(div_unpacked); free(offset); free(rounddown_stage);
+    free(weights); free(unpacked); free(expected_fp16); free(result_fp32);
+    return -1;
+  }
+
+  for (int i = 0; i < size; i++) {
+    rounddown_stage[i] = stage1_packed[(size_t)i * stride_fp16];
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *result_packed = float16_alu_op(weights, rounddown_stage, 23, size);
+  if (!result_packed) {
+    printf("%s: float16_alu_op rounddown stage2 failed\n", name);
+    free(a); free(b); free(div_unpacked); free(offset); free(rounddown_stage);
+    free(weights); free(unpacked); free(expected_fp16); free(result_fp32);
+    return -1;
+  }
+
+  for (int i = 0; i < size; i++) {
+    unpacked[i] = result_packed[(size_t)i * stride_fp16];
+  }
+  const size_t stride_fp32 = 0x10 / sizeof(float);
+  const float *packed_fp32 = (const float *)result_packed;
+  for (int i = 0; i < size; i++) {
+    result_fp32[i] = packed_fp32[(size_t)i * stride_fp32];
+  }
+
+  float max_abs_diff_fp16 = 0.0f;
+  float max_abs_diff_fp32 = 0.0f;
+  for (int i = 0; i < size; i++) {
+    float expected = (float)expected_fp16[i];
+    float actual_fp16 = (float)unpacked[i];
+    float actual_fp32 = result_fp32[i];
+    float diff_fp16 = fabsf(actual_fp16 - expected);
+    float diff_fp32 = fabsf(actual_fp32 - expected);
+    if (diff_fp16 > max_abs_diff_fp16) max_abs_diff_fp16 = diff_fp16;
+    if (diff_fp32 > max_abs_diff_fp32) max_abs_diff_fp32 = diff_fp32;
+  }
+  const float kRounddownAtol = 1e-3f;
+  int matches_fp16 = max_abs_diff_fp16 <= kRounddownAtol;
+  int matches_fp32 = max_abs_diff_fp32 <= kRounddownAtol;
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input A", a, rows, cols);
+    print_fp16_grid("Input B", b, rows, cols);
+    print_fp16_grid("Div (as fp16)", div_unpacked, rows, cols);
+    print_fp16_grid("Stage1 (div-0.5)", rounddown_stage, rows, cols);
+    print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+    print_fp32_grid("Result (as fp32)", result_fp32, rows, cols);
+    print_fp16_grid("Expected (idiv)", expected_fp16, rows, cols);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  printf("%s: matches CPU fp16 -> %s (max diff=%.6f)\n",
+      name, matches_fp16 ? "YES" : "NO", max_abs_diff_fp16);
+  printf("%s: matches CPU fp32 -> %s (max diff=%.6f)\n",
+      name, matches_fp32 ? "YES" : "NO", max_abs_diff_fp32);
+  printf("%s: matches CPU -> %s\n",
+      name, (matches_fp16 || matches_fp32) ? "YES" : "NO");
+
+  breakpoint();
+  free(a); free(b); free(div_unpacked); free(offset); free(rounddown_stage);
+  free(weights); free(unpacked); free(expected_fp16); free(result_fp32);
+  return (matches_fp16 || matches_fp32) ? 0 : -1;
+}
+
+static int run_maxpool_case(const MaxpoolTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "maxpool_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *stage1 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!weights || !input || !stage1 || !unpacked) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  for (int i = 0; i < size; i++) {
+    float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
+    input[i] = (__fp16)(-2.0f + 4.0f * t);
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *stage1_packed = float16_alu_op(weights, input, 99, size);
+  if (!stage1_packed) {
+    printf("%s: float16_alu_op stage1 failed\n", name);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  for (int i = 0; i < size; i++) {
+    stage1[i] = stage1_packed[(size_t)i * stride_fp16];
+    unpacked[i] = stage1[i];
+  }
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input", input, rows, cols);
+    print_fp16_grid("Stage1 (alu99)", stage1, rows, cols);
+    print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  printf("%s: matches CPU -> NO (no CPU reference yet)\n", name);
+
+  breakpoint();
+  free(weights); free(input); free(stage1); free(unpacked);
+  return 0;
+}
+
+static int run_avgpool_case(const AvgpoolTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "avgpool_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *stage1 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!weights || !input || !stage1 || !unpacked) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  for (int i = 0; i < size; i++) {
+    float t = size > 1 ? (float)i / (float)(size - 1) : 0.0f;
+    input[i] = (__fp16)(1.0f + 3.0f * t);
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *stage1_packed = float16_alu_op(weights, input, 99, size);
+  if (!stage1_packed) {
+    printf("%s: float16_alu_op stage1 failed\n", name);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  for (int i = 0; i < size; i++) {
+    stage1[i] = stage1_packed[(size_t)i * stride_fp16];
+    unpacked[i] = stage1[i];
+  }
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input", input, rows, cols);
+    print_fp16_grid("Stage1 (alu99)", stage1, rows, cols);
+    print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  printf("%s: matches CPU -> NO (no CPU reference yet)\n", name);
+
+  breakpoint();
+  free(weights); free(input); free(stage1); free(unpacked);
+  return 0;
 }
 
 static int run_cmplt_case(const CmpltTestConfig *config) {
@@ -1594,6 +1864,14 @@ static int run_where_case(const WhereTestConfig *config) {
   return matches ? 0 : -1;
 }
 
+static float roundoff_ref(float in_val) {
+  float base = floorf(in_val);
+  float frac = in_val - base;
+  int base_i = (int)base;
+  if (frac > 0.5f || (frac == 0.5f && (base_i & 1))) return base + 1.0f;
+  return base;
+}
+
 static int run_rounddown_case(const RounddownTestConfig *config) {
   if (!config) return -1;
   const char *name = config->name ? config->name : "rounddown_case";
@@ -1608,34 +1886,62 @@ static int run_rounddown_case(const RounddownTestConfig *config) {
 
   __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
   __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *offset = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *stage1 = (__fp16*)malloc(total_elements * sizeof(__fp16));
   __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
   __fp16 *expected_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
-  if (!weights || !input || !unpacked || !expected_fp16) {
+  float *result_fp32 = (float*)malloc(total_elements * sizeof(float));
+  if (!weights || !input || !offset || !stage1 || !unpacked || !expected_fp16 || !result_fp32) {
     printf("%s: failed to allocate %zu elements\n", name, total_elements);
-    free(weights); free(input); free(unpacked); free(expected_fp16);
+    free(weights); free(input); free(offset); free(stage1);
+    free(unpacked); free(expected_fp16); free(result_fp32);
     return -1;
   }
 
   static const float samples[] = {
-      0.00f, 0.10f, 0.50f, 0.90f, 1.10f, 1.90f, 2.00f, 2.70f,
-      3.01f, 3.50f, 3.99f, 4.00f, 4.25f, 4.75f, 5.10f, 5.90f,
+      0.50f, 0.60f, 1.00f, 1.40f, 1.60f, 2.40f, 2.50f, 3.20f,
+      3.51f, 4.00f, 4.49f, 4.50f, 4.75f, 5.25f, 5.60f, 6.40f,
   };
   const int sample_count = (int)(sizeof(samples) / sizeof(samples[0]));
+  const float rounddown_offset = 0.5f;
   for (int i = 0; i < size; i++) {
-    input[i] = (__fp16)samples[i % sample_count];
-    expected_fp16[i] = (__fp16)((float)input[i] - floorf((float)input[i]));
+    float x = samples[i % sample_count];
+    input[i] = (__fp16)x;
+    offset[i] = (__fp16)rounddown_offset;
+    expected_fp16[i] = (__fp16)roundoff_ref(x - rounddown_offset);
   }
 
   set_minus_params(rows, cols);
-  __fp16 *result_packed = float16_alu_op(weights, input, 21, size);
-  if (!result_packed) {
-    printf("%s: float16_alu_op failed\n", name);
-    free(weights); free(input); free(unpacked); free(expected_fp16);
+  __fp16 *stage1_packed = float16_alu_op(offset, input, 4, size);
+  if (!stage1_packed) {
+    printf("%s: float16_alu_op stage1 failed\n", name);
+    free(weights); free(input); free(offset); free(stage1);
+    free(unpacked); free(expected_fp16); free(result_fp32);
     return -1;
   }
 
   const size_t stride_fp16 = 0x10 / sizeof(__fp16);
-  for (int i = 0; i < size; i++) unpacked[i] = result_packed[(size_t)i * stride_fp16];
+  for (int i = 0; i < size; i++) {
+    stage1[i] = stage1_packed[(size_t)i * stride_fp16];
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *result_packed = float16_alu_op(weights, stage1, 23, size);
+  if (!result_packed) {
+    printf("%s: float16_alu_op stage2 failed\n", name);
+    free(weights); free(input); free(offset); free(stage1);
+    free(unpacked); free(expected_fp16); free(result_fp32);
+    return -1;
+  }
+
+  for (int i = 0; i < size; i++) {
+    unpacked[i] = result_packed[(size_t)i * stride_fp16];
+  }
+  const size_t stride_fp32 = 0x10 / sizeof(float);
+  const float *packed_fp32 = (const float *)result_packed;
+  for (int i = 0; i < size; i++) {
+    result_fp32[i] = packed_fp32[(size_t)i * stride_fp32];
+  }
 
   float max_abs_diff = 0.0f;
   int mismatch_count = 0;
@@ -1649,9 +1955,11 @@ static int run_rounddown_case(const RounddownTestConfig *config) {
   int matches = mismatch_count == 0;
 
   if (total_elements <= 64) {
-    print_fp16_grid("Input", input, rows, cols);
+    print_fp16_grid("Input (x)", input, rows, cols);
+    print_fp16_grid("Stage1 (x-0.5)", stage1, rows, cols);
     print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
-    print_fp16_grid("Expected (frac)", expected_fp16, rows, cols);
+    print_fp32_grid("Result (as fp32)", result_fp32, rows, cols);
+    print_fp16_grid("Expected (rounddown)", expected_fp16, rows, cols);
   } else {
     printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
   }
@@ -1660,7 +1968,8 @@ static int run_rounddown_case(const RounddownTestConfig *config) {
       name, matches ? "YES" : "NO", max_abs_diff, mismatch_count);
 
   breakpoint();
-  free(weights); free(input); free(unpacked); free(expected_fp16);
+  free(weights); free(input); free(offset); free(stage1);
+  free(unpacked); free(expected_fp16); free(result_fp32);
   return matches ? 0 : -1;
 }
 
@@ -1680,23 +1989,19 @@ static int run_roundoff_case(const RoundoffTestConfig *config) {
   __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
   __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
   __fp16 *expected_fp16 = (__fp16*)malloc(total_elements * sizeof(__fp16));
-  if (!weights || !input || !unpacked || !expected_fp16) {
+  float *result_fp32 = (float*)malloc(total_elements * sizeof(float));
+  if (!weights || !input || !unpacked || !expected_fp16 || !result_fp32) {
     printf("%s: failed to allocate %zu elements\n", name, total_elements);
-    free(weights); free(input); free(unpacked); free(expected_fp16);
+    free(weights); free(input); free(unpacked); free(expected_fp16); free(result_fp32);
     return -1;
   }
 
   Mt19937 rng;
   mt_seed(&rng, 0);
   for (int i = 0; i < size; i++) {
-    input[i] = (__fp16)mt_uniform(&rng, 0.0f, 6.0f);
+    input[i] = (__fp16)mt_uniform(&rng, 0.0f, 512.0f);
     float in_val = (float)input[i];
-    float base = floorf(in_val);
-    float frac = in_val - base;
-    int base_i = (int)base;
-    float rounded = base;
-    if (frac > 0.5f || (frac == 0.5f && (base_i & 1))) rounded = base + 1.0f;
-    expected_fp16[i] = (__fp16)rounded;
+    expected_fp16[i] = (__fp16)roundoff_ref(in_val);
   }
 
   set_minus_params(rows, cols);
@@ -1708,33 +2013,49 @@ static int run_roundoff_case(const RoundoffTestConfig *config) {
   }
 
   const size_t stride_fp16 = 0x10 / sizeof(__fp16);
-  for (int i = 0; i < size; i++) unpacked[i] = result_packed[(size_t)i * stride_fp16];
-
-  float max_abs_diff = 0.0f;
-  int mismatch_count = 0;
   for (int i = 0; i < size; i++) {
-    float actual = (float)unpacked[i];
-    float expected = (float)expected_fp16[i];
-    float diff = fabsf(actual - expected);
-    if (diff > max_abs_diff) max_abs_diff = diff;
-    if (diff > 1e-3f) mismatch_count++;
+    unpacked[i] = result_packed[(size_t)i * stride_fp16];
   }
-  int matches = mismatch_count == 0;
+  const size_t stride_fp32 = 0x10 / sizeof(float);
+  const float *packed_fp32 = (const float *)result_packed;
+  for (int i = 0; i < size; i++) {
+    result_fp32[i] = packed_fp32[(size_t)i * stride_fp32];
+  }
+
+  float max_abs_diff_fp16 = 0.0f;
+  float max_abs_diff_fp32 = 0.0f;
+  for (int i = 0; i < size; i++) {
+    float expected = (float)expected_fp16[i];
+    float actual_fp16 = (float)unpacked[i];
+    float actual_fp32 = result_fp32[i];
+    float diff_fp16 = fabsf(actual_fp16 - expected);
+    float diff_fp32 = fabsf(actual_fp32 - expected);
+    if (diff_fp16 > max_abs_diff_fp16) max_abs_diff_fp16 = diff_fp16;
+    if (diff_fp32 > max_abs_diff_fp32) max_abs_diff_fp32 = diff_fp32;
+  }
+  const float kRoundoffAtol = 1e-3f;
+  int matches_fp16 = max_abs_diff_fp16 <= kRoundoffAtol;
+  int matches_fp32 = max_abs_diff_fp32 <= kRoundoffAtol;
 
   if (total_elements <= 64) {
     print_fp16_grid("Input", input, rows, cols);
     print_fp16_grid("Result (as fp16)", unpacked, rows, cols);
+    print_fp32_grid("Result (as fp32)", result_fp32, rows, cols);
     print_fp16_grid("Expected (round)", expected_fp16, rows, cols);
   } else {
     printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
   }
 
-  printf("%s: matches CPU -> %s (max diff=%.6f, mismatches=%d)\n",
-      name, matches ? "YES" : "NO", max_abs_diff, mismatch_count);
+  printf("%s: matches CPU fp16 -> %s (max diff=%.6f)\n",
+      name, matches_fp16 ? "YES" : "NO", max_abs_diff_fp16);
+  printf("%s: matches CPU fp32 -> %s (max diff=%.6f)\n",
+      name, matches_fp32 ? "YES" : "NO", max_abs_diff_fp32);
+  printf("%s: matches CPU -> %s\n",
+      name, (matches_fp16 || matches_fp32) ? "YES" : "NO");
 
   breakpoint();
-  free(weights); free(input); free(unpacked); free(expected_fp16);
-  return matches ? 0 : -1;
+  free(weights); free(input); free(unpacked); free(expected_fp16); free(result_fp32);
+  return (matches_fp16 || matches_fp32) ? 0 : -1;
 }
 
 static int run_max_case(const MaxTestConfig *config) {
@@ -2030,6 +2351,57 @@ static int test_div(int argc, char **argv) {
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
     if (run_div_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+static int test_idiv(int argc, char **argv) {
+  if (argc >= 3) {
+    DivTestConfig cli = {"idiv_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_idiv_case(&cli);
+  }
+
+  static const DivTestConfig configs[] = {
+    {"idiv_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_idiv_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+static int test_maxpool(int argc, char **argv) {
+  if (argc >= 3) {
+    MaxpoolTestConfig cli = {"maxpool_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_maxpool_case(&cli);
+  }
+
+  static const MaxpoolTestConfig configs[] = {
+    {"maxpool_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_maxpool_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+static int test_avgpool(int argc, char **argv) {
+  if (argc >= 3) {
+    AvgpoolTestConfig cli = {"avgpool_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_avgpool_case(&cli);
+  }
+
+  static const AvgpoolTestConfig configs[] = {
+    {"avgpool_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_avgpool_case(&configs[i]) != 0) status = -1;
   }
   return status;
 }
@@ -3642,6 +4014,9 @@ static int run_all_tests(void) {
   if (test_alu(0, NULL) != 0) status = -1;
   if (test_max(0, NULL) != 0) status = -1;
   if (test_div(0, NULL) != 0) status = -1;
+  if (test_idiv(0, NULL) != 0) status = -1;
+  if (test_maxpool(0, NULL) != 0) status = -1;
+  if (test_avgpool(0, NULL) != 0) status = -1;
   if (test_cmple(0, NULL) != 0) status = -1;
   if (test_cmpgt(0, NULL) != 0) status = -1;
   if (test_cmpge(0, NULL) != 0) status = -1;
@@ -3670,6 +4045,9 @@ static int run_named_test(const char *name, int argc, char **argv) {
   if (strcmp(name, "alu") == 0) return test_alu(argc, argv);
   if (strcmp(name, "max") == 0) return test_max(argc, argv);
   if (strcmp(name, "div") == 0) return test_div(argc, argv);
+  if (strcmp(name, "idiv") == 0) return test_idiv(argc, argv);
+  if (strcmp(name, "maxpool") == 0) return test_maxpool(argc, argv);
+  if (strcmp(name, "avgpool") == 0) return test_avgpool(argc, argv);
   if (strcmp(name, "cmple") == 0) return test_cmple(argc, argv);
   if (strcmp(name, "cmpgt") == 0) return test_cmpgt(argc, argv);
   if (strcmp(name, "cmpge") == 0) return test_cmpge(argc, argv);
@@ -3714,7 +4092,7 @@ int main(int argc, char **argv) {
   // test_cmpge(argc, argv);
   // test_mul(argc, argv);
   // test_rounddown(argc, argv);
-  // test_roundoff(argc, argv);
+  test_roundoff(argc, argv);
   // test_abs(argc, argv);
   // test_where(argc, argv);
   // test_cmplt(argc, argv);
@@ -3724,7 +4102,7 @@ int main(int argc, char **argv) {
   // test_add(argc, argv);
   // test_minus(argc, argv);
   // test_sigmoid(argc, argv);
-  test_silu(argc, argv);
+  // test_silu(argc, argv);
   // test_relu(argc, argv);
   // test_conv1d(argc, argv);
   // test_conv2d(argc, argv);

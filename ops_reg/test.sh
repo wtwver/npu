@@ -14,9 +14,13 @@ while IFS= read -r test_entry; do
     set +e
     ./main "${test_entry}" | tee /tmp/test_ops_reg.log
 
-    if cat /tmp/test_ops_reg.log | rg "matches CPU -> NO|timed out|failed"; then
-      echo "Stopping: ${test_entry} reported CPU mismatch or timeout"
+    if ! rg -q "matches CPU -> YES" /tmp/test_ops_reg.log; then
+      echo "Stopping: ${test_entry} did not report matches CPU -> YES"
       exit 1
+      if rg -q "matches CPU -> NO|timed out|failed|not found" /tmp/test_ops_reg.log; then
+        echo "Stopping: ${test_entry} did not report matches CPU -> YES"
+        exit 1
+      fi
     fi
 done <<'EOF'
 conv1d
@@ -26,6 +30,7 @@ add
 minus
 mul
 div
+idiv
 abs
 neg
 max
@@ -36,8 +41,10 @@ cmplt
 cmpeq
 cmpneq
 roundoff
+rounddown
 where
 sigmoid
 relu
+# maxpool
 silu
 EOF
