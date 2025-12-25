@@ -756,9 +756,141 @@ static int run_idiv_case(const DivTestConfig *config) {
   return (matches_fp16 || matches_fp32) ? 0 : -1;
 }
 
-static int run_maxpool_case(const MaxpoolTestConfig *config) {
+static int run_pool_case(const MaxpoolTestConfig *config, const char *pool_label,
+    int negate_input, int negate_output, int use_min_ref) {
   if (!config) return -1;
-  const char *name = config->name ? config->name : "maxpool_case";
+  const char *name = config->name ? config->name : "pool_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *stage1 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!weights || !input || !stage1 || !unpacked) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (int i = 0; i < size; i++) {
+    input[i] = (__fp16)mt_uniform(&rng, -2.0f, 2.0f);
+  }
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input (pre-submit)", input, rows, cols);
+  }
+
+  __fp16 *input_for_op = input;
+  if (negate_input) {
+    // Reuse stage1 as a temporary buffer for negated inputs.
+    input_for_op = stage1;
+    for (int i = 0; i < size; i++) {
+      input_for_op[i] = (__fp16)(-(float)input[i]);
+    }
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *stage1_packed = float16_alu_op(weights, input_for_op, 24, size);
+  if (!stage1_packed) {
+    printf("%s: float16_alu_op stage1 failed\n", name);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  int out_rows = rows > 1 ? (rows - 1) : 0;
+  int out_cols = cols > 1 ? (cols - 1) : 0;
+  size_t out_elems = (size_t)out_rows * out_cols;
+  __fp16 *output_view = (__fp16*)malloc(out_elems * sizeof(__fp16));
+  if (!output_view) {
+    printf("%s: failed to allocate output view\n", name);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+  for (size_t i = 0; i < out_elems; i++) {
+    float val = (float)stage1_packed[i * stride_fp16];
+    if (negate_output) val = -val;
+    output_view[i] = (__fp16)val;
+  }
+
+  if (total_elements <= 64) {
+    char output_title[64];
+    snprintf(output_title, sizeof(output_title), "Output (%s)", pool_label);
+    print_fp16_grid("Input", input, rows, cols);
+    print_fp16_grid(output_title, output_view, out_rows, out_cols);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  __fp16 *expected = (__fp16*)malloc(out_elems * sizeof(__fp16));
+  if (!expected) {
+    printf("%s: failed to allocate CPU reference buffers\n", name);
+    free(expected);
+    free(output_view);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  for (int r = 0; r < out_rows; r++) {
+    for (int c = 0; c < out_cols; c++) {
+      float ref_val = (float)input[(size_t)r * cols + c];
+      for (int kr = 0; kr < 2; kr++) {
+        for (int kc = 0; kc < 2; kc++) {
+          size_t idx = (size_t)(r + kr) * cols + (c + kc);
+          float v = (float)input[idx];
+          if (use_min_ref) {
+            if (v < ref_val) ref_val = v;
+          } else {
+            if (v > ref_val) ref_val = v;
+          }
+        }
+      }
+      size_t out_idx = (size_t)r * out_cols + c;
+      expected[out_idx] = (__fp16)ref_val;
+    }
+  }
+
+  if (out_elems <= 64) {
+    char expected_title[64];
+    snprintf(expected_title, sizeof(expected_title), "Expected (CPU %s)", pool_label);
+    print_fp16_grid(expected_title, expected, out_rows, out_cols);
+  }
+
+  float max_abs_diff = 0.0f;
+  for (size_t i = 0; i < out_elems; i++) {
+    float diff = fabsf((float)output_view[i] - (float)expected[i]);
+    if (diff > max_abs_diff) max_abs_diff = diff;
+  }
+  const float kAtol = 1e-3f;
+  int matches = max_abs_diff <= kAtol;
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
+
+  breakpoint();
+  free(expected); free(output_view);
+  free(weights); free(input); free(stage1); free(unpacked);
+  return matches ? 0 : -1;
+}
+
+static int run_maxpool_case(const MaxpoolTestConfig *config) {
+  return run_pool_case(config, "maxpool", 0, 0, 0);
+}
+
+static int run_minpool_case(const MaxpoolTestConfig *config) {
+  return run_pool_case(config, "minpool", 1, 1, 1);
+}
+
+static int run_globalmaxpool_case(const MaxpoolTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "globalmaxpool_case";
   int rows = config->rows > 0 ? config->rows : 1;
   int cols = config->cols > 0 ? config->cols : 1;
   size_t total_elements = (size_t)rows * cols;
@@ -789,7 +921,100 @@ static int run_maxpool_case(const MaxpoolTestConfig *config) {
   }
 
   set_minus_params(rows, cols);
-  __fp16 *stage1_packed = float16_alu_op(weights, input, 24, size);
+  __fp16 *stage1_packed = float16_alu_op(weights, input, 25, size);
+  if (!stage1_packed) {
+    printf("%s: float16_alu_op stage1 failed\n", name);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  const size_t stride_fp16 = 0x10 / sizeof(__fp16);
+  __fp16 *output_view = (__fp16*)malloc(sizeof(__fp16));
+  if (!output_view) {
+    printf("%s: failed to allocate output view\n", name);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+  output_view[0] = stage1_packed[0 * stride_fp16];
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input", input, rows, cols);
+    print_fp16_grid("Output (globalmaxpool)", output_view, 1, 1);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  __fp16 *expected = (__fp16*)malloc(sizeof(__fp16));
+  if (!expected) {
+    printf("%s: failed to allocate CPU reference buffers\n", name);
+    free(expected);
+    free(output_view);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  float max_val = (float)input[0];
+  for (int i = 1; i < size; i++) {
+    float v = (float)input[i];
+    if (v > max_val) max_val = v;
+  }
+  expected[0] = (__fp16)max_val;
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Expected (CPU globalmaxpool)", expected, 1, 1);
+  }
+
+  float max_abs_diff = fabsf((float)output_view[0] - (float)expected[0]);
+  const float kAtol = 1e-3f;
+  int matches = max_abs_diff <= kAtol;
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
+
+  breakpoint();
+  free(expected); free(output_view);
+  free(weights); free(input); free(stage1); free(unpacked);
+  return matches ? 0 : -1;
+}
+
+static int run_globalminpool_case(const MaxpoolTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "globalminpool_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *stage1 = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  __fp16 *unpacked = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!weights || !input || !stage1 || !unpacked) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(weights); free(input); free(stage1); free(unpacked);
+    return -1;
+  }
+
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (int i = 0; i < size; i++) {
+    input[i] = (__fp16)mt_uniform(&rng, -2.0f, 2.0f);
+  }
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input (pre-submit)", input, rows, cols);
+  }
+
+  __fp16 *input_for_op = stage1;
+  for (int i = 0; i < size; i++) {
+    input_for_op[i] = (__fp16)(-(float)input[i]);
+  }
+
+  // Global min via maxpool on negated input, then reduce pooled outputs.
+  set_minus_params(rows, cols);
+  __fp16 *stage1_packed = float16_alu_op(weights, input_for_op, 24, size);
   if (!stage1_packed) {
     printf("%s: float16_alu_op stage1 failed\n", name);
     free(weights); free(input); free(stage1); free(unpacked);
@@ -800,24 +1025,36 @@ static int run_maxpool_case(const MaxpoolTestConfig *config) {
   int out_rows = rows > 1 ? (rows - 1) : 0;
   int out_cols = cols > 1 ? (cols - 1) : 0;
   size_t out_elems = (size_t)out_rows * out_cols;
-  __fp16 *output_view = (__fp16*)malloc(out_elems * sizeof(__fp16));
+  __fp16 *output_view = (__fp16*)malloc(sizeof(__fp16));
   if (!output_view) {
     printf("%s: failed to allocate output view\n", name);
     free(weights); free(input); free(stage1); free(unpacked);
     return -1;
   }
-  for (size_t i = 0; i < out_elems; i++) {
-    output_view[i] = stage1_packed[i * stride_fp16];
+  float max_neg = 0.0f;
+  if (out_elems > 0) {
+    max_neg = (float)stage1_packed[0 * stride_fp16];
+    for (size_t i = 1; i < out_elems; i++) {
+      float v = (float)stage1_packed[i * stride_fp16];
+      if (v > max_neg) max_neg = v;
+    }
+  } else {
+    max_neg = (float)input_for_op[0];
+    for (int i = 1; i < size; i++) {
+      float v = (float)input_for_op[i];
+      if (v > max_neg) max_neg = v;
+    }
   }
+  output_view[0] = (__fp16)(-max_neg);
 
   if (total_elements <= 64) {
     print_fp16_grid("Input", input, rows, cols);
-    print_fp16_grid("Output (as fp16)", output_view, out_rows, out_cols);
+    print_fp16_grid("Output (globalminpool)", output_view, 1, 1);
   } else {
     printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
   }
 
-  __fp16 *expected = (__fp16*)malloc(out_elems * sizeof(__fp16));
+  __fp16 *expected = (__fp16*)malloc(sizeof(__fp16));
   if (!expected) {
     printf("%s: failed to allocate CPU reference buffers\n", name);
     free(expected);
@@ -826,31 +1063,18 @@ static int run_maxpool_case(const MaxpoolTestConfig *config) {
     return -1;
   }
 
-  for (int r = 0; r < out_rows; r++) {
-    for (int c = 0; c < out_cols; c++) {
-      float max_val = (float)input[(size_t)r * cols + c];
-      for (int kr = 0; kr < 2; kr++) {
-        for (int kc = 0; kc < 2; kc++) {
-          size_t idx = (size_t)(r + kr) * cols + (c + kc);
-          float v = (float)input[idx];
-          if (v > max_val) max_val = v;
-        }
-      }
-      size_t out_idx = (size_t)r * out_cols + c;
-      expected[out_idx] = (__fp16)max_val;
-    }
+  float min_val = (float)input[0];
+  for (int i = 1; i < size; i++) {
+    float v = (float)input[i];
+    if (v < min_val) min_val = v;
+  }
+  expected[0] = (__fp16)min_val;
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Expected (CPU globalminpool)", expected, 1, 1);
   }
 
-  if (out_elems <= 64) {
-    print_fp16_grid("Output (maxpool)", output_view, out_rows, out_cols);
-    print_fp16_grid("Expected (CPU maxpool)", expected, out_rows, out_cols);
-  }
-
-  float max_abs_diff = 0.0f;
-  for (size_t i = 0; i < out_elems; i++) {
-    float diff = fabsf((float)output_view[i] - (float)expected[i]);
-    if (diff > max_abs_diff) max_abs_diff = diff;
-  }
+  float max_abs_diff = fabsf((float)output_view[0] - (float)expected[0]);
   const float kAtol = 1e-3f;
   int matches = max_abs_diff <= kAtol;
   printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
@@ -890,7 +1114,7 @@ static int run_avgpool_case(const AvgpoolTestConfig *config) {
   }
 
   set_minus_params(rows, cols);
-  __fp16 *stage1_packed = float16_alu_op(weights, input, 25, size);
+  __fp16 *stage1_packed = float16_alu_op(weights, input, 26, size);
   if (!stage1_packed) {
     printf("%s: float16_alu_op stage1 failed\n", name);
     free(weights); free(input); free(stage1); free(unpacked);
@@ -2477,6 +2701,57 @@ static int test_maxpool(int argc, char **argv) {
   int status = 0;
   for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
     if (run_maxpool_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+static int test_globalmaxpool(int argc, char **argv) {
+  if (argc >= 3) {
+    MaxpoolTestConfig cli = {"globalmaxpool_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_globalmaxpool_case(&cli);
+  }
+
+  static const MaxpoolTestConfig configs[] = {
+    {"globalmaxpool_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_globalmaxpool_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+static int test_globalminpool(int argc, char **argv) {
+  if (argc >= 3) {
+    MaxpoolTestConfig cli = {"globalminpool_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_globalminpool_case(&cli);
+  }
+
+  static const MaxpoolTestConfig configs[] = {
+    {"globalminpool_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_globalminpool_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
+static int test_minpool(int argc, char **argv) {
+  if (argc >= 3) {
+    MaxpoolTestConfig cli = {"minpool_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_minpool_case(&cli);
+  }
+
+  static const MaxpoolTestConfig configs[] = {
+    {"minpool_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_minpool_case(&configs[i]) != 0) status = -1;
   }
   return status;
 }
@@ -4108,6 +4383,9 @@ static int run_all_tests(void) {
   if (test_div(0, NULL) != 0) status = -1;
   if (test_idiv(0, NULL) != 0) status = -1;
   if (test_maxpool(0, NULL) != 0) status = -1;
+  if (test_globalmaxpool(0, NULL) != 0) status = -1;
+  if (test_globalminpool(0, NULL) != 0) status = -1;
+  if (test_minpool(0, NULL) != 0) status = -1;
   if (test_avgpool(0, NULL) != 0) status = -1;
   if (test_cmple(0, NULL) != 0) status = -1;
   if (test_cmpgt(0, NULL) != 0) status = -1;
@@ -4139,6 +4417,9 @@ static int run_named_test(const char *name, int argc, char **argv) {
   if (strcmp(name, "div") == 0) return test_div(argc, argv);
   if (strcmp(name, "idiv") == 0) return test_idiv(argc, argv);
   if (strcmp(name, "maxpool") == 0) return test_maxpool(argc, argv);
+  if (strcmp(name, "globalmaxpool") == 0) return test_globalmaxpool(argc, argv);
+  if (strcmp(name, "globalminpool") == 0) return test_globalminpool(argc, argv);
+  if (strcmp(name, "minpool") == 0) return test_minpool(argc, argv);
   if (strcmp(name, "avgpool") == 0) return test_avgpool(argc, argv);
   if (strcmp(name, "cmple") == 0) return test_cmple(argc, argv);
   if (strcmp(name, "cmpgt") == 0) return test_cmpgt(argc, argv);
@@ -4200,6 +4481,9 @@ int main(int argc, char **argv) {
   // test_conv2d(argc, argv);
   // test_matmul(argc, argv);
   // test_maxpool(argc, argv);
-  test_avgpool(argc, argv);
+  // test_minpool(argc, argv);
+  // test_avgpool(argc, argv);
+  // test_globalmaxpool(argc, argv);
+  test_globalminpool(argc, argv);
   return 0;
 }

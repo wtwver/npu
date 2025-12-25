@@ -628,9 +628,9 @@ int main() {
     // {"max_pool2d_float16_1x4", PoolType::Max,
     //  1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
     //  "MaxPool2d 2x2 stride1 on 1x1x4x4"},
-    {"avg_pool2d_float16_1x4", PoolType::Avg,
-     1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
-     "AvgPool2d 2x2 stride1 on 1x1x4x4"},
+    // {"avg_pool2d_float16_1x4", PoolType::Avg,
+    //  1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
+    //  "AvgPool2d 2x2 stride1 on 1x1x4x4"},
     // {"min_pool2d_float16_1x4", PoolType::Min,
     //  1, 1, 4, 4, 2, 2, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
     //  "MinPool2d 2x2 stride1 on 1x1x4x4"},
@@ -639,7 +639,13 @@ int main() {
     //  "AdaptiveAvgPool2d output 2x2 from 1x1x4x4"},
     // {"global_max_pool2d_float16_1x4", PoolType::Max,
     //  1, 1, 4, 4, 4, 4, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
-    //  "Global MaxPool2d over 1x1x4x4"}
+    //  "Global MaxPool2d over 1x1x4x4"},
+    {"global_min_pool2d_float16_1x4", PoolType::Min,
+     1, 1, 4, 4, 4, 4, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
+     "Global MinPool2d over 1x1x4x4"},
+    // {"global_avg_pool2d_float16_1x4", PoolType::Avg,
+    //  1, 1, 4, 4, 4, 4, 1, 1, 0, 0, 1, 1, false, false, false, 0, 0,
+    //  "Global AvgPool2d over 1x1x4x4"}
   };
 
   std::cout << "\n" << std::string(80, '#') << std::endl;

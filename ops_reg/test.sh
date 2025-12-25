@@ -46,6 +46,9 @@ where
 sigmoid
 relu
 maxpool
+minpool
 avgpool
+globalmaxpool
+globalminpool
 silu
 EOF
