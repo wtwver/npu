@@ -1184,6 +1184,77 @@ static int run_avgpool_case(const AvgpoolTestConfig *config) {
   return matches ? 0 : -1;
 }
 
+static int run_globalavgpool_case(const AvgpoolTestConfig *config) {
+  if (!config) return -1;
+  const char *name = config->name ? config->name : "globalavgpool_case";
+  int rows = config->rows > 0 ? config->rows : 1;
+  int cols = config->cols > 0 ? config->cols : 1;
+  size_t total_elements = (size_t)rows * cols;
+  if (total_elements == 0 || total_elements > 65536) {
+    printf("%s: invalid element count %zu\n", name, total_elements);
+    return -1;
+  }
+  if (rows != 4 || cols != 4) {
+    printf("%s: requires 4x4 input to match alu algo 27 config\n", name);
+    return -1;
+  }
+  int size = (int)total_elements;
+
+  __fp16 *weights = (__fp16*)calloc(total_elements, sizeof(__fp16));
+  __fp16 *input = (__fp16*)malloc(total_elements * sizeof(__fp16));
+  if (!weights || !input) {
+    printf("%s: failed to allocate %zu elements\n", name, total_elements);
+    free(weights); free(input);
+    return -1;
+  }
+
+  Mt19937 rng;
+  mt_seed(&rng, 0);
+  for (int i = 0; i < size; i++) {
+    input[i] = (__fp16)mt_uniform(&rng, -2.0f, 2.0f);
+  }
+
+  set_minus_params(rows, cols);
+  __fp16 *output_packed = float16_alu_op(weights, input, 27, size);
+  if (!output_packed) {
+    printf("%s: float16_alu_op failed\n", name);
+    free(weights); free(input);
+    return -1;
+  }
+
+  __fp16 output_val = output_packed[0];
+  float output_scalar = (float)output_val;
+  // PPU reciprocal yields sum/width; scale by height for global average.
+  float scaled_output = output_scalar / (float)rows;
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Input", input, rows, cols);
+    print_fp16_grid("Output (globalavgpool, pre-scale)", &output_val, 1, 1);
+    printf("Scaled output (globalavgpool): %.6f\n", scaled_output);
+  }
+
+  float sum = 0.0f;
+  for (int i = 0; i < size; i++) {
+    sum += (float)input[i];
+  }
+  __fp16 expected = (__fp16)(sum / (float)size);
+
+  if (total_elements <= 64) {
+    print_fp16_grid("Expected (CPU globalavgpool)", &expected, 1, 1);
+  } else {
+    printf("%s: tested %dx%d (total %zu elements)\n", name, rows, cols, total_elements);
+  }
+
+  float max_abs_diff = fabsf(scaled_output - (float)expected);
+  const float kAtol = 1e-3f;
+  int matches = max_abs_diff <= kAtol;
+  printf("%s: matches CPU -> %s (max diff=%.6f)\n", name, matches ? "YES" : "NO", max_abs_diff);
+
+  breakpoint();
+  free(weights); free(input);
+  return matches ? 0 : -1;
+}
+
 static int run_cmplt_case(const CmpltTestConfig *config) {
   if (!config) return -1;
   const char *name = config->name ? config->name : "cmplt_case";
@@ -2773,6 +2844,23 @@ static int test_avgpool(int argc, char **argv) {
   return status;
 }
 
+static int test_globalavgpool(int argc, char **argv) {
+  if (argc >= 3) {
+    AvgpoolTestConfig cli = {"globalavgpool_cli", atoi(argv[1]), atoi(argv[2])};
+    return run_globalavgpool_case(&cli);
+  }
+
+  static const AvgpoolTestConfig configs[] = {
+    {"globalavgpool_4x4", 4, 4},
+  };
+
+  int status = 0;
+  for (size_t i = 0; i < sizeof(configs) / sizeof(configs[0]); i++) {
+    if (run_globalavgpool_case(&configs[i]) != 0) status = -1;
+  }
+  return status;
+}
+
 static int test_cmplt(int argc, char **argv) {
   if (argc >= 3) {
     CmpltTestConfig cli = {"cmplt_cli", atoi(argv[1]), atoi(argv[2]), 0, 0};
@@ -3034,6 +3122,8 @@ static int test_roundoff(int argc, char **argv) {
 
   static const RoundoffTestConfig configs[] = {
     {"roundoff_4x4", 4, 4},
+    {"roundoff_16x16", 16, 16},
+    {"roundoff_64x64", 64, 64},
   };
 
   int status = 0;
@@ -4387,6 +4477,7 @@ static int run_all_tests(void) {
   if (test_globalminpool(0, NULL) != 0) status = -1;
   if (test_minpool(0, NULL) != 0) status = -1;
   if (test_avgpool(0, NULL) != 0) status = -1;
+  if (test_globalavgpool(0, NULL) != 0) status = -1;
   if (test_cmple(0, NULL) != 0) status = -1;
   if (test_cmpgt(0, NULL) != 0) status = -1;
   if (test_cmpge(0, NULL) != 0) status = -1;
@@ -4421,6 +4512,7 @@ static int run_named_test(const char *name, int argc, char **argv) {
   if (strcmp(name, "globalminpool") == 0) return test_globalminpool(argc, argv);
   if (strcmp(name, "minpool") == 0) return test_minpool(argc, argv);
   if (strcmp(name, "avgpool") == 0) return test_avgpool(argc, argv);
+  if (strcmp(name, "globalavgpool") == 0) return test_globalavgpool(argc, argv);
   if (strcmp(name, "cmple") == 0) return test_cmple(argc, argv);
   if (strcmp(name, "cmpgt") == 0) return test_cmpgt(argc, argv);
   if (strcmp(name, "cmpge") == 0) return test_cmpge(argc, argv);
@@ -4459,7 +4551,7 @@ int main(int argc, char **argv) {
   }
 
   // test_max(argc, argv);
-  // test_div(argc, argv);
+  test_div(argc, argv);
   // test_cmple(argc, argv);
   // test_cmpgt(argc, argv);
   // test_cmpge(argc, argv);
@@ -4484,6 +4576,7 @@ int main(int argc, char **argv) {
   // test_minpool(argc, argv);
   // test_avgpool(argc, argv);
   // test_globalmaxpool(argc, argv);
-  test_globalminpool(argc, argv);
+  // test_globalminpool(argc, argv);
+  // test_globalavgpool(argc, argv);
   return 0;
 }

@@ -881,6 +881,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          case 24: goto alu_case_maxpool;
          case 25: goto alut_case_globalmaxpool;
          case 26: goto alu_case_avgpool;
+         case 27: goto alu_case_globalavgpool;
          default: goto alu_case_default;
       }
 
@@ -4238,6 +4239,51 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_PPU_RDMA_RDMA_SRC_LINE_STRIDE, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(4));
          EMIT(REG_PPU_RDMA_RDMA_SRC_SURF_STRIDE, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(16));
          EMIT(REG_PPU_RDMA_RDMA_DATA_FORMAT, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(2));
+         emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(48));
+      }
+
+      alu_case_globalavgpool:{
+         int in_h = minus_params.rows > 0 ? minus_params.rows : 4;
+         int in_w = minus_params.cols > 0 ? minus_params.cols : 4;
+         int align_c = 8;
+         int width_stride = in_w;
+         int channel_field = (align_c > 0 ? align_c : 8) - 1;
+         int in_w_field = in_w > 0 ? (in_w - 1) : 0;
+         int in_h_field = in_h > 0 ? (in_h - 1) : 0;
+         int stride_w_field = in_w_field;
+         int stride_h_field = in_h_field;
+         int recip_w = 30720;
+         int recip_h = 30720;
+         int surf_stride = width_stride * in_h;
+
+         EMIT(REG_PPU_S_POINTER, PPU_S_POINTER_POINTER_PP_MODE(1) | PPU_S_POINTER_EXECUTER_PP_EN(1) | PPU_S_POINTER_POINTER_PP_EN(1));
+         EMIT(REG_PPU_RDMA_RDMA_S_POINTER, PPU_RDMA_RDMA_S_POINTER_POINTER_PP_MODE(1) | PPU_RDMA_RDMA_S_POINTER_EXECUTER_PP_EN(1) | PPU_RDMA_RDMA_S_POINTER_POINTER_PP_EN(1));
+         EMIT(REG_PPU_DATA_CUBE_IN_WIDTH, PPU_DATA_CUBE_IN_WIDTH_CUBE_IN_WIDTH(in_w_field));
+         EMIT(REG_PPU_DATA_CUBE_IN_HEIGHT, PPU_DATA_CUBE_IN_HEIGHT_CUBE_IN_HEIGHT(in_h_field));
+         EMIT(REG_PPU_DATA_CUBE_IN_CHANNEL, PPU_DATA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(channel_field));
+         EMIT(REG_PPU_DATA_CUBE_OUT_WIDTH, PPU_DATA_CUBE_OUT_WIDTH_CUBE_OUT_WIDTH(0));
+         EMIT(REG_PPU_DATA_CUBE_OUT_HEIGHT, PPU_DATA_CUBE_OUT_HEIGHT_CUBE_OUT_HEIGHT(0));
+         EMIT(REG_PPU_DATA_CUBE_OUT_CHANNEL, PPU_DATA_CUBE_OUT_CHANNEL_CUBE_OUT_CHANNEL(channel_field));
+         EMIT(REG_PPU_OPERATION_MODE_CFG, PPU_OPERATION_MODE_CFG_FLYING_MODE(1));
+         EMIT(REG_PPU_POOLING_KERNEL_CFG,
+            PPU_POOLING_KERNEL_CFG_KERNEL_STRIDE_HEIGHT(stride_h_field) |
+            PPU_POOLING_KERNEL_CFG_KERNEL_STRIDE_WIDTH(stride_w_field) |
+            PPU_POOLING_KERNEL_CFG_KERNEL_HEIGHT(in_h_field) |
+            PPU_POOLING_KERNEL_CFG_KERNEL_WIDTH(in_w_field));
+         EMIT(REG_PPU_RECIP_KERNEL_WIDTH, PPU_RECIP_KERNEL_WIDTH_RECIP_KERNEL_WIDTH(recip_w));
+         EMIT(REG_PPU_RECIP_KERNEL_HEIGHT, PPU_RECIP_KERNEL_HEIGHT_RECIP_KERNEL_HEIGHT(recip_h));
+         EMIT(REG_PPU_DST_BASE_ADDR, PPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma / 16));
+         EMIT(REG_PPU_DST_SURF_STRIDE, PPU_DST_SURF_STRIDE_DST_SURF_STRIDE(1));
+         EMIT(REG_PPU_DATA_FORMAT, PPU_DATA_FORMAT_INDEX_ADD(1) | PPU_DATA_FORMAT_PROC_PRECISION(2));
+         EMIT(REG_PPU_MISC_CTRL, PPU_MISC_CTRL_BURST_LEN(3));
+         EMIT(REG_PPU_RDMA_RDMA_CUBE_IN_WIDTH, PPU_RDMA_RDMA_CUBE_IN_WIDTH_CUBE_IN_WIDTH(in_w_field));
+         EMIT(REG_PPU_RDMA_RDMA_CUBE_IN_HEIGHT, PPU_RDMA_RDMA_CUBE_IN_HEIGHT_CUBE_IN_HEIGHT(in_h_field));
+         EMIT(REG_PPU_RDMA_RDMA_CUBE_IN_CHANNEL, PPU_RDMA_RDMA_CUBE_IN_CHANNEL_CUBE_IN_CHANNEL(channel_field));
+         EMIT(REG_PPU_RDMA_RDMA_SRC_BASE_ADDR, input_dma);
+         EMIT(REG_PPU_RDMA_RDMA_SRC_LINE_STRIDE, PPU_RDMA_RDMA_SRC_LINE_STRIDE_SRC_LINE_STRIDE(width_stride));
+         EMIT(REG_PPU_RDMA_RDMA_SRC_SURF_STRIDE, PPU_RDMA_RDMA_SRC_SURF_STRIDE_SRC_SURF_STRIDE(surf_stride));
+         EMIT(REG_PPU_RDMA_RDMA_DATA_FORMAT, PPU_RDMA_RDMA_DATA_FORMAT_IN_PRECISION(2));
+         EMIT(REG_PPU_RDMA_RDMA_OPERATION_ENABLE, PPU_RDMA_RDMA_OPERATION_ENABLE_OP_EN(1));
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(48));
       }
 

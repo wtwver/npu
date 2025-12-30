@@ -320,6 +320,32 @@ def _make_silu_onnx(width: int) -> tuple[Path, list[list[int]]]:
   return onnx_path, input_shapes
 
 
+def _make_swiglu_onnx(width: int) -> tuple[Path, list[list[int]]]:
+  shape = (1, 1, 1, width)
+  input_shapes: list[list[int]] = [list(shape), list(shape)]
+  models_dir = Path(__file__).resolve().parent / "models"
+  models_dir.mkdir(parents=True, exist_ok=True)
+  onnx_path = models_dir / f"swiglu_float16_1x{width}.onnx"
+
+  x = torch.linspace(-2, 2, width, dtype=torch.float16).reshape(shape)
+  g = torch.linspace(2, -2, width, dtype=torch.float16).reshape(shape)
+
+  class Model(torch.nn.Module):
+    def forward(self, inp: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
+      return F.silu(inp) * gate
+
+  torch.onnx.export(
+    Model(),
+    (x, g),
+    str(onnx_path),
+    input_names=["input_x", "input_g"],
+    output_names=["output"],
+    opset_version=15,
+    do_constant_folding=True,
+  )
+  return onnx_path, input_shapes
+
+
 def _make_where_onnx(size: int) -> tuple[Path, list[list[int]]]:
   shape = (1, 1, size, size)
   input_shapes: list[list[int]] = [list(shape), list(shape), list(shape), list(shape)]
@@ -419,6 +445,7 @@ def _generate_pool_models(target: str, force: bool, onnx_only: bool) -> None:
     dict(name="avg_pool2d_float16_1x4", mode="avg", shape=(1, 1, 4, 4), kernel=2, stride=1),
     dict(name="min_pool2d_float16_1x4", mode="min", shape=(1, 1, 4, 4), kernel=2, stride=1),
     dict(name="adaptive_avg_pool2d_float16_1x4_to_2x2", mode="adaptive_avg", shape=(1, 1, 4, 4), output_size=(2, 2)),
+    dict(name="global_avg_pool2d_float16_1x4", mode="adaptive_avg", shape=(1, 1, 4, 4), output_size=(1, 1)),
     dict(name="global_max_pool2d_float16_1x4", mode="adaptive_max", shape=(1, 1, 4, 4), output_size=(1, 1)),
   ]
   for cfg in cases:
@@ -714,6 +741,7 @@ def main() -> int:
       "relu",
       "sigmoid",
       "silu",
+      "swiglu",
       "where",
       "conv1d_models",
       "conv2d_models",
@@ -842,6 +870,33 @@ def main() -> int:
       else:
         onnx_path, input_shapes = _make_silu_onnx(args.size)
         print(f"wrote: {onnx_path}")
+    if not args.onnx_only:
+      if args.rknn_log_level is not None:
+        os.environ["RKNN_LOG_LEVEL"] = str(args.rknn_log_level)
+      else:
+        os.environ.setdefault("RKNN_LOG_LEVEL", "5")
+      _export_rknn(
+        onnx_path,
+        input_shapes,
+        args.target,
+        config_kwargs={
+          "single_core_mode": True,
+          "remove_reshape": True,
+          "disable_rules": ["conv_eltwise_activation_fuse"],
+        },
+        init_runtime=True,
+      )
+      print(f"wrote: {onnx_path.with_suffix('.rknn')}")
+    return 0
+
+  if args.op == "swiglu":
+    onnx_path = models_dir / f"swiglu_float16_1x{args.size}.onnx"
+    if onnx_path.exists() and not args.force:
+      print(f"skip: {onnx_path} exists")
+      input_shapes = [[1, 1, 1, args.size]] * 2
+    else:
+      onnx_path, input_shapes = _make_swiglu_onnx(args.size)
+      print(f"wrote: {onnx_path}")
     if not args.onnx_only:
       if args.rknn_log_level is not None:
         os.environ["RKNN_LOG_LEVEL"] = str(args.rknn_log_level)
