@@ -71,9 +71,7 @@ out[h][n] = Σ_k A[h][k] * B[k][n]
         |       | a[M-1][0][0] a[M-1][1] ... a[M-1][0][N-1]   | /    
         V       +─────────────────────────────────────────────+/     
 
-## CNA registers
-
-so now we have
+## CNA registers - diemsion
 
 Feature Map A  (H=M, W=1, C=K) 
 ```
@@ -86,6 +84,165 @@ Kernel (N=N, R=1, S=1, C=K)
 ```
 weight_width = 1
 weight_height = 1
+weight_kernels = N
+```
+
+Stride value in x and y direction
+```
+conv_x_stride = 1
+conv_y_stride = 1
+```
+
+Output Feature Map C  (H=M, W=1, C=N)
+```
+dataout_height = M
+dataout_width = 1
+```
+
+for CONV should use formula but our MATMUL case just need H=M, W=1, C=N
+H_out = floor((H + pad_top + pad_bottom - k_h) / stride_y) + 1
+W_out = floor((W + pad_left + pad_right - k_w) / stride_x) + 1
+
+dma_width = datain_width
+dma_height = cna_desc.datain_height
+dma_channel = cna_desc.datain_channel
+RKNN: dma_channel = align_in
+
+## CNA registers - non-diemsion
+
+Dataout Atomics 
+TRM: Data atomics after convolution which is data out total pixels number.
+I think its like CUDA atomicAdd for each output pixel 
+```
+dataout_atomics = dataout_width * dataout_height
+```
+
+Feature Grains
+TRM: Feature data rows needs to be buffered before convolution start. It's suggested to set this field as y_stride+weight_height+1.
+In matmul mode this over-buffers rows so the whole MxK block fits, which is why M+1 is used instead of the TRM minimum.
+```
+feature_grains = M + 1
+```
+
+weight_bytes_per_kernel
+Jasbir: weight_bytes_per_kernel = weight_width * weight_height * datain_channel * sizeof(__fp16);
+RKNN:   weight_bytes_per_kernel = align_in * sizeof(__fp16);
+
+weight_bytes_total
+Jasbir: weight_bytes = weight_bytes_per_kernel * cna_desc.weight_kernels;
+RKNN:   weight_bytes_total = weight_bytes_per_kernel * align_out;
+
+// TODO
+CBUF Weight Bank and Data Bank
+CBUF is Multi-bank SRAM, some bank for feature and some for weight
+
+static int compute_bank_allocation_fp16(uint32_t fd_bytes, uint32_t weight_bytes_per_kernel, unsigned int *fd_banks_out, unsigned int *weight_banks_out) {
+  unsigned int fd_banks = (fd_bytes / NPU_CBUF_BANK_SIZE);
+  fd_banks = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? fd_banks : fd_banks + 1;
+  if (fd_banks > NPU_CBUF_BANKS - 1) {
+    return -1;
+  }
+  if (weight_bytes_per_kernel > NPU_CBUF_BANK_SIZE) {
+    return -2;
+  }
+  *fd_banks_out = fd_banks;
+  *weight_banks_out = NPU_CBUF_BANKS - fd_banks;
+  return 0;
+}
+
+fd_bytes = M × K × sizeof(type)
+fd_banks = ceil(fd_bytes / CBUF_BANK_SIZE)
+
+RKNN:
+uint32_t weight_bank = 11u if not is_matmul_256 else 8u;
+uint32_t data_bank   = 1u. if not is_matmul_256 else 4u;
+
+// TODO
+Data Entries
+TRM: How many banks space needed to store one feature map row.
+```
+data_entries = ceil((datain_width * datain_channel) / 32);
+RKNN: 
+int cbuf_entries = ((dataout_width * align_in) + 31) / 32;
+if (cbuf_entries <= 0) cbuf_entries = 1;
+```
+
+weight_burst_len and data_burst_len
+AXI burst length for weight/feature data DMA.
+```
+weight_burst_len = 15
+data_burst_len = 15
+```
+
+// TODO
+line_stride
+line_stride = datain_width * 4
+RKNN: align_in == 64 && !is_matmul_64) line_stride = 8
+
+// TODO to fix RKNN hardcode
+surf_stride
+```
+surf_stride = (cna_desc.line_stride * ((cna_desc.datain_height / 4) - 1));
+surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
+```
+lane_span_bytes = rows_per_lane * line_stride
+surf_stride = lane_span_bytes - line_stride
+           = (rows_per_lane - 1) * line_stride
+           = (H/4 - 1) * line_stride
+RKNN: hardcoded
+
+# other config registers
+
+qd_en
+TRM: Quantify feature data calculate enable
+```
+qd_en=1
+```
+
+data_sign
+Feature data is signed or not.  0:unsigned
+```
+data_sign = 1
+```
+
+cvt_type
+Cal type of the input convert. 0: Multiply first then add,  1: revesr
+```
+cvt_type = 1
+```
+
+cvt_bypass
+Bypass input convert.
+```
+cvt_bypass = 1 
+```
+
+cvt_scale0123
+Multiplier operand for 1st/2nd/3rd/4th channel.
+```
+cvt_scale0=1
+```
+
+feature_base_addr
+```
+feature_base_addr = input_dma
+```
+
+decompress_addr0
+```
+decompress_addr0 = params->weights_dma
+
+
+```
+we have input in fp16 and process in fp16
+```
+cna_desc.in_precision = precision_float16;
+cna_desc.proc_precision = precision_float16;
+``
+
+```
+EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
+
 ```
 
 # FAQ 
