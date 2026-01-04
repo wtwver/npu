@@ -1168,11 +1168,13 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
 
          uint32_t line_stride = (uint32_t)data_in_width * 4u;
          if (params.M > 32 && params.M < 64) line_stride = 8;
+         else if (params.M > 64 && params.M < 128) line_stride = 12;
 
          int32_t surf_groups = data_in_height / 4;
          int32_t surf_stride_signed = (int32_t)line_stride * (surf_groups - 1) + (surf_groups == 0);
          uint32_t surf_stride = (uint32_t)(surf_stride_signed * (int32_t)(align_in >= 64));
-         if (params.M > 3 && params.M < 64) surf_stride = 0 ;
+         if (params.M > 3 && params.M < 64) surf_stride = 180 ;
+         else if (params.M > 64 && params.M < 128) surf_stride = 0 ;
          EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(line_stride));
          EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(surf_stride));
 
@@ -1196,6 +1198,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          
          uint32_t notch_val = (is_matmul_64 || is_matmul_256) ? 0u : 7u;
          if (params.M > 32 && params.M < 64) notch_val = 15 ;
+         else if (params.M > 64 && params.M < 128) notch_val = 23 ;
          EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
          
          EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)align_out - 1) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)align_out - 1));
