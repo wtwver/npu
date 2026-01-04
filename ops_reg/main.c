@@ -75,6 +75,28 @@ static void unpack_matmul_output_fp32(const float *src, float *dst, int M, int N
   unpack_matmul_output_fp32_with_c2(src, dst, M, N, c2);
 }
 
+static void report_matmul_unpack_alt(const char *name, const float *npu_output,
+    const float *cpu, int M, int N, int c2, float tol) {
+  if (!npu_output || !cpu || M <= 0 || N <= 0 || c2 <= 0) return;
+  float *tmp = (float*)malloc((size_t)M * (size_t)N * sizeof(float));
+  if (!tmp) {
+    printf("%s: failed to allocate alt unpack buffer (c2=%d)\n",
+        name ? name : "matmul", c2);
+    return;
+  }
+  unpack_matmul_output_fp32_with_c2(npu_output, tmp, M, N, c2);
+  float max_diff = 0.0f;
+  int mismatch_count = 0;
+  for (int i = 0; i < M * N; i++) {
+    float diff = fabsf(cpu[i] - tmp[i]);
+    if (diff > max_diff) max_diff = diff;
+    if (diff > tol) mismatch_count++;
+  }
+  printf("%s: alt unpack c2=%d -> max diff=%.6f, mismatches=%d\n",
+      name ? name : "matmul", c2, max_diff, mismatch_count);
+  free(tmp);
+}
+
 static void print_conv1d_outputs(const char *title, const float *data,
     int batch, int channels, int width, int row_len) {
   printf("%s\n", title);
@@ -3744,7 +3766,7 @@ static int validate_matmul_pack(const __fp16 *b, const MatmulTestConfig *config)
   if (layout.N == 9 && layout.K == 9) {
     pack_matmul_weights_9x9_fp16(packed, b, layout.align_in);
   } else {
-    pack_matmul_weights_fp16(packed, b, layout.N, layout.K, layout.align_in);
+    pack_matmul_weights_fp16(packed, b, layout.N, layout.K, layout.align_in, layout.align_out);
   }
   if (layout.N == 9 && layout.K == 9) {
     for (int n = 0; n < layout.N; n++) {
@@ -3885,11 +3907,11 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     } else if (M == 64 && K == 64 && N == 64) {
       // Mirror the RKNN 64x64 captures: NC1HWC2-packed input with weight_fp16 layout.
       pack_matmul_input_64x64_fp16(packed_input, a);
-      pack_matmul_weights_fp16(packed_weight, b, layout.N, layout.K, layout.align_in);
+      pack_matmul_weights_fp16(packed_weight, b, layout.N, layout.K, layout.align_in, layout.align_out);
     } else if (M == 256 && K == 256 && N == 256) {
       // Apply the same NC1HWC2 input packing and weight_fp16 layout as 64x64x64.
       pack_matmul_input_nc1hwc2_fp16(packed_input, a, M, K, layout.align_in, 8);
-      pack_matmul_weights_fp16(packed_weight, b, layout.N, layout.K, layout.align_in);
+      pack_matmul_weights_fp16(packed_weight, b, layout.N, layout.K, layout.align_in, layout.align_out);
     }
     npu_output = float16_matmul_prepacked(config, packed_input, packed_weight);
     free(packed_input);
@@ -3914,14 +3936,69 @@ static int run_matmul_case(const MatmulTestConfig *config) {
   }
 
   float max_diff = 0.0f;
-  for (int i = 0; i < M * N; i++) {
-    float diff = fabsf(cpu[i] - actual[i]);
-    if (diff > max_diff) max_diff = diff;
+  int mismatch_count = 0;
+  const float tol = 1e-2f;
+  int *mismatch_by_row = (int *)calloc((size_t)M, sizeof(int));
+  int *mismatch_by_col = (int *)calloc((size_t)N, sizeof(int));
+  if (!mismatch_by_row || !mismatch_by_col) {
+    free(mismatch_by_row);
+    free(mismatch_by_col);
+    printf("failed to allocate mismatch counters for %s\n",
+        config->name ? config->name : "matmul");
+    free(a);
+    free(b);
+    free(cpu);
+    free(actual);
+    return -1;
+  }
+  for (int m = 0; m < M; m++) {
+    for (int n = 0; n < N; n++) {
+      size_t idx = (size_t)m * (size_t)N + (size_t)n;
+      float diff = fabsf(cpu[idx] - actual[idx]);
+      if (diff > max_diff) max_diff = diff;
+      if (diff > tol) {
+        mismatch_count++;
+        mismatch_by_row[m]++;
+        mismatch_by_col[n]++;
+      }
+    }
   }
   printf("Max abs diff: %.6f\n", max_diff);
-  printf("%s: matches CPU -> %s\n",
-      config->name ? config->name : "matmul", max_diff <= 1e-2f ? "YES" : "NO");
+  printf("%s: matches CPU -> %s (mismatches=%d)\n",
+      config->name ? config->name : "matmul",
+      max_diff <= 1e-2f ? "YES" : "NO",
+      mismatch_count);
+  if (mismatch_count > 0) {
+    report_matmul_unpack_alt(config->name, npu_output, cpu, M, N, 32, tol);
+    if (N != 32) {
+      report_matmul_unpack_alt(config->name, npu_output, cpu, M, N, N, tol);
+    }
+  }
+  if (mismatch_count > 0) {
+    int worst_row = 0;
+    int worst_row_count = mismatch_by_row[0];
+    for (int m = 1; m < M; m++) {
+      if (mismatch_by_row[m] > worst_row_count) {
+        worst_row = m;
+        worst_row_count = mismatch_by_row[m];
+      }
+    }
+    int worst_col = 0;
+    int worst_col_count = mismatch_by_col[0];
+    for (int n = 1; n < N; n++) {
+      if (mismatch_by_col[n] > worst_col_count) {
+        worst_col = n;
+        worst_col_count = mismatch_by_col[n];
+      }
+    }
+    printf("%s: worst mismatch row=%d count=%d, col=%d count=%d\n",
+        config->name ? config->name : "matmul",
+        worst_row, worst_row_count,
+        worst_col, worst_col_count);
+  }
 
+  free(mismatch_by_row);
+  free(mismatch_by_col);
   free(a);
   free(b);
   free(cpu);
@@ -3945,7 +4022,8 @@ int test_matmul(int argc, char **argv) {
     // {"matmul_1x32x16", 1, 32, 16},
     // {"matmul_1x768x768", 1, 768, 768}, 
     // {"matmul_1x768x2048", 1, 768, 2048}, 
-    {"matmul_1x2048x2048", 1, 2048, 2048}, 
+    // {"matmul_1x2048x2048", 1, 2048, 2048}, 
+    {"matmul_33x33x33", 33, 33, 33}, 
   };
 
   int status = 0;

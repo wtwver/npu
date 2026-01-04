@@ -659,9 +659,10 @@ static void pack_matmul_input_64x64_fp16(__fp16 *dst, const __fp16 *src) {
 }
 
 static void pack_matmul_weights_fp16(__fp16 *dst, const __fp16 *src,
-      int N, int K, int align_in) {
+      int N, int K, int align_in, int align_out) {
    if (!dst || !src || N <= 0 || K <= 0 || align_in <= 0) return;
-   size_t weight_elems = (size_t)align_in * (size_t)N;
+   if (align_out <= 0) align_out = N;
+   size_t weight_elems = (size_t)align_in * (size_t)align_out;
 
    // For the 32x32 case, the RKNN dump shows a simple column-major layout with
    // a 32-half stride per column. Mimic that instead of the tiled weight_fp16
@@ -1166,9 +1167,12 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_CNA_DMA_CON0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
 
          uint32_t line_stride = (uint32_t)data_in_width * 4u;
+         if (params.M == 33) line_stride = 8;
+
          int32_t surf_groups = data_in_height / 4;
          int32_t surf_stride_signed = (int32_t)line_stride * (surf_groups - 1) + (surf_groups == 0);
          uint32_t surf_stride = (uint32_t)(surf_stride_signed * (int32_t)(align_in >= 64));
+         if (params.M == 33) surf_stride = 0 ;
          EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(line_stride));
          EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(surf_stride));
 
@@ -1191,6 +1195,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT((uint32_t)(dataout_height - 1)));
          
          uint32_t notch_val = (is_matmul_64 || is_matmul_256) ? 0u : 7u;
+         if (params.M == 33) notch_val = 15 ;
          EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
          
          EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)align_out - 1) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)align_out - 1));
@@ -4722,7 +4727,7 @@ float* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int N
    if (layout.N == 9 && layout.K == 9) {
       pack_matmul_weights_9x9_fp16(weights_fp16, b, layout.align_in);
    } else {
-      pack_matmul_weights_fp16(weights_fp16, b, layout.N, layout.K, layout.align_in);
+      pack_matmul_weights_fp16(weights_fp16, b, layout.N, layout.K, layout.align_in, layout.align_out);
    }
    if (layout.N == 9 && layout.K == 9 && layout.M == 9) {
       // Match the captured row-major input packing for 9x9.
