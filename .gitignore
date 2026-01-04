@@ -32,3 +32,4 @@ ops_rknn/pool
 ops_rknn/run_output.txt
 ops_rknn/models/*
 main
+ops_rknn/matmul_api

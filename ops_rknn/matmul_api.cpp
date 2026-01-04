@@ -255,12 +255,15 @@ struct MatmulCase {
 };
 
 static const std::vector<MatmulCase> kMatmulCases = {
-    // {"matmul_fp16_8x8", 8, 8, 8, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_8x8x8", 8, 8, 8, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_9x9", 9, 9, 9, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_32x32", 32, 32, 32, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
-    {"matmul_fp16_64x64", 64, 64, 64, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_64x64", 64, 64, 64, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_256x256", 256, 256, 256, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_1x8192x8192", 1, 8192, 8192, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_int8_64x64", 64, 64, 64, RKNN_INT8_MM_INT8_TO_INT32, MatmulPrecision::kInt8},
+    
+    {"matmul_fp16_1x768x768", 1, 768, 768, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
 };
 
 struct MatmulCtxGuard {
@@ -347,10 +350,8 @@ static bool run_float16_case(const MatmulCase& cfg) {
       pad_matrix(input_fp16, cfg.M, cfg.K, aligned_M, aligned_K);
   auto padded_weight =
       pad_matrix(weight_fp16, cfg.K, cfg.N, aligned_K, aligned_N);
-  print_fp16_matrix("Input A padded", padded_input.data(), aligned_M, aligned_K,
-                    aligned_K);
-  print_fp16_matrix("Input B padded", padded_weight.data(), aligned_K, aligned_N,
-                    aligned_N);
+  // print_fp16_matrix("Input A padded", padded_input.data(), aligned_M, aligned_K, aligned_K);
+  // print_fp16_matrix("Input B padded", padded_weight.data(), aligned_K, aligned_N, aligned_N);
 
   rknn_matmul_ctx ctx = 0;
   MatmulCtxGuard ctx_guard(&ctx);

@@ -132,34 +132,19 @@ weight_bytes_total
 Jasbir: weight_bytes = weight_bytes_per_kernel * cna_desc.weight_kernels;
 RKNN:   weight_bytes_total = weight_bytes_per_kernel * align_out;
 
-// TODO
 CBUF Weight Bank and Data Bank
-CBUF is Multi-bank SRAM, some bank for feature and some for weight
-
-static int compute_bank_allocation_fp16(uint32_t fd_bytes, uint32_t weight_bytes_per_kernel, unsigned int *fd_banks_out, unsigned int *weight_banks_out) {
-  unsigned int fd_banks = (fd_bytes / NPU_CBUF_BANK_SIZE);
-  fd_banks = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? fd_banks : fd_banks + 1;
-  if (fd_banks > NPU_CBUF_BANKS - 1) {
-    return -1;
-  }
-  if (weight_bytes_per_kernel > NPU_CBUF_BANK_SIZE) {
-    return -2;
-  }
-  *fd_banks_out = fd_banks;
-  *weight_banks_out = NPU_CBUF_BANKS - fd_banks;
-  return 0;
-}
-
+CBUF is Multi-bank SRAM, shared for feature and weight
+```
 fd_bytes = M × K × sizeof(type)
 fd_banks = ceil(fd_bytes / CBUF_BANK_SIZE)
+weight_bytes_total = K x N x sizeof(type)
+weight_bank = ceil(weight_bytes_total / NPU_CBUF_BANK_SIZE)
+```
 
-RKNN:
-uint32_t weight_bank = 11u if not is_matmul_256 else 8u;
-uint32_t data_bank   = 1u. if not is_matmul_256 else 4u;
-
-// TODO
 Data Entries
 TRM: How many banks space needed to store one feature map row.
+
+in matmul, datain_width=dataout_width=1
 ```
 data_entries = ceil((datain_width * datain_channel) / 32);
 RKNN: 
@@ -174,22 +159,42 @@ weight_burst_len = 15
 data_burst_len = 15
 ```
 
-// TODO
 line_stride
 line_stride = datain_width * 4
-RKNN: align_in == 64 && !is_matmul_64) line_stride = 8
 
-// TODO to fix RKNN hardcode
+// TODO fully fix RKNN hardcode
 surf_stride
-```
-surf_stride = (cna_desc.line_stride * ((cna_desc.datain_height / 4) - 1));
-surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
-```
+
+Maths:
 lane_span_bytes = rows_per_lane * line_stride
 surf_stride = lane_span_bytes - line_stride
            = (rows_per_lane - 1) * line_stride
            = (H/4 - 1) * line_stride
-RKNN: hardcoded
+
+```
+surf_stride = (line_stride * ((datain_height / 4) - 1));
+surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
+```
+
+RKNN: hardcoded 
+surf_stride = 0
+surf_stride = 60 if matmul_64x64x64 
+surf_stride = 252 if matmul_256x256x256 
+
+NVDLA SW CONV: treats a surface as the full plane
+lineStride = W * channelsPerGroup * bytesPerElement
+surf_stride = lineStride * H
+
+ONNC CONV: 
+lineStride = align(W * FEATURE_ATOM_CUBE_SIZE, 32)
+stride_surface = lineStride * H
+
+GROUP_LINE_OFF
+TRM: Group line fetch, 0: enable, 1:disable 
+This setting only influence line fetch efficiency.
+
+RKNN: CNA_CONV_CON1_GROUP_LINE_OFF(1) if (!is_matmul_64 && !is_matmul_256)
+
 
 # other config registers
 
@@ -245,7 +250,31 @@ EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTE
 
 ```
 
+# CONV 
+
+## CONV weight bank
+
+static int compute_bank_allocation_fp16(uint32_t fd_bytes, uint32_t weight_bytes_per_kernel, unsigned int *fd_banks_out, unsigned int *weight_banks_out) {
+  unsigned int fd_banks = (fd_bytes / NPU_CBUF_BANK_SIZE);
+  fd_banks = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? fd_banks : fd_banks + 1;
+  if (fd_banks > NPU_CBUF_BANKS - 1) {
+    return -1;
+  }
+  if (weight_bytes_per_kernel > NPU_CBUF_BANK_SIZE) {
+    return -2;
+  }
+  *fd_banks_out = fd_banks;
+  *weight_banks_out = NPU_CBUF_BANKS - fd_banks;
+  return 0;
+}
+
 # FAQ 
+What if the mamtul size is too large
+- When mamtul size > 1x8192x8192, it splited by N, such that C[:, j] = A × B[:, j]
+- C[:, :8144] = A × B[:, :8144]
+- C[:, 8144:8144+48] = A × B[:, 8144:8144+48]
+
+
 How to convert onnx to rknn
 - python3 -m rknn.api.rknn_convert -t rk3588 -i /home/orangepi/npu/models/8_add.onnx -o /home/orangepi/npu/models/
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-
+clear
 cd "$(dirname "$0")"
 
 usage() {
@@ -49,7 +49,9 @@ fi
 g++ -o "${OP}" "${CPP}" -I../include -lrknnrt -std=c++11
 
 : > run_output.txt
-if [ "${GDB}" = "1" ]; then
+if [ "${GDB}" = "1" ] && [ "${OP}" = "matmul_api" ]; then
+  gdb -x matmul.gdb --args "${BIN}" "$@" | tee run_output.txt
+elif [ "${GDB}" = "1" ]; then
   gdb -x rknn.gdb --args "${BIN}" "$@" | tee run_output.txt
 else
   "${BIN}" "$@" | tee run_output.txt

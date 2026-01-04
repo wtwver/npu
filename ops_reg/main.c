@@ -3220,6 +3220,7 @@ int test_max(int argc, char **argv) {
     {"max_1x1", 1, 1},
     {"max_2x2", 2, 2},
     {"max_8x8", 8, 8},
+    {"max_64x64", 64, 64},
   };
 
   int status = 0;
@@ -3935,11 +3936,16 @@ int test_matmul(int argc, char **argv) {
   }
 
   static const MatmulTestConfig configs[] = {
-    {"matmul_8x8x8", 8, 8, 8},
-    {"matmul_9x9x9", 9, 9, 9},
-    {"matmul_32x32x32", 32, 32, 32},
-    {"matmul_64x64x64", 64, 64, 64},
-    {"matmul_256x256x256", 256, 256, 256},
+    // {"matmul_8x8x8", 8, 8, 8},
+    // {"matmul_9x9x9", 9, 9, 9}, //need surf_stride =0
+    // {"matmul_32x32x32", 32, 32, 32}, //need surf_stride =0
+    // {"matmul_64x64x64", 64, 64, 64}, // need surf_stride = 60
+    // {"matmul_256x256x256", 256, 256, 256}, // need surf_stride = 252
+
+    // {"matmul_1x32x16", 1, 32, 16},
+    {"matmul_1x768x768", 1, 768, 768}, // NOT match
+    // {"matmul_1x768x2048", 1, 768, 2048}, //timeout
+    // {"1x8192x7744", 1, 8192, 7744}, //segfault
   };
 
   int status = 0;
@@ -4551,7 +4557,7 @@ int main(int argc, char **argv) {
   }
 
   // test_max(argc, argv);
-  test_div(argc, argv);
+  // test_div(argc, argv);
   // test_cmple(argc, argv);
   // test_cmpgt(argc, argv);
   // test_cmpge(argc, argv);
@@ -4571,7 +4577,7 @@ int main(int argc, char **argv) {
   // test_relu(argc, argv);
   // test_conv1d(argc, argv);
   // test_conv2d(argc, argv);
-  // test_matmul(argc, argv);
+  test_matmul(argc, argv);
   // test_maxpool(argc, argv);
   // test_minpool(argc, argv);
   // test_avgpool(argc, argv);

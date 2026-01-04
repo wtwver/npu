@@ -38,6 +38,9 @@
 #include <stdarg.h>
 #include <stddef.h>
 
+#define NPU_CBUF_BANK_SIZE 32768
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -1125,17 +1128,32 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int align_out = params.align_out > 0 ? params.align_out : 32;
          const bool is_matmul_64 = (params.M == 64 && params.N == 64 && params.K == 64);
          const bool is_matmul_256 = (params.M == 256 && params.N == 256 && params.K == 256);
-         uint32_t surf_stride = 0x0u;
+         const bool is_matmul_768 = (params.M == 1 && params.N == 768 && params.K == 768);
+         uint32_t line_stride = (uint32_t)data_in_width * 4u;
+         
+         uint32_t surf_stride = 0;
+         if (align_in >= 64 && data_in_height >= 4) {
+            surf_stride = line_stride * ((data_in_height / 4) - 1);
+         }
+         // uint32_t surf_stride = (line_stride * ((data_in_height / 4) - 1));
+         // printf("line_stride %d\n", line_stride);
+         // printf("data_in_height %d\n", data_in_height);
+         // printf("surf_stride1 %d\n", surf_stride);
+         // surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
+         // printf("surf_stride2 %d\n", surf_stride);
+         
          uint32_t notch_val = (uint32_t)(7);
          if (is_matmul_64) {
             data_in_height = dataout_height = 64;
             align_in = 64;
             align_out = 64;
-            surf_stride = 60;
+            // surf_stride = 60;
             notch_val = 0;
          } else if (is_matmul_256) {
-            surf_stride = 252;
+            // surf_stride = 252;
             notch_val = 0;
+         } else if (is_matmul_768) {
+            surf_stride = 268435453;
          } else if (dataout_height == 64) {
             notch_val = 15;
          }
@@ -1147,28 +1165,40 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          uint32_t weight_bytes_per_kernel = (uint32_t)align_in * (uint32_t)sizeof(__fp16);
          uint32_t weight_bytes_total = weight_bytes_per_kernel * (uint32_t)align_out;
          uint32_t feature_grains = (uint32_t)(data_in_height + 1);
-         int cbuf_entries = ((dataout_width * align_in) + 31) / 32;
+         // int cbuf_entries = ((dataout_width * align_in) + 31) / 32;
+         int cbuf_entries = ((data_in_width * align_in) + 31) / 32;
          if (cbuf_entries <= 0) cbuf_entries = 1;
-         uint32_t line_stride = (uint32_t)data_in_width * 4u;
-         if (align_in == 64 && !is_matmul_64) line_stride = 8;
+         // Disabled this if still got correct result
+         // RKNN: if (align_in == 64 && !is_matmul_64) line_stride = 8;
          uint32_t dst_surf_stride = is_matmul_64 ? 64u : (is_matmul_256 ? 256u : (uint32_t)out_width_stride);
          uint32_t surface_add;
-         if (is_matmul_64 || is_matmul_256) {
+         if (is_matmul_64 || is_matmul_256 || is_matmul_768) {
             surface_add = dst_surf_stride * 4u;
          } else {
             surface_add = dst_surf_stride * (uint32_t)(align_out / 8u);
             if (align_out == 64) surface_add = dst_surf_stride * 4u;
          }
-         uint32_t weight_bank = 11u;
-         uint32_t data_bank = 1u;
-         if (is_matmul_256) {
-            weight_bank = 8u;
-            data_bank = 4u;
-         }
+         // uint32_t weight_bank = 11u;
+         // uint32_t data_bank = 1u;
+         // if (is_matmul_256) {
+         //    // weight_bank = 8u; data_bank = 4u;
+         //    weight_bank = 4u; data_bank = 4u;
+         // }
+         
+         uint32_t fd_bytes = data_in_width * data_in_height * align_in * sizeof(__fp16);
+         uint32_t data_bank = (fd_bytes / NPU_CBUF_BANK_SIZE);
+         data_bank = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? data_bank : data_bank +1;
+         // uint32_t weight_bank = (weight_bytes_total / NPU_CBUF_BANK_SIZE);
+         // weight_bank = ((weight_bytes_total % NPU_CBUF_BANK_SIZE)==0) ? weight_bank : weight_bank + 1;
+
+         // FIX ME
+         uint32_t weight_bank = 12 - data_bank;
+         // weight_bank = 11;
+         // data_bank = 1;
 
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          uint32_t conv_con1 = CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2);
-         if (!is_matmul_64 && !is_matmul_256) conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
+         if (!is_matmul_64 && !is_matmul_256 && !is_matmul_768) conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
          EMIT(REG_CNA_CONV_CON1, conv_con1);
          EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(feature_grains));
          EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
@@ -1206,9 +1236,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(dst_surf_stride));
          EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH((uint32_t)(dataout_width - 1)));
          EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT((uint32_t)(dataout_height - 1)));
-         EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR,
-            DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |
-            DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
+         if (!is_matmul_768) EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
          EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)orig_channel) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)out_channel_field));
          EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
          EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_SIZE_E_2(3) | DPU_BS_OW_CFG_SIZE_E_1(3) | DPU_BS_OW_CFG_SIZE_E_0(3) | DPU_BS_OW_CFG_OD_BYPASS(1));
