@@ -1173,7 +1173,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int32_t surf_groups = data_in_height / 4;
          int32_t surf_stride_signed = (int32_t)line_stride * (surf_groups - 1) + (surf_groups == 0);
          uint32_t surf_stride = (uint32_t)(surf_stride_signed * (int32_t)(align_in >= 64));
-         if (params.M > 3 && params.M < 64) surf_stride = 180 ;
+         if (params.M > 32 && params.M < 64) surf_stride = 0 ;
          else if (params.M > 64 && params.M < 128) surf_stride = 0 ;
          EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(line_stride));
          EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(surf_stride));
