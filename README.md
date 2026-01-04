@@ -173,13 +173,11 @@ surf_stride = lane_span_bytes - line_stride
 
 ```
 surf_stride = (line_stride * ((datain_height / 4) - 1));
-surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
 ```
 
 RKNN: hardcoded 
-surf_stride = 0
-surf_stride = 60 if matmul_64x64x64 
-surf_stride = 252 if matmul_256x256x256 
+surf_stride = 268435453 if is_matmul_768 || is_matmul_768_2048 || is_matmul_2048
+
 
 NVDLA SW CONV: treats a surface as the full plane
 lineStride = W * channelsPerGroup * bytesPerElement
@@ -190,10 +188,22 @@ lineStride = align(W * FEATURE_ATOM_CUBE_SIZE, 32)
 stride_surface = lineStride * H
 
 GROUP_LINE_OFF
-TRM: Group line fetch, 0: enable, 1:disable 
-This setting only influence line fetch efficiency.
+TRM: Group line fetch, 0: enable, 1:disable. This setting only influence line fetch efficiency.
+But it does affect result correctness
 
-RKNN: CNA_CONV_CON1_GROUP_LINE_OFF(1) if (!is_matmul_64 && !is_matmul_256)
+RKNN: CNA_CONV_CON1_GROUP_LINE_OFF(1) if (!is_matmul_64 && !is_matmul_256 && !is_matmul_768 && !is_matmul_768_2048 && !is_matmul_2048)
+
+DATA_CUBE_NOTCH_ADDR
+notch_val
+TRM: notch_addr_1, How many pixels from the end of width to the end of the shape line end.
+TRM: notch_addr_0, How many pixels from the end of width to the end of the shape line end.
+
+surface_add
+TRM: How many surfaces in a row.
+```
+surface_add = dst_surf_stride * (align_out / 8u);
+surface_add = dst_surf_stride * 4u if (is_matmul_64 || is_matmul_256 || is_matmul_768 || is_matmul_768_2048 || is_matmul_2048) 
+```
 
 
 # other config registers

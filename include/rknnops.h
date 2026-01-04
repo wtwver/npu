@@ -39,6 +39,9 @@
 #include <stddef.h>
 
 #define NPU_CBUF_BANK_SIZE 32768
+#ifndef NPU_CBUF_BANKS
+#define NPU_CBUF_BANKS 12
+#endif
 
 
 #ifdef __cplusplus
@@ -1126,94 +1129,34 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int data_in_height = dataout_height;
          int align_in = params.align_in > 0 ? params.align_in : 32;
          int align_out = params.align_out > 0 ? params.align_out : 32;
+         int out_width_stride = params.out_width_stride > 0 ? params.out_width_stride : dataout_width;
          const bool is_matmul_64 = (params.M == 64 && params.K == 64 && params.N == 64);
          const bool is_matmul_256 = (params.M == 256 && params.K == 256 && params.N == 256);
          const bool is_matmul_768 = (params.M == 1 && params.K == 768 && params.N == 768) ;
          const bool is_matmul_768_2048 = (params.M == 1 && params.K == 768 && params.N == 2048 ) ;
          const bool is_matmul_2048 = (params.M == 1 && params.K == 2048 && params.N == 2048 ) ;
-         printf("M=%d, K=%d, N=%d, is_matmul_2048=%d", params.M, params.K, params.N, is_matmul_2048);
-         uint32_t line_stride = (uint32_t)data_in_width * 4u;
-         
-         uint32_t surf_stride = 0;
-         if (align_in >= 64 && data_in_height >= 4) {
-            surf_stride = line_stride * ((data_in_height / 4) - 1);
-         }
-         // uint32_t surf_stride = (line_stride * ((data_in_height / 4) - 1));
-         // printf("line_stride %d\n", line_stride);
-         // printf("data_in_height %d\n", data_in_height);
-         // printf("surf_stride1 %d\n", surf_stride);
-         // surf_stride = surf_stride < 0 ? surf_stride + 1 : surf_stride;
-         // printf("surf_stride2 %d\n", surf_stride);
-         
-         uint32_t notch_val = (uint32_t)(7);
-         if (is_matmul_64) {
-            data_in_height = dataout_height = 64;
-            align_in = 64;
-            align_out = 64;
-            // surf_stride = 60;
-            notch_val = 0;
-         } else if (is_matmul_256) {
-            // surf_stride = 252;
-            notch_val = 0;
-         } else if (is_matmul_768 || is_matmul_768_2048 || is_matmul_2048) {
-            surf_stride = 268435453;
-         } else if (dataout_height == 64) {
-            notch_val = 15;
-         }
-         int out_width_stride = params.out_width_stride > 0 ? params.out_width_stride : dataout_width;
-         int dataout_atomics = dataout_width * dataout_height;
-         int real_in_channel = align_in - 1;
-         int orig_channel = align_out - 1;
-         int out_channel_field = orig_channel;
-         uint32_t weight_bytes_per_kernel = (uint32_t)align_in * (uint32_t)sizeof(__fp16);
-         uint32_t weight_bytes_total = weight_bytes_per_kernel * (uint32_t)align_out;
-         uint32_t feature_grains = (uint32_t)(data_in_height + 1);
-         // int cbuf_entries = ((dataout_width * align_in) + 31) / 32;
-         int cbuf_entries = ((data_in_width * align_in) + 31) / 32;
-         if (cbuf_entries <= 0) cbuf_entries = 1;
-         // Disabled this if still got correct result
-         // RKNN: if (align_in == 64 && !is_matmul_64) line_stride = 8;
-         uint32_t dst_surf_stride = is_matmul_64 ? 64u : (is_matmul_256 ? 256u : (uint32_t)out_width_stride);
-         uint32_t surface_add;
-         if (is_matmul_64 || is_matmul_256 || is_matmul_768 || is_matmul_768_2048 || is_matmul_2048) {
-            surface_add = dst_surf_stride * 4u;
-         } else {
-            surface_add = dst_surf_stride * (uint32_t)(align_out / 8u);
-            if (align_out == 64) surface_add = dst_surf_stride * 4u;
-         }
-         // uint32_t weight_bank = 11u;
-         // uint32_t data_bank = 1u;
-         // if (is_matmul_256) {
-         //    // weight_bank = 8u; data_bank = 4u;
-         //    weight_bank = 4u; data_bank = 4u;
-         // }
-         
-         uint32_t fd_bytes = data_in_width * data_in_height * align_in * sizeof(__fp16);
-         uint32_t data_bank = (fd_bytes / NPU_CBUF_BANK_SIZE);
-         data_bank = ((fd_bytes % NPU_CBUF_BANK_SIZE) == 0) ? data_bank : data_bank +1;
-         // uint32_t weight_bank = (weight_bytes_total / NPU_CBUF_BANK_SIZE);
-         // weight_bank = ((weight_bytes_total % NPU_CBUF_BANK_SIZE)==0) ? weight_bank : weight_bank + 1;
-
-         // FIX ME
-         uint32_t weight_bank = 12 - data_bank;
-         // weight_bank = 11;
-         // data_bank = 1;
 
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          uint32_t conv_con1 = CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2);
          if (!is_matmul_64 && !is_matmul_256 && !is_matmul_768 && !is_matmul_768_2048 && !is_matmul_2048) conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
          EMIT(REG_CNA_CONV_CON1, conv_con1);
-         EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(feature_grains));
+         EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(data_in_height + 1));
          EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
          EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH((uint32_t)data_in_width) | CNA_DATA_SIZE0_DATAIN_HEIGHT((uint32_t)data_in_height));
-         EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL((uint32_t)real_in_channel) | CNA_DATA_SIZE1_DATAIN_CHANNEL((uint32_t)align_in));
+         EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL((uint32_t)align_in - 1) | CNA_DATA_SIZE1_DATAIN_CHANNEL((uint32_t)align_in));
          EMIT(REG_CNA_DATA_SIZE2, CNA_DATA_SIZE2_DATAOUT_WIDTH((uint32_t)dataout_width));
-         EMIT(REG_CNA_DATA_SIZE3, CNA_DATA_SIZE3_DATAOUT_ATOMICS((uint32_t)dataout_atomics));
-         EMIT(REG_CNA_WEIGHT_SIZE0, weight_bytes_total);
+         EMIT(REG_CNA_DATA_SIZE3, CNA_DATA_SIZE3_DATAOUT_ATOMICS((uint32_t)dataout_width * dataout_height));
+
+         uint32_t weight_bytes_per_kernel = (uint32_t)align_in * (uint32_t)sizeof(__fp16);
+         EMIT(REG_CNA_WEIGHT_SIZE0, weight_bytes_per_kernel * align_out);
          EMIT(REG_CNA_WEIGHT_SIZE1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(weight_bytes_per_kernel));
          EMIT(REG_CNA_WEIGHT_SIZE2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(1) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(1) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS((uint32_t)align_out));
-         EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(weight_bank) | CNA_CBUF_CON0_DATA_BANK(data_bank));
-         EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES(cbuf_entries));
+         
+         uint32_t fd_bytes = data_in_width * data_in_height * align_in * sizeof(__fp16);
+         uint32_t data_bank = (fd_bytes / NPU_CBUF_BANK_SIZE);
+         data_bank += (uint32_t)(data_bank == 0) ;
+         EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(NPU_CBUF_BANKS - data_bank) | CNA_CBUF_CON0_DATA_BANK(data_bank));
+         EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES( (uint32_t)((data_in_width * align_in + 31)/32) ));
          EMIT(REG_CNA_CVT_CON0, CNA_CVT_CON0_DATA_SIGN(1) | CNA_CVT_CON0_CVT_TYPE(1) | CNA_CVT_CON0_CVT_BYPASS(1));
          EMIT(REG_CNA_CVT_CON1, CNA_CVT_CON1_CVT_SCALE0(1));
          EMIT(REG_CNA_CVT_CON2, CNA_CVT_CON2_CVT_SCALE1(1));
@@ -1221,35 +1164,45 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_CNA_CVT_CON4, CNA_CVT_CON4_CVT_SCALE3(1));
          EMIT(REG_CNA_FEATURE_DATA_ADDR, CNA_FEATURE_DATA_ADDR_FEATURE_BASE_ADDR(input_dma));
          EMIT(REG_CNA_DMA_CON0, CNA_DMA_CON0_WEIGHT_BURST_LEN(15) | CNA_DMA_CON0_DATA_BURST_LEN(15));
+
+         uint32_t line_stride = (uint32_t)data_in_width * 4u;
+         int32_t surf_groups = data_in_height / 4;
+         int32_t surf_stride_signed = (int32_t)line_stride * (surf_groups - 1) + (surf_groups == 0);
+         uint32_t surf_stride = (uint32_t)(surf_stride_signed * (int32_t)(align_in >= 64));
          EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(line_stride));
          EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(surf_stride));
+
          EMIT(REG_CNA_FC_DATA_SIZE0, CNA_FC_DATA_SIZE0_DMA_WIDTH((uint32_t)data_in_width) | CNA_FC_DATA_SIZE0_DMA_HEIGHT((uint32_t)data_in_height));
          EMIT(REG_CNA_FC_DATA_SIZE1, CNA_FC_DATA_SIZE1_DMA_CHANNEL((uint32_t)align_in));
          // We place regcmds at the start of the weights buffer; actual weights start after REGCMD_RESERVED.
          EMIT(REG_CNA_DCOMP_ADDR0, CNA_DCOMP_ADDR0_DECOMPRESS_ADDR0(weights_dma + REGCMD_RESERVED));
          EMIT(REG_CORE_MISC_CFG, CORE_MISC_CFG_PROC_PRECISION(2) | CORE_MISC_CFG_QD_EN(1));
          EMIT(REG_CORE_DATAOUT_SIZE_0, CORE_DATAOUT_SIZE_0_DATAOUT_HEIGHT((uint32_t)(dataout_height - 1)) | CORE_DATAOUT_SIZE_0_DATAOUT_WIDTH((uint32_t)(dataout_width - 1)));
-         EMIT(REG_CORE_DATAOUT_SIZE_1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL((uint32_t)out_channel_field));
-         // [ffef01a8] lsb 0801000000003030 - CORE Unknown
+         EMIT(REG_CORE_DATAOUT_SIZE_1, CORE_DATAOUT_SIZE_1_DATAOUT_CHANNEL((uint32_t)align_out - 1));
          emit_raw(&regs, CORE | 0x1, 0x3030, 0);
 
          EMIT(REG_DPU_FEATURE_MODE_CFG, DPU_FEATURE_MODE_CFG_BURST_LEN(15) | DPU_FEATURE_MODE_CFG_OUTPUT_MODE(2));
          EMIT(REG_DPU_DATA_FORMAT, DPU_DATA_FORMAT_OUT_PRECISION(5) | DPU_DATA_FORMAT_IN_PRECISION(2) | DPU_DATA_FORMAT_PROC_PRECISION(2));
          EMIT(REG_DPU_DST_BASE_ADDR, DPU_DST_BASE_ADDR_DST_BASE_ADDR(output_dma));
+
+         uint32_t dst_surf_stride = is_matmul_64 ? 64u : (is_matmul_256 ? 256u : (uint32_t)out_width_stride);
          EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(dst_surf_stride));
          EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH((uint32_t)(dataout_width - 1)));
          EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT((uint32_t)(dataout_height - 1)));
-         if (!is_matmul_768 && !is_matmul_768_2048 && !is_matmul_2048) EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
-         EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)orig_channel) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)out_channel_field));
+         
+         uint32_t notch_val = (is_matmul_64 || is_matmul_256) ? 0u : 7u;
+         EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
+         
+         EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)align_out - 1) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)align_out - 1));
          EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
          EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_SIZE_E_2(3) | DPU_BS_OW_CFG_SIZE_E_1(3) | DPU_BS_OW_CFG_SIZE_E_0(3) | DPU_BS_OW_CFG_OD_BYPASS(1));
-         EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA((uint32_t)out_channel_field));
+         EMIT(REG_DPU_WDMA_SIZE_0, DPU_WDMA_SIZE_0_CHANNEL_WDMA((uint32_t)align_out - 1));
          EMIT(REG_DPU_WDMA_SIZE_1, DPU_WDMA_SIZE_1_HEIGHT_WDMA((uint32_t)(dataout_height - 1)) | DPU_WDMA_SIZE_1_WIDTH_WDMA((uint32_t)(dataout_width - 1)));
          EMIT(REG_DPU_BN_CFG, DPU_BN_CFG_BN_RELU_BYPASS(1) | DPU_BN_CFG_BN_MUL_BYPASS(1) | DPU_BN_CFG_BN_ALU_BYPASS(1) | DPU_BN_CFG_BN_BYPASS(1));
          EMIT(REG_DPU_EW_CFG, DPU_EW_CFG_EW_RELU_BYPASS(1) | DPU_EW_CFG_EW_OP_CVT_BYPASS(1) | DPU_EW_CFG_EW_LUT_BYPASS(1) | DPU_EW_CFG_EW_OP_BYPASS(1) | DPU_EW_CFG_EW_BYPASS(1));
          EMIT(REG_DPU_EW_CVT_SCALE_VALUE, DPU_EW_CVT_SCALE_VALUE_EW_OP_CVT_SCALE(1));
          EMIT(REG_DPU_OUT_CVT_SCALE, DPU_OUT_CVT_SCALE_OUT_CVT_SCALE(1));
-         EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(surface_add));
+         EMIT(REG_DPU_SURFACE_ADD, DPU_SURFACE_ADD_SURF_ADD(dst_surf_stride * 4u));
          emit_raw(&regs, 0x0 | 0x1, 0x40c4, 0);
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
          goto alu_case_done;
@@ -4406,7 +4359,7 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    const size_t weights_alloc_size = regcmd_reserved + weights_aligned;
    void *weights = mem_allocate(fd, weights_alloc_size, &weights_dma, &weights_obj, 0, &weights_handle);
    if (weights == MAP_FAILED) {
-      printf("weights mmap failed\n");
+      printf("weights mmap failed (size=%zu, aligned=%zu)\n", weights_alloc_size, weights_aligned);
       return (struct MemHandles){0};
    }
    
