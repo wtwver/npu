@@ -28,8 +28,8 @@ foreach dims : matmul_cases
     args: ['matmul', dims[0], dims[1], dims[2]])
 endforeach
 
-foreach n : range(1, 64)
-  test('matmul 1x@0@x@0@'.format(n),
+foreach n : range(1, 512)
+  test('matmul @0@x@0@x@0@'.format(n),
     ops_reg_exe,
     is_parallel: false,
     args: ['matmul', n.to_string(), n.to_string(), n.to_string()])
