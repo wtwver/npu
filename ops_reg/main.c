@@ -3944,7 +3944,8 @@ int test_matmul(int argc, char **argv) {
 
     // {"matmul_1x32x16", 1, 32, 16},
     // {"matmul_1x768x768", 1, 768, 768}, 
-    {"matmul_1x768x2048", 1, 768, 2048}, 
+    // {"matmul_1x768x2048", 1, 768, 2048}, 
+    {"matmul_1x2048x2048", 1, 2048, 2048}, 
   };
 
   int status = 0;
