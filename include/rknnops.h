@@ -1126,9 +1126,11 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          int data_in_height = dataout_height;
          int align_in = params.align_in > 0 ? params.align_in : 32;
          int align_out = params.align_out > 0 ? params.align_out : 32;
-         const bool is_matmul_64 = (params.M == 64 && params.N == 64 && params.K == 64);
-         const bool is_matmul_256 = (params.M == 256 && params.N == 256 && params.K == 256);
-         const bool is_matmul_768 = (params.M == 1 && params.N == 768 && params.K == 768);
+         const bool is_matmul_64 = (params.M == 64 && params.K == 64 && params.N == 64);
+         const bool is_matmul_256 = (params.M == 256 && params.K == 256 && params.N == 256);
+         const bool is_matmul_768 = (params.M == 1 && params.K == 768 && params.N == 768) ;
+         const bool is_matmul_768_2048 = (params.M == 1 && params.K == 768 && params.N == 2048 ) ;
+         printf("M=%d, N=%d, K=%d, is_matmul_768_2048=%d", params.M, params.N, params.K, is_matmul_768_2048);
          uint32_t line_stride = (uint32_t)data_in_width * 4u;
          
          uint32_t surf_stride = 0;
@@ -1152,7 +1154,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          } else if (is_matmul_256) {
             // surf_stride = 252;
             notch_val = 0;
-         } else if (is_matmul_768) {
+         } else if (is_matmul_768 || is_matmul_768_2048) {
             surf_stride = 268435453;
          } else if (dataout_height == 64) {
             notch_val = 15;
@@ -1172,7 +1174,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          // RKNN: if (align_in == 64 && !is_matmul_64) line_stride = 8;
          uint32_t dst_surf_stride = is_matmul_64 ? 64u : (is_matmul_256 ? 256u : (uint32_t)out_width_stride);
          uint32_t surface_add;
-         if (is_matmul_64 || is_matmul_256 || is_matmul_768) {
+         if (is_matmul_64 || is_matmul_256 || is_matmul_768 || is_matmul_768_2048) {
             surface_add = dst_surf_stride * 4u;
          } else {
             surface_add = dst_surf_stride * (uint32_t)(align_out / 8u);
@@ -1198,7 +1200,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
 
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          uint32_t conv_con1 = CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2);
-         if (!is_matmul_64 && !is_matmul_256 && !is_matmul_768) conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
+         if (!is_matmul_64 && !is_matmul_256 && !is_matmul_768 && !is_matmul_768_2048) conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
          EMIT(REG_CNA_CONV_CON1, conv_con1);
          EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(feature_grains));
          EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
@@ -1236,7 +1238,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_DPU_DST_SURF_STRIDE, DPU_DST_SURF_STRIDE_DST_SURF_STRIDE(dst_surf_stride));
          EMIT(REG_DPU_DATA_CUBE_WIDTH, DPU_DATA_CUBE_WIDTH_WIDTH((uint32_t)(dataout_width - 1)));
          EMIT(REG_DPU_DATA_CUBE_HEIGHT, DPU_DATA_CUBE_HEIGHT_HEIGHT((uint32_t)(dataout_height - 1)));
-         if (!is_matmul_768) EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
+         if (!is_matmul_768 && !is_matmul_768_2048) EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
          EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)orig_channel) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)out_channel_field));
          EMIT(REG_DPU_BS_CFG, DPU_BS_CFG_BS_RELU_BYPASS(1) | DPU_BS_CFG_BS_MUL_BYPASS(1) | DPU_BS_CFG_BS_ALU_BYPASS(1) | DPU_BS_CFG_BS_BYPASS(1));
          EMIT(REG_DPU_BS_OW_CFG, DPU_BS_OW_CFG_SIZE_E_2(3) | DPU_BS_OW_CFG_SIZE_E_1(3) | DPU_BS_OW_CFG_SIZE_E_0(3) | DPU_BS_OW_CFG_OD_BYPASS(1));

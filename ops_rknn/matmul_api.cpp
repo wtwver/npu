@@ -248,8 +248,8 @@ enum class MatmulPrecision {
 struct MatmulCase {
   std::string name;
   int M;
-  int N;
   int K;
+  int N;
   rknn_matmul_type type;
   MatmulPrecision precision;
 };
@@ -263,7 +263,8 @@ static const std::vector<MatmulCase> kMatmulCases = {
     // {"matmul_fp16_1x8192x8192", 1, 8192, 8192, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_int8_64x64", 64, 64, 64, RKNN_INT8_MM_INT8_TO_INT32, MatmulPrecision::kInt8},
     
-    {"matmul_fp16_1x768x768", 1, 768, 768, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_1x768x768", 1, 768, 768, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    {"matmul_fp16_1x768x2048", 1, 768, 2048, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
 };
 
 struct MatmulCtxGuard {
@@ -469,25 +470,30 @@ static bool run_float16_case(const MatmulCase& cfg) {
   initialize_tensor_mem(memB.get(), weight_data, weight_bytes);
   initialize_tensor_mem(memC.get(), nullptr, 0);
 
-  ret = rknn_matmul_set_io_mem(ctx, memA.get(), &attr.A);
-  if (ret != 0) {
-    std::cerr << "rknn_matmul_set_io_mem A failed: " << ret << std::endl;
-    return false;
-  }
   ret = rknn_mem_sync(ctx, memA.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
-  // std::this_thread::sleep_for(std::chrono::milliseconds(10));
   if (ret != 0) {
     std::cerr << "rknn_mem_sync A failed: " << ret << std::endl;
-    return false;
-  }
-  ret = rknn_matmul_set_io_mem(ctx, memB.get(), &attr.B);
-  if (ret != 0) {
-    std::cerr << "rknn_matmul_set_io_mem B failed: " << ret << std::endl;
     return false;
   }
   ret = rknn_mem_sync(ctx, memB.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
   if (ret != 0) {
     std::cerr << "rknn_mem_sync B failed: " << ret << std::endl;
+    return false;
+  }
+  ret = rknn_mem_sync(ctx, memC.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
+  if (ret != 0) {
+    std::cerr << "rknn_mem_sync C failed: " << ret << std::endl;
+    return false;
+  }
+
+  ret = rknn_matmul_set_io_mem(ctx, memA.get(), &attr.A);
+  if (ret != 0) {
+    std::cerr << "rknn_matmul_set_io_mem A failed: " << ret << std::endl;
+    return false;
+  }
+  ret = rknn_matmul_set_io_mem(ctx, memB.get(), &attr.B);
+  if (ret != 0) {
+    std::cerr << "rknn_matmul_set_io_mem B failed: " << ret << std::endl;
     return false;
   }
   ret = rknn_matmul_set_io_mem(ctx, memC.get(), &attr.C);
@@ -647,38 +653,34 @@ static bool run_int8_case(const MatmulCase& cfg) {
 
   initialize_tensor_mem(memA.get(), padded_input.data(),
                         padded_input.size() * sizeof(int8_t));
+  initialize_tensor_mem(memB.get(), padded_weight.data(),
+                        padded_weight.size() * sizeof(int8_t));
+  initialize_tensor_mem(memC.get(), nullptr, 0);
+
   ret = rknn_mem_sync(ctx, memA.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
   if (ret != 0) {
     std::cerr << "rknn_mem_sync A failed: " << ret << std::endl;
     return false;
   }
-  initialize_tensor_mem(memB.get(), padded_weight.data(),
-                        padded_weight.size() * sizeof(int8_t));
   ret = rknn_mem_sync(ctx, memB.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
   if (ret != 0) {
     std::cerr << "rknn_mem_sync B failed: " << ret << std::endl;
     return false;
   }
-  initialize_tensor_mem(memC.get(), nullptr, 0);
+  ret = rknn_mem_sync(ctx, memC.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
+  if (ret != 0) {
+    std::cerr << "rknn_mem_sync C failed: " << ret << std::endl;
+    return false;
+  }
 
   ret = rknn_matmul_set_io_mem(ctx, memA.get(), &attr.A);
   if (ret != 0) {
     std::cerr << "rknn_matmul_set_io_mem A failed: " << ret << std::endl;
     return false;
   }
-  ret = rknn_mem_sync(ctx, memA.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
-  if (ret != 0) {
-    std::cerr << "rknn_mem_sync A failed: " << ret << std::endl;
-    return false;
-  }
   ret = rknn_matmul_set_io_mem(ctx, memB.get(), &attr.B);
   if (ret != 0) {
     std::cerr << "rknn_matmul_set_io_mem B failed: " << ret << std::endl;
-    return false;
-  }
-  ret = rknn_mem_sync(ctx, memB.get(), RKNN_MEMORY_SYNC_TO_DEVICE);
-  if (ret != 0) {
-    std::cerr << "rknn_mem_sync B failed: " << ret << std::endl;
     return false;
   }
   ret = rknn_matmul_set_io_mem(ctx, memC.get(), &attr.C);

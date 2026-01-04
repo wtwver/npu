@@ -3943,9 +3943,8 @@ int test_matmul(int argc, char **argv) {
     // {"matmul_256x256x256", 256, 256, 256}, // need surf_stride = 252
 
     // {"matmul_1x32x16", 1, 32, 16},
-    {"matmul_1x768x768", 1, 768, 768}, // NOT match
-    // {"matmul_1x768x2048", 1, 768, 2048}, //timeout
-    // {"1x8192x7744", 1, 8192, 7744}, //segfault
+    // {"matmul_1x768x768", 1, 768, 768}, 
+    {"matmul_1x768x2048", 1, 768, 2048}, 
   };
 
   int status = 0;
