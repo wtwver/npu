@@ -283,7 +283,7 @@ static const std::vector<MatmulCase> kMatmulCases = {
     // {"matmul_fp16_289x289x289", 289, 289, 289, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_308x308x308", 308, 308, 308, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_321x321x321", 321, 321, 321, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
-    {"matmul_fp16_385x385x385", 385, 385, 385, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    {"matmul_fp16_394x394x394", 394, 394, 394, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
 };
 
 struct MatmulCtxGuard {

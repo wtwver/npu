@@ -3,10 +3,10 @@ set breakpoint pending on
 
 break rknn_run
 commands 
-    shell python3 patch_task_buffer.py --mode=none --reg-flink 2 --write-offset 0x5178 --write-value 0x1001000003804070 --write-length 8
+    #shell python3 patch_task_buffer.py --mode=none --reg-flink 2 --write-offset 0x5178 --write-value 0x1001000003804070 --write-length 8
 
     printf "break rknn_run============\n"
-    shell python3 dump.py 2 | grep EMIT | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | sed 's/^.*EMIT(/EMIT(/' | grep -v "0x00000000" > /tmp/ops_rknn_gem2 
+    #shell python3 dump.py 2 | grep EMIT | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | sed 's/^.*EMIT(/EMIT(/' | grep -v "0x00000000" > /tmp/ops_rknn_gem2 
     printf "end break rknn_run============\n"
     continue
 end
@@ -26,7 +26,7 @@ commands
     printf "break rknn_destroy============\n"
     #shell python3 dump.py 3
     #shell python3 dump.py 4
-    shell python3 dump.py 5
+    #shell python3 dump.py 5
     printf "end break rknn_destroy============\n"
     continue
 end
@@ -38,7 +38,7 @@ import re
 from pathlib import Path
 
 SUBMIT_COUNT = 0
-KEEP_TASKS = 1  # tweak here to adjust how many tasks are kept
+KEEP_TASKS = 2  # tweak here to adjust how many tasks are kept
 
 IOC_NRBITS = 8
 IOC_TYPEBITS = 8
@@ -428,7 +428,7 @@ class IoctlDecoder:
         submit_data = _decode_submit(regs["arg"])
         _print_submit(regs["arg"], submit_data=submit_data)
         _patch_last_ew_cfg_for_tasks(submit_data)
-        os.system("python3 dump.py 3")
+        #os.system("python3 dump.py 3")
       elif macro[0] == "DRM_IOCTL_RKNPU_MEM_SYNC":
         _print_mem_sync(regs["arg"])
     else:

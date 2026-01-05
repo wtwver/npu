@@ -1,1 +1,0 @@
-ninja -C build test_fail

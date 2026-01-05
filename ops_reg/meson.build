@@ -7,8 +7,6 @@ ops_reg_exe = executable('ops_reg', 'main.c',
   link_args: ['-ldrm', '-lm'],
 )
 
-
-
 matmul_cases = [
   ['32', '32', '32'],
   ['64', '64', '64'],
@@ -47,6 +45,14 @@ foreach dims : matmul_cases
 endforeach
 
 foreach n : range(1, 512)
+  test('matmul 1x@0@x@0@'.format(n),
+    ops_reg_exe,
+    is_parallel: false,
+    args: ['matmul', n.to_string(), n.to_string(), n.to_string()])
+endforeach
+
+# fail at 394
+foreach n : range(1, 512)
   test('matmul @0@x@0@x@0@'.format(n),
     ops_reg_exe,
     is_parallel: false,
@@ -54,7 +60,6 @@ foreach n : range(1, 512)
 endforeach
 
 # Run with: ninja -C build test_failfast
-run_target('test_fail',
+run_target('test_matmul',
   command: ['meson', 'test', '--maxfail=1', '-C', meson.project_build_root()],
 )
-
