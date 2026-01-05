@@ -269,7 +269,21 @@ static const std::vector<MatmulCase> kMatmulCases = {
     // {"matmul_fp16_1x8192x7744", 1, 8192, 7744, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_33x33x33", 33, 33, 33, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_34x34x34", 34, 34, 34, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
-    {"matmul_fp16_65x65x65", 65, 65, 65, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_65x65x65", 65, 65, 65, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_97x97x97", 97, 97, 97, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_128x128x128", 128, 128, 128, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_129x129x129", 129, 129, 129, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_130x130x130", 130, 130, 130, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_161x161x161", 161, 161, 161, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_171x171x171", 171, 171, 171, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_193x193x193", 193, 193, 193, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_225x225x225", 225, 225, 225, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_257x257x257", 257, 257, 257, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_285x285x285", 285, 285, 285, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_289x289x289", 289, 289, 289, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_308x308x308", 308, 308, 308, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul_fp16_321x321x321", 321, 321, 321, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    {"matmul_fp16_385x385x385", 385, 385, 385, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
 };
 
 struct MatmulCtxGuard {

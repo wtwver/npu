@@ -1141,7 +1141,15 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          uint32_t conv_con1 = CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2);
          if (!is_matmul_64 && !is_matmul_256 && !is_matmul_768 && !is_matmul_768_2048 && !is_matmul_2048) conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
          EMIT(REG_CNA_CONV_CON1, conv_con1);
-         EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(data_in_height + 1));
+         int feature_grains = data_in_height + 1;
+         if (params.M > 128 && params.M <= 192) feature_grains = data_in_height;
+         if (params.M > 192 && params.M <= 224) feature_grains = 148;
+         if (params.M > 224 && params.M < 256) feature_grains = 128;
+         if (params.M > 256 && params.M <= 288) feature_grains = 114;
+         if (params.M > 288 && params.M <= 320) feature_grains = 104;
+         if (params.M > 320 && params.M <= 352) feature_grains = 94;
+         if (params.M > 352 && params.M < 512) feature_grains = 86;
+         EMIT(REG_CNA_CONV_CON2, CNA_CONV_CON2_FEATURE_GRAINS(feature_grains));
          EMIT(REG_CNA_CONV_CON3, CNA_CONV_CON3_CONV_Y_STRIDE(1) | CNA_CONV_CON3_CONV_X_STRIDE(1));
          EMIT(REG_CNA_DATA_SIZE0, CNA_DATA_SIZE0_DATAIN_WIDTH((uint32_t)data_in_width) | CNA_DATA_SIZE0_DATAIN_HEIGHT((uint32_t)data_in_height));
          EMIT(REG_CNA_DATA_SIZE1, CNA_DATA_SIZE1_DATAIN_CHANNEL_REAL((uint32_t)align_in - 1) | CNA_DATA_SIZE1_DATAIN_CHANNEL((uint32_t)align_in));
@@ -1153,9 +1161,21 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          EMIT(REG_CNA_WEIGHT_SIZE1, CNA_WEIGHT_SIZE1_WEIGHT_BYTES_PER_KERNEL(weight_bytes_per_kernel));
          EMIT(REG_CNA_WEIGHT_SIZE2, CNA_WEIGHT_SIZE2_WEIGHT_WIDTH(1) | CNA_WEIGHT_SIZE2_WEIGHT_HEIGHT(1) | CNA_WEIGHT_SIZE2_WEIGHT_KERNELS((uint32_t)align_out));
          
-         uint32_t fd_bytes = data_in_width * data_in_height * align_in * sizeof(__fp16);
-         uint32_t data_bank = (fd_bytes / NPU_CBUF_BANK_SIZE);
-         data_bank += (uint32_t)(data_bank == 0) ;
+         // uint32_t fd_bytes = data_in_width * data_in_height * align_in * sizeof(__fp16);
+         // uint32_t data_bank = (fd_bytes / NPU_CBUF_BANK_SIZE);
+         // data_bank += (uint32_t)(data_bank == 0) ;
+         // if (params.M > 128 && params.M <= 170) data_bank = 2;
+         // if (params.M > 170 && params.M <= 219) data_bank = 3;
+         // if (params.M > 219 && params.M < 256) data_bank = 4;
+         // if (params.M > 256 && params.M < 284) data_bank = 5;
+         // if (params.M > 284 && params.M < 307) data_bank = 6;
+         // if (params.M > 307 && params.M < 325) data_bank = 7;
+         // if (params.M > 325 && params.M < 512) data_bank = 8;
+         uint64_t fd_bytes = (uint64_t)data_in_width * data_in_height * align_in * sizeof(__fp16);
+         uint32_t data_bank = (uint32_t)((fd_bytes + NPU_CBUF_BANK_SIZE - 1) / NPU_CBUF_BANK_SIZE);
+         if (data_bank == 0) data_bank = 1;
+         if (data_bank > NPU_CBUF_BANKS - 1) data_bank = NPU_CBUF_BANKS - 1;
+
          EMIT(REG_CNA_CBUF_CON0, CNA_CBUF_CON0_WEIGHT_BANK(NPU_CBUF_BANKS - data_bank) | CNA_CBUF_CON0_DATA_BANK(data_bank));
          EMIT(REG_CNA_CBUF_CON1, CNA_CBUF_CON1_DATA_ENTRIES( (uint32_t)((data_in_width * align_in + 31)/32) ));
          EMIT(REG_CNA_CVT_CON0, CNA_CVT_CON0_DATA_SIGN(1) | CNA_CVT_CON0_CVT_TYPE(1) | CNA_CVT_CON0_CVT_BYPASS(1));
@@ -1168,13 +1188,24 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
 
          uint32_t line_stride = (uint32_t)data_in_width * 4u;
          if (params.M > 32 && params.M < 64) line_stride = 8;
-         else if (params.M > 64 && params.M < 128) line_stride = 12;
+         else if (params.M > 64 && params.M <= 96) line_stride = 12;
+         else if (params.M > 96 && params.M <= 128) line_stride = 16;
+         else if (params.M > 128 && params.M <= 160) line_stride = 20;
+         else if (params.M > 160 && params.M <= 192) line_stride = 24;
+         else if (params.M > 192 && params.M <= 224) line_stride = 28;
+         else if (params.M > 224 && params.M < 256) line_stride = 32;
+         else if (params.M > 256 && params.M <= 288) line_stride = 36;
+         else if (params.M > 288 && params.M <= 320) line_stride = 40;
+         else if (params.M > 320 && params.M <= 352) line_stride = 44;
+         else if (params.M > 352 && params.M < 512) line_stride = 48;
 
          int32_t surf_groups = data_in_height / 4;
          int32_t surf_stride_signed = (int32_t)line_stride * (surf_groups - 1) + (surf_groups == 0);
          uint32_t surf_stride = (uint32_t)(surf_stride_signed * (int32_t)(align_in >= 64));
          if (params.M > 32 && params.M < 64) surf_stride = 0 ;
-         else if (params.M > 64 && params.M < 128) surf_stride = 0 ;
+         else if (params.M > 64 && params.M <= 128) surf_stride = 0 ;
+         else if (params.M > 128 && params.M < 256) surf_stride = 0 ;
+         else if (params.M > 256 && params.M < 512) surf_stride = 0 ;
          EMIT(REG_CNA_DMA_CON1, CNA_DMA_CON1_LINE_STRIDE(line_stride));
          EMIT(REG_CNA_DMA_CON2, CNA_DMA_CON2_SURF_STRIDE(surf_stride));
 
@@ -1198,7 +1229,17 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          
          uint32_t notch_val = (is_matmul_64 || is_matmul_256) ? 0u : 7u;
          if (params.M > 32 && params.M < 64) notch_val = 15 ;
-         else if (params.M > 64 && params.M < 128) notch_val = 23 ;
+         else if (params.M > 64 && params.M <= 96) notch_val = 23 ;
+         else if (params.M > 96 && params.M <= 128) notch_val = 31;
+         else if (params.M > 128 && params.M <= 160) notch_val = 39;
+         else if (params.M > 160 && params.M <= 192) notch_val = 47;
+         else if (params.M > 192 && params.M <= 224) notch_val = 55;
+         else if (params.M > 224 && params.M < 256) notch_val = 63;
+         else if (params.M > 256 && params.M <= 288) notch_val = 71;
+         else if (params.M > 288 && params.M <= 320) notch_val = 79;
+         else if (params.M > 320 && params.M <= 352) notch_val = 87;
+         else if (params.M > 352 && params.M < 512) notch_val = 95;
+
          EMIT(REG_DPU_DATA_CUBE_NOTCH_ADDR, DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_1(notch_val) |DPU_DATA_CUBE_NOTCH_ADDR_NOTCH_ADDR_0(notch_val));
          
          EMIT(REG_DPU_DATA_CUBE_CHANNEL, DPU_DATA_CUBE_CHANNEL_ORIG_CHANNEL((uint32_t)align_out - 1) | DPU_DATA_CUBE_CHANNEL_CHANNEL((uint32_t)align_out - 1));
