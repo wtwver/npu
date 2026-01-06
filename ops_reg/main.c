@@ -4041,7 +4041,9 @@ int test_matmul(int argc, char **argv) {
     // {"matmul_321x321x321", 321, 321, 321}, 
     // {"matmul_326x326x326", 326, 326, 326}, 
     // {"matmul_385x385x385", 385, 385, 385}, 
-    {"matmul_394x394x394", 394, 394, 394}, 
+    // {"matmul_394x394x394", 394, 394, 394}, 
+    // {"matmul", 1, 394, 394}, //correct
+    {"matmul", 1, 7905, 7905},
   };
 
   int status = 0;
@@ -4340,6 +4342,14 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
       out_width_stride = 16;
     }
   }
+  if (config->kernel_h == 1 && config->kernel_w == 1) {
+    int atoms = out_width * out_height;
+    if (atoms < 4) {
+      out_width_stride = atoms;
+    } else {
+      out_width_stride = (atoms + 3) & ~3;
+    }
+  }
 
   size_t input_elems = (size_t)config->batch * config->in_channels * config->in_height * config->in_width;
   size_t weight_elems = (size_t)config->out_channels * config->weight_in_channels * config->kernel_h * config->kernel_w;
@@ -4455,23 +4465,105 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
     }
   }
 
-  __fp16 *result = float16_conv2d(input, npu_kernel, 13, (int)input_elems, (int)expanded_weight_elems);
-  if (result == NULL) {
-    printf("float16_conv2d returned NULL for %s\n", config->name);
-    free(input); free(kernel); free(npu_kernel); free(input_packed); free(expected);
-    return -1;
-  }
   float *output_nchw = (float*)malloc((size_t)config->out_channels * out_height * out_width * sizeof(float));
   if (!output_nchw) {
     printf("failed to allocate output buffer for %s\n", config->name);
     free(input); free(kernel); free(npu_kernel); free(input_packed); free(expected);
     return -1;
   }
-  // RKNN conv2d outputs are NC1HWC2 with c2=8 and stride_w=out_width for this case.
+  // RKNN conv2d outputs are NC1HWC2 with c2=8; 1x1 kernels flatten H*W into W.
   int unpack_c2 = (align_out_c >= 8) ? 8 : align_out_c;
-  int unpack_width_stride = out_width;
-  unpack_nc1hwc2_fp16(result, output_nchw,
-      config->batch, config->out_channels, out_height, out_width, unpack_c2, unpack_width_stride);
+  bool use_tile = false;
+  int tile_max_h = 0;
+  if (config->kernel_h == 1 && config->kernel_w == 1) {
+    tile_max_h = 11264 / width_stride;
+    if (tile_max_h < 1) tile_max_h = 1;
+    use_tile = (out_height > tile_max_h);
+  }
+  if (use_tile) {
+    for (int row_offset = 0; row_offset < out_height; row_offset += tile_max_h) {
+      int tile_h = out_height - row_offset;
+      if (tile_h > tile_max_h) tile_h = tile_max_h;
+      size_t tile_input_elems = (size_t)config->batch * config->in_channels * (size_t)tile_h * config->in_width;
+      __fp16 *tile_input = (__fp16*)malloc(tile_input_elems * sizeof(__fp16));
+      if (!tile_input) {
+        printf("failed to allocate tile input for %s\n", config->name);
+        free(input); free(kernel); free(npu_kernel); free(input_packed); free(expected); free(output_nchw);
+        return -1;
+      }
+      for (int n = 0; n < config->batch; n++) {
+        for (int c = 0; c < config->in_channels; c++) {
+          size_t src_base = (((size_t)n * config->in_channels + c) * config->in_height + row_offset) * config->in_width;
+          size_t dst_base = (((size_t)n * config->in_channels + c) * (size_t)tile_h) * config->in_width;
+          memcpy(tile_input + dst_base, input + src_base, (size_t)tile_h * config->in_width * sizeof(__fp16));
+        }
+      }
+      int tile_atoms = out_width * tile_h;
+      int tile_out_width_stride = (tile_atoms < 4) ? tile_atoms : ((tile_atoms + 3) & ~3);
+      set_conv2d_params(config->batch, config->in_channels, tile_h, config->in_width,
+        config->out_channels, config->kernel_h, config->kernel_w, config->groups,
+        tile_h, out_width, width_stride, tile_out_width_stride, align_c, align_out_c);
+      __fp16 *result = float16_conv2d(tile_input, npu_kernel, 13, (int)tile_input_elems, (int)expanded_weight_elems);
+      if (result == NULL) {
+        printf("float16_conv2d returned NULL for %s\n", config->name);
+        free(tile_input);
+        free(input); free(kernel); free(npu_kernel); free(input_packed); free(expected); free(output_nchw);
+        return -1;
+      }
+      int flat_width = tile_h * out_width;
+      size_t flat_elems = (size_t)config->batch * (size_t)config->out_channels * (size_t)flat_width;
+      float *output_flat = (float*)malloc(flat_elems * sizeof(float));
+      if (!output_flat) {
+        printf("failed to allocate flat output buffer for %s\n", config->name);
+        free(tile_input);
+        free(input); free(kernel); free(npu_kernel); free(input_packed); free(expected); free(output_nchw);
+        return -1;
+      }
+      unpack_nc1hwc2_fp16(result, output_flat,
+          config->batch, config->out_channels, 1, flat_width, unpack_c2, tile_out_width_stride);
+      for (int n = 0; n < config->batch; n++) {
+        for (int oc = 0; oc < config->out_channels; oc++) {
+          size_t src_base = ((size_t)n * config->out_channels + oc) * (size_t)flat_width;
+          size_t dst_base = ((size_t)n * config->out_channels + oc) * (size_t)out_height * (size_t)out_width;
+          dst_base += (size_t)row_offset * (size_t)out_width;
+          memcpy(output_nchw + dst_base, output_flat + src_base, (size_t)flat_width * sizeof(float));
+        }
+      }
+      free(output_flat);
+      free(tile_input);
+    }
+  } else {
+    __fp16 *result = float16_conv2d(input, npu_kernel, 13, (int)input_elems, (int)expanded_weight_elems);
+    if (result == NULL) {
+      printf("float16_conv2d returned NULL for %s\n", config->name);
+      free(input); free(kernel); free(npu_kernel); free(input_packed); free(expected); free(output_nchw);
+      return -1;
+    }
+    if (config->kernel_h == 1 && config->kernel_w == 1) {
+      int flat_width = out_height * out_width;
+      size_t flat_elems = (size_t)config->batch * (size_t)config->out_channels * (size_t)flat_width;
+      float *output_flat = (float*)malloc(flat_elems * sizeof(float));
+      if (!output_flat) {
+        printf("failed to allocate flat output buffer for %s\n", config->name);
+        free(input); free(kernel); free(npu_kernel); free(input_packed); free(expected); free(output_nchw);
+        return -1;
+      }
+      unpack_nc1hwc2_fp16(result, output_flat,
+          config->batch, config->out_channels, 1, flat_width, unpack_c2, out_width_stride);
+      for (int n = 0; n < config->batch; n++) {
+        for (int oc = 0; oc < config->out_channels; oc++) {
+          size_t src_base = ((size_t)n * config->out_channels + oc) * (size_t)flat_width;
+          size_t dst_base = ((size_t)n * config->out_channels + oc) * (size_t)out_height * (size_t)out_width;
+          memcpy(output_nchw + dst_base, output_flat + src_base, (size_t)flat_width * sizeof(float));
+        }
+      }
+      free(output_flat);
+    } else {
+      int unpack_width_stride = out_width;
+      unpack_nc1hwc2_fp16(result, output_nchw,
+          config->batch, config->out_channels, out_height, out_width, unpack_c2, unpack_width_stride);
+    }
+  }
 
   print_conv2d_output("Actual output (ops_reg):", output_nchw,
       config->batch, config->out_channels, out_height, out_width);
@@ -4501,6 +4593,27 @@ static int run_conv2d_case(const Conv2dTestConfig *config) {
 }
 
 int test_conv2d(int argc, char **argv) {
+  if (argc >= 9) {
+    int batch = atoi(argv[1]);
+    int in_channels = atoi(argv[2]);
+    int in_height = atoi(argv[3]);
+    int in_width = atoi(argv[4]);
+    int out_channels = atoi(argv[5]);
+    int weight_in_channels = atoi(argv[6]);
+    int kernel_h = atoi(argv[7]);
+    int kernel_w = atoi(argv[8]);
+    int groups = (argc >= 10) ? atoi(argv[9]) : 0;
+    char name_buf[128];
+    snprintf(name_buf, sizeof(name_buf),
+        "conv2d_cli_b%d_c%d_h%d_w%d_oc%d_wic%d_k%dx%d_g%d",
+        batch, in_channels, in_height, in_width,
+        out_channels, weight_in_channels, kernel_h, kernel_w, groups);
+    Conv2dTestConfig cli_config = {
+        batch, in_channels, in_height, in_width,
+        out_channels, weight_in_channels, kernel_h, kernel_w,
+        groups, name_buf};
+    return run_conv2d_case(&cli_config);
+  }
   static const Conv2dTestConfig configs[] = {
     {1, 3, 5, 7, 6, 3, 2, 1, 1, "conv2d_i1357_w6321"},
     {1, 3, 5, 7, 6, 3, 2, 3, 1, "conv2d_i1357_w6323"},

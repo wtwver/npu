@@ -1117,7 +1117,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
          goto alu_case_done;
       }
-alu_case_matmul: { // matmul
+      alu_case_matmul: { // matmul
          MatmulParams params = matmul_params;
          if (params.align_in <= 0 || params.align_out <= 0 || params.out_width <= 0 ||
              params.out_width_stride <= 0 || params.align_out_atomic <= 0 ||
@@ -1133,6 +1133,9 @@ alu_case_matmul: { // matmul
          int out_width_stride = params.out_width_stride > 0 ? params.out_width_stride : dataout_width;
          const bool is_KN_64 = ( params.K == 64 && params.N == 64);
          const bool is_matmul_64 = (params.M == 64 && params.K == 64 && params.N == 64);
+         const bool is_KN_256 = (params.K == 256 && params.N == 256);
+         const bool is_KN_512 = (params.K == 512 && params.N == 512);
+         const bool is_KN_lg_512 = (params.K > 512 && params.N > 512);
          const bool is_matmul_256 = (params.M == 256 && params.K == 256 && params.N == 256);
          const bool is_matmul_768 = (params.M == 1 && params.K == 768 && params.N == 768) ;
          const bool is_matmul_768_2048 = (params.M == 1 && params.K == 768 && params.N == 2048 ) ;
@@ -1140,7 +1143,7 @@ alu_case_matmul: { // matmul
 
          EMIT(REG_DPU_S_POINTER, DPU_S_POINTER_POINTER_PP_MODE(1) | DPU_S_POINTER_EXECUTER_PP_EN(1) | DPU_S_POINTER_POINTER_PP_EN(1));
          uint32_t conv_con1 = CNA_CONV_CON1_PROC_PRECISION(2) | CNA_CONV_CON1_IN_PRECISION(2);
-         if (!is_KN_64 && !is_matmul_256 && !is_matmul_768 && !is_matmul_768_2048 && !is_matmul_2048) 
+         if (!is_KN_64 && !is_KN_256 && !is_KN_512 && !is_KN_lg_512 && !is_matmul_768 && !is_matmul_768_2048 && !is_matmul_2048) 
             conv_con1 |= CNA_CONV_CON1_GROUP_LINE_OFF(1);
          EMIT(REG_CNA_CONV_CON1, conv_con1);
          // int feature_grains = data_in_height + 1;
@@ -1258,7 +1261,7 @@ alu_case_matmul: { // matmul
          // else if (params.M > 288 && params.M <= 320) notch_val = 79;
          // else if (params.M > 320 && params.M <= 352) notch_val = 87;
          // else if (params.M > 352 && params.M < 512) notch_val = 95;
-         uint32_t notch_val = (is_KN_64 || is_matmul_256) ? 0u : 7u;
+         uint32_t notch_val = (is_KN_64 || is_KN_256 || is_KN_512) ? 0u : 7u;
          if (params.K > 32 && params.K < 512 && params.K != 64 && params.K != 256) {
             uint32_t notch_steps = ((uint32_t)params.K - 1u) / 32u;
             if (notch_steps > 12u) notch_steps = 12u;
@@ -1281,7 +1284,7 @@ alu_case_matmul: { // matmul
          emit_raw(&regs, 0x81, REG_PC_OPERATION_ENABLE, PC_OPERATION_ENABLE_RESERVED_0(6) | PC_OPERATION_ENABLE_OP_EN(1));
          goto alu_case_done;
       }
-      
+
       alu_case_relu: { // RELU
          size_t packed_elems = input_size_bytes / 0x10;
          if (packed_elems == 0) packed_elems = 1;

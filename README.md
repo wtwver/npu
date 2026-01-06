@@ -1,3 +1,15 @@
+# Know issues
+
+check if regcmd is stored elsewhere , should it be 7936
+
+matmul failed at
+- 1x7905x7905, rknn also failed
+- 394x394x394, rknn splited
+
+rk3588-npu
+- 1x32x32 til 1x7936x7936 works
+- 32x32x32 til 384x384x384 works
+
 # How to do matmul in RK3588
 
 ## Input and output dimension 

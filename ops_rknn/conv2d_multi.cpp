@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <sys/stat.h>
@@ -46,6 +47,8 @@ struct ConvConfig {
   std::string model_name;
   int out_channels;
   int in_channels;
+  int in_height;
+  int in_width;
   int kernel_h;
   int kernel_w;
   int groups;
@@ -179,7 +182,7 @@ static std::vector<float> nc1hwc2_fp16_to_nchw(const __fp16* src,
 }
 
 // Run a single convolution test
-static bool run_conv_test(const ConvConfig& config) {
+static bool run_conv_test(const ConvConfig& config, bool verbose) {
   std::cout << "\n" << std::string(80, '=') << std::endl;
   std::cout << "TEST: " << config.description << std::endl;
   std::cout << "  Weight shape: (" << config.out_channels << "," << config.in_channels << ","
@@ -287,7 +290,10 @@ static bool run_conv_test(const ConvConfig& config) {
   }
 
   // Prepare input data
-  const int in_batch = 1, in_channels = 3, in_height = 5, in_width = 7;
+  const int in_batch = 1;
+  const int in_channels = config.in_channels > 0 ? config.in_channels : 3;
+  const int in_height = config.in_height > 0 ? config.in_height : 5;
+  const int in_width = config.in_width > 0 ? config.in_width : 7;
   const float low = -2.0f, high = 2.0f;
   Mt19937 rng;
   mt_seed(&rng, 0);
@@ -297,18 +303,20 @@ static bool run_conv_test(const ConvConfig& config) {
     input_cpu[i] = static_cast<float>(input[i]);
   }
 
-  std::cout << "  Input tensor (NCHW)" << std::endl;
-  for (int n = 0; n < in_batch; ++n) {
-    std::cout << "    n=" << n << std::endl;
-    for (int c = 0; c < in_channels; ++c) {
-      std::cout << "      c=" << c << std::endl;
-      for (int h = 0; h < in_height; ++h) {
-        std::cout << "        h=" << h << ": ";
-        for (int w = 0; w < in_width; ++w) {
-          size_t idx = ((n * in_channels + c) * in_height + h) * in_width + w;
-          std::cout << static_cast<float>(input[idx]) << " ";
+  if (verbose) {
+    std::cout << "  Input tensor (NCHW)" << std::endl;
+    for (int n = 0; n < in_batch; ++n) {
+      std::cout << "    n=" << n << std::endl;
+      for (int c = 0; c < in_channels; ++c) {
+        std::cout << "      c=" << c << std::endl;
+        for (int h = 0; h < in_height; ++h) {
+          std::cout << "        h=" << h << ": ";
+          for (int w = 0; w < in_width; ++w) {
+            size_t idx = ((n * in_channels + c) * in_height + h) * in_width + w;
+            std::cout << static_cast<float>(input[idx]) << " ";
+          }
+          std::cout << std::endl;
         }
-        std::cout << std::endl;
       }
     }
   }
@@ -506,23 +514,35 @@ static bool run_conv_test(const ConvConfig& config) {
   std::vector<float> expected = generate_weight_data(config, &rng, low, high);
   std::vector<float> cpu_output(out_channels * out_height * out_width, 0.f);
 
-  std::cout << "\n  Generated Weights:" << std::endl;
+  if (verbose) {
+    std::cout << "\n  Generated Weights:" << std::endl;
+  }
   int in_ch_per_group = config.in_channels / config.groups;
   int out_ch_per_group = config.out_channels / config.groups;
   for (int oc = 0; oc < config.out_channels; ++oc) {
     int group = oc / out_ch_per_group;
-    std::cout << "    oc=" << oc << " (group " << group << ")" << std::endl;
+    if (verbose) {
+      std::cout << "    oc=" << oc << " (group " << group << ")" << std::endl;
+    }
     for (int ic = 0; ic < in_ch_per_group; ++ic) {
-      std::cout << "      ic=" << ic << std::endl;
+      if (verbose) {
+        std::cout << "      ic=" << ic << std::endl;
+      }
       for (int ky = 0; ky < config.kernel_h; ++ky) {
-        std::cout << "        ky=" << ky << ": ";
+        if (verbose) {
+          std::cout << "        ky=" << ky << ": ";
+        }
         for (int kx = 0; kx < config.kernel_w; ++kx) {
           int wt_idx = oc * in_ch_per_group * config.kernel_h * config.kernel_w
                        + ic * config.kernel_h * config.kernel_w
                        + ky * config.kernel_w + kx;
-          std::cout << expected[wt_idx] << " ";
+          if (verbose) {
+            std::cout << expected[wt_idx] << " ";
+          }
         }
-        std::cout << std::endl;
+        if (verbose) {
+          std::cout << std::endl;
+        }
       }
     }
   }
@@ -557,30 +577,32 @@ static bool run_conv_test(const ConvConfig& config) {
   }
 
   // Print detailed results
-  std::cout << "\n  Expected Output (CPU computed):" << std::endl;
-  for (int oc = 0; oc < out_channels; ++oc) {
-    std::cout << "    Output Channel " << oc << ":" << std::endl;
-    for (int h = 0; h < out_height; ++h) {
-      std::cout << "      ";
-      for (int w = 0; w < out_width; ++w) {
-        int idx = oc * out_height * out_width + h * out_width + w;
-        std::cout << cpu_output[idx] << " ";
+  if (verbose) {
+    std::cout << "\n  Expected Output (CPU computed):" << std::endl;
+    for (int oc = 0; oc < out_channels; ++oc) {
+      std::cout << "    Output Channel " << oc << ":" << std::endl;
+      for (int h = 0; h < out_height; ++h) {
+        std::cout << "      ";
+        for (int w = 0; w < out_width; ++w) {
+          int idx = oc * out_height * out_width + h * out_width + w;
+          std::cout << cpu_output[idx] << " ";
+        }
       }
+      std::cout << std::endl;
     }
-    std::cout << std::endl;
-  }
 
-  std::cout << "\n  Actual Output (RKNN):" << std::endl;
-  for (int oc = 0; oc < out_channels; ++oc) {
-    std::cout << "    Output Channel " << oc << ":" << std::endl;
-    for (int h = 0; h < out_height; ++h) {
-      std::cout << "      ";
-      for (int w = 0; w < out_width; ++w) {
-        int idx = oc * out_height * out_width + h * out_width + w;
-        std::cout << output_nchw[idx] << " ";
+    std::cout << "\n  Actual Output (RKNN):" << std::endl;
+    for (int oc = 0; oc < out_channels; ++oc) {
+      std::cout << "    Output Channel " << oc << ":" << std::endl;
+      for (int h = 0; h < out_height; ++h) {
+        std::cout << "      ";
+        for (int w = 0; w < out_width; ++w) {
+          int idx = oc * out_height * out_width + h * out_width + w;
+          std::cout << output_nchw[idx] << " ";
+        }
       }
+      std::cout << std::endl;
     }
-    std::cout << std::endl;
   }
 
   // Compare results
@@ -614,16 +636,41 @@ static bool run_conv_test(const ConvConfig& config) {
   }
 }
 
-int main() {
-  std::vector<ConvConfig> test_cases = {
-    // {"conv2d_2x1", 6, 3, 2, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 1)"},
-    // {"conv2d_2x3", 6, 3, 2, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 3)"},
-    // {"conv2d_2x5", 6, 3, 2, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 5)"},
-    {"conv2d_3x1", 6, 3, 3, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 1)"},
-    // {"conv2d_3x3", 6, 3, 3, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 3)"},
-    // {"conv2d_3x3_g3", 6, 3, 3, 3, 3, "conv2d input shape (1, 3, 5, 7), weight shape (6, 1, 3, 3)"},
-    // {"conv2d_3x5", 6, 3, 3, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 5)"},
-  };
+int main(int argc, char** argv) {
+  std::vector<ConvConfig> test_cases;
+  bool verbose = true;
+  if (argc >= 3) {
+    int start = std::atoi(argv[1]);
+    int end = std::atoi(argv[2]);
+    if (start < 1) start = 1;
+    if (end < start) end = start;
+    verbose = false;
+    for (int n = start; n <= end; ++n) {
+      ConvConfig cfg;
+      cfg.model_name = "conv2d_1x1_" + std::to_string(n);
+      cfg.out_channels = 6;
+      cfg.in_channels = 3;
+      cfg.in_height = n;
+      cfg.in_width = n;
+      cfg.kernel_h = 1;
+      cfg.kernel_w = 1;
+      cfg.groups = 1;
+      cfg.description = "conv2d input shape (1, 3, " + std::to_string(n) + ", " + std::to_string(n) +
+                        "), weight shape (6, 3, 1, 1)";
+      test_cases.push_back(cfg);
+    }
+  } else {
+    test_cases = {
+    // {"conv2d_2x1", 6, 3, 5, 7, 2, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 1)"},
+    // {"conv2d_2x3", 6, 3, 5, 7, 2, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 3)"},
+    // {"conv2d_2x5", 6, 3, 5, 7, 2, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 2, 5)"},
+    {"conv2d_3x1", 6, 3, 5, 7, 3, 1, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 1)"},
+    {"conv2d_1x1_2x2", 6, 3, 2, 2, 1, 1, 1, "conv2d input shape (1, 3, 2, 2), weight shape (6, 3, 1, 1)"},
+    // {"conv2d_3x3", 6, 3, 5, 7, 3, 3, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 3)"},
+    // {"conv2d_3x3_g3", 6, 3, 5, 7, 3, 3, 3, "conv2d input shape (1, 3, 5, 7), weight shape (6, 1, 3, 3)"},
+    // {"conv2d_3x5", 6, 3, 5, 7, 3, 5, 1, "conv2d input shape (1, 3, 5, 7), weight shape (6, 3, 3, 5)"},
+    };
+  }
 
   std::cout << "\n" << std::string(80, '#') << std::endl;
   std::cout << "Conv2D Multi-Test Suite" << std::endl;
@@ -635,7 +682,7 @@ int main() {
 
   // Run all tests
   for (const auto& config : test_cases) {
-    if (run_conv_test(config)) {
+    if (run_conv_test(config, verbose)) {
       passed++;
     } else {
       failed++;
