@@ -8,13 +8,11 @@ ops_reg_exe = executable('ops_reg', 'main.c',
 )
 
 matmul_cases = [
-  ['1', '7800', '7800'],
-  ['1', '7900', '7900'],
   ['32', '32', '32'],
   ['64', '64', '64'],
   ['128', '128', '128'],
   ['256', '256', '256'],
-  # ['394', '394', '394'], #exceed cbuf
+  #['394', '394', '394'], # failed
   ['1', '32', '16'],
   ['1', '394', '394'],
   ['1', '768', '768'],
@@ -27,20 +25,34 @@ matmul_cases = [
   ['1', '6000', '6000'],
   ['1', '7000', '7000'],
   ['1', '7250', '7250'],
-  # ['1', '7744', '7744'], # failed
-  # ['1', '8000', '8000'], # failed
-  # ['1', '8192', '7744'], # failed
+  ['1', '7744', '7744'], 
+  ['1', '8000', '8000'], 
+  ['1', '8100', '8100'], 
+  ['1', '8200', '8200'], 
+  ['1', '8300', '8300'], 
+  ['1', '8400', '8400'], 
+  ['1', '9000', '9000'], 
+  ['1', '10000', '10000'], 
+  ['1', '11000', '11000'], 
 ]
 
-#foreach dims : matmul_cases
+# foreach dims : matmul_cases
 #  test('matmul @0@x@1@x@2@'.format(dims[0], dims[1], dims[2]),
 #    ops_reg_exe,
 #    is_parallel: false,
 #    suite: 'matmul',
 #    args: ['matmul', dims[0], dims[1], dims[2]])
-#endforeach
+# endforeach
 
-foreach n : range(7900, 8000)
+foreach n : range(8155, 10000)
+  test('matmul 1x@0@x@0@'.format(n),
+    ops_reg_exe,
+    is_parallel: false,
+    suite: 'matmul',
+    args: ['matmul', '1', n.to_string(), n.to_string()])
+endforeach
+
+foreach n : range(1, 5000)
   test('matmul 1x@0@x@0@'.format(n),
     ops_reg_exe,
     is_parallel: false,

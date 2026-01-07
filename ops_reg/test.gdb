@@ -10,7 +10,7 @@ commands
   #  shell python dump.py 2 | tee /tmp/ops_reg_weight
 
    printf "\n[gem2 (matmul EMIT)]\n"
-   shell python dump.py 2 | grep EMIT | grep -v "0x00000000" | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | sed 's/^.*EMIT(/EMIT(/' | tee /tmp/ops_reg_emit
+   shell python dump.py 2  --size 4096 | grep EMIT | grep -v "0x00000000" | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | sed 's/^.*EMIT(/EMIT(/' | tee /tmp/ops_reg_emit
 
 #   printf "\n[gem3 (matmul input)]\n"
 #   shell python dump.py 3 | grep -E "\[00.*]" | tee /tmp/ops_reg_input

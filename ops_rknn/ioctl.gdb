@@ -38,7 +38,7 @@ import re
 from pathlib import Path
 
 SUBMIT_COUNT = 0
-KEEP_TASKS = 2  # tweak here to adjust how many tasks are kept
+KEEP_TASKS = 3  # tweak here to adjust how many tasks are kept
 
 IOC_NRBITS = 8
 IOC_TYPEBITS = 8
@@ -106,6 +106,7 @@ SUBMIT_STRUCT_SIZE = 104
 TASK_STRUCT_SIZE = 40
 MEM_SYNC_STRUCT_SIZE = 32
 MEM_SYNC_DUMP_SIZE = 64
+MEM_CREATE_STRUCT_SIZE = 40
 
 
 def _format_hex(val, width=0):
@@ -236,6 +237,41 @@ def _print_mem_sync(addr):
   print(f"    size={size_val}")
   print("  }")
   _dump_memory(obj_addr, MEM_SYNC_DUMP_SIZE)
+
+
+def _print_mem_create(addr):
+  if addr == 0:
+    print("  struct rknpu_mem_create at NULL")
+    return
+  inf = gdb.selected_inferior()
+  try:
+    data = inf.read_memory(addr, MEM_CREATE_STRUCT_SIZE).tobytes()
+  except gdb.MemoryError:
+    print("  unable to read struct rknpu_mem_create from memory")
+    return
+  offset = 0
+
+  def read(size):
+    nonlocal offset
+    val = int.from_bytes(data[offset:offset + size], "little")
+    offset += size
+    return val
+
+  handle = read(4)
+  flags = read(4)
+  size = read(8)
+  obj_addr = read(8)
+  dma_addr = read(8)
+  sram_size = read(8)
+
+  print("  struct rknpu_mem_create {")
+  print(f"    handle=0x{handle:08x}")
+  print(f"    flags=0x{flags:08x}")
+  print(f"    size={size}")
+  print(f"    obj_addr={_format_hex(obj_addr)}")
+  print(f"    dma_addr={_format_hex(dma_addr)}")
+  print(f"    sram_size={sram_size}")
+  print("  }")
 
 
 def _dump_memory(addr, length):
@@ -422,7 +458,7 @@ class IoctlDecoder:
         cls.submit_count += 1
         if cls.submit_count >= 0:
           pass
-          _patch_submit(regs["arg"])
+          #_patch_submit(regs["arg"])
         else:
           print("  submit #1 detected; skipping patch (will patch next submit if any)")
         submit_data = _decode_submit(regs["arg"])
@@ -431,6 +467,8 @@ class IoctlDecoder:
         #os.system("python3 dump.py 3")
       elif macro[0] == "DRM_IOCTL_RKNPU_MEM_SYNC":
         _print_mem_sync(regs["arg"])
+      elif macro[0] == "DRM_IOCTL_RKNPU_MEM_CREATE":
+        _print_mem_create(regs["arg"])
     else:
       print(
         f"  reconstructed: ioctl(fd, /* unknown req */ 0x{cmd:08x}, "

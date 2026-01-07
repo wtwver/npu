@@ -284,7 +284,9 @@ static const std::vector<MatmulCase> kMatmulCases = {
     // {"matmul_fp16_308x308x308", 308, 308, 308, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_321x321x321", 321, 321, 321, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
     // {"matmul_fp16_394x394x394", 394, 394, 394, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
-    {"matmul", 1, 7905, 7905, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16},
+    // {"matmul", 394, 394, 394, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16}, //splitted to pass
+    // {"matmul", 1, 8104, 8104, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16}, // not split
+    {"matmul", 1, 8155, 8155, RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, MatmulPrecision::kFloat16}, 
 };
 
 struct MatmulCtxGuard {
@@ -558,13 +560,13 @@ static bool run_float16_case(const MatmulCase& cfg) {
   if (output_stride <= 0) {
     output_stride = aligned_N;
   }
-  print_float_matrix("Actual output", output.data(), cfg.M, cfg.N, output_stride);
+  //print_float_matrix("Actual output", output.data(), cfg.M, cfg.N, output_stride);
 
   std::vector<float> expected(output_count);
   compute_expected_fp32(input_host, weight_host, cfg.M, cfg.N, cfg.K,
                         expected);
   std::vector<float> expected_fullsum = expected;
-  print_float_matrix("Expected output", expected.data(), cfg.M, cfg.N, cfg.N);
+  //print_float_matrix("Expected output", expected.data(), cfg.M, cfg.N, cfg.N);
 
   bool passed = true;
   float max_error = 0.0f;

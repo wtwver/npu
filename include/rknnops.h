@@ -476,6 +476,8 @@ int get_type_size(rknn_tensor_type type){
    }
 }
 
+void mem_destroy(int fd, uint32_t handle, uint64_t obj_addr);
+
 void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint32_t flags, uint32_t *handle) {
    int ret;
    struct rknpu_mem_create mem_create = {
@@ -493,9 +495,15 @@ void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint3
    ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, &mem_map);
    if(ret < 0) {
       printf("RKNPU_MEM_MAP failed %d\n",ret);
+      mem_destroy(fd, mem_create.handle, mem_create.obj_addr);
       return NULL;
    }	
    void *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mem_map.offset);
+   if (map == MAP_FAILED) {
+      printf("mmap failed\n");
+      mem_destroy(fd, mem_create.handle, mem_create.obj_addr);
+      return NULL;
+   }
 
    *dma_addr = mem_create.dma_addr;
    *obj = mem_create.obj_addr;
@@ -520,6 +528,54 @@ void mem_destroy(int fd, uint32_t handle, uint64_t obj_addr) {
    ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_DESTROY, &destroy);
    if (ret <0) {
       printf("RKNPU_MEM_DESTROY failed %d\n",ret);
+   }
+}
+
+static void release_memhandles(int fd, struct MemHandles *handles) {
+   if (!handles) return;
+
+   if (handles->tasks && handles->tasks_size > 0) {
+      munmap(handles->tasks, handles->tasks_size);
+   }
+   if (handles->tasks_handle) {
+      mem_destroy(fd, handles->tasks_handle, handles->tasks_obj);
+   }
+
+   if (handles->input && handles->input_size > 0) {
+      munmap(handles->input, handles->input_size);
+   }
+   if (handles->input_handle) {
+      mem_destroy(fd, handles->input_handle, handles->input_dma);
+   }
+
+   if (handles->weights && handles->weights_alloc_size > 0) {
+      munmap(handles->weights, handles->weights_alloc_size);
+   }
+   if (handles->weights_handle) {
+      mem_destroy(fd, handles->weights_handle, handles->weights_obj);
+   }
+
+   if (handles->output && handles->output_size > 0) {
+      munmap(handles->output, handles->output_size);
+   }
+   if (handles->output_handle) {
+      mem_destroy(fd, handles->output_handle, handles->output_obj);
+   }
+
+   *handles = (struct MemHandles){0};
+}
+
+static void mem_sync(int fd, uint64_t obj_addr, uint64_t offset, uint64_t size, uint32_t flags) {
+   if (size == 0) return;
+   struct rknpu_mem_sync sync = {
+      .flags = flags,
+      .obj_addr = obj_addr,
+      .offset = offset,
+      .size = size,
+   };
+   int ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_SYNC, &sync);
+   if (ret < 0) {
+      printf("RKNPU_MEM_SYNC failed %d\n", ret);
    }
 }
 
@@ -1156,7 +1212,9 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          // if (params.M > 352 && params.M <= 384) feature_grains = 86;
          // if (params.M > 384 && params.M < 512) feature_grains = 80;
          int feature_grains = data_in_height + 1;
-         if (params.K > 128 && params.K <= 192) {
+         if (params.K > 7872) {
+            feature_grains = 2 ;
+         } else if (params.K > 128 && params.K <= 192) {
             feature_grains = data_in_height;
          } else if (params.K > 192 && params.K != 256) {
             uint32_t denom = (uint32_t)align_in * (uint32_t)sizeof(__fp16);
@@ -1261,7 +1319,7 @@ void regcmd_helper(uint64_t input_dma, uint64_t weights_dma, uint64_t output_dma
          // else if (params.M > 288 && params.M <= 320) notch_val = 79;
          // else if (params.M > 320 && params.M <= 352) notch_val = 87;
          // else if (params.M > 352 && params.M < 512) notch_val = 95;
-         uint32_t notch_val = (is_KN_64 || is_KN_256 || is_KN_512) ? 0u : 7u;
+         uint32_t notch_val = (is_KN_64 || is_KN_256 || is_KN_512 || params.K > 7872) ? 0u : 7u;
          if (params.K > 32 && params.K < 512 && params.K != 64 && params.K != 256) {
             uint32_t notch_steps = ((uint32_t)params.K - 1u) / 32u;
             if (notch_steps > 12u) notch_steps = 12u;
@@ -4413,6 +4471,7 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
 {
    set_alu_algorithm(alu_algorithm);
    reset_handle_dma_map();
+   npu_reset(fd);
 
    uint64_t tasks_dma, tasks_obj;
    uint32_t tasks_handle;
@@ -4425,9 +4484,17 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
 
    printf("%zu %zu %zu\n", input_size, weights_size, output_size);
    const size_t tasks_size = 1024;
+   struct MemHandles handles = {0};
+   handles.tasks_size = tasks_size;
    struct rknpu_task *tasks = mem_allocate(fd, tasks_size, &tasks_dma, &tasks_obj, RKNPU_MEM_KERNEL_MAPPING, &tasks_handle);
+   if (!tasks) {
+      return (struct MemHandles){0};
+   }
    printf("task addr %p %#llx %#llx %u\n", (void*)tasks,
       (unsigned long long)tasks_dma, (unsigned long long)tasks_obj, tasks_handle);
+   handles.tasks = tasks;
+   handles.tasks_obj = tasks_obj;
+   handles.tasks_handle = tasks_handle;
    
    const size_t weights_aligned = (weights_size + 0x3f) & ~((size_t)0x3f);
    const size_t regcmd_reserved = REGCMD_RESERVED;   // place regcmds at start to match RKNN dump ordering
@@ -4435,22 +4502,45 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    const size_t weights_offset = regcmd_reserved;
    const size_t weights_alloc_size = regcmd_reserved + weights_aligned;
    void *weights = mem_allocate(fd, weights_alloc_size, &weights_dma, &weights_obj, 0, &weights_handle);
-   if (weights == MAP_FAILED) {
+   if (!weights) {
       printf("weights mmap failed (size=%zu, aligned=%zu)\n", weights_alloc_size, weights_aligned);
-      return (struct MemHandles){0};
+      printf("retrying with flags 403 RKNPU_MEM_NON_CONTIGUOUS | RKNPU_MEM_CACHEABLE | RKNPU_MEM_IOMMU_LIMIT_IOVA_ALIGNMENT" );
+      weights = mem_allocate(fd, weights_alloc_size, &weights_dma, &weights_obj, RKNPU_MEM_NON_CONTIGUOUS | RKNPU_MEM_CACHEABLE | RKNPU_MEM_IOMMU_LIMIT_IOVA_ALIGNMENT, &weights_handle);
+      if (!weights) {
+         printf("retry weights mmap failed (size=%zu, aligned=%zu)\n", weights_alloc_size, weights_aligned);
+         release_memhandles(fd, &handles);
+         return (struct MemHandles){0};
+      }
    }
+   handles.weights = weights;
+   handles.weights_alloc_size = weights_alloc_size;
+   handles.weights_dma = weights_dma;
+   handles.weights_obj = weights_obj;
+   handles.weights_handle = weights_handle;
    
    void *input = mem_allocate(fd, input_size, &input_dma, &input_obj, 0, &input_handle);
-   if (input == MAP_FAILED) {
+   if (!input) {
       printf("input mmap failed\n");
+      release_memhandles(fd, &handles);
       return (struct MemHandles){0};
    }
+   handles.input = input;
+   handles.input_size = input_size;
+   handles.input_dma = input_dma;
+   handles.input_obj = input_obj;
+   handles.input_handle = input_handle;
 
    void *output = mem_allocate(fd, output_size, &output_dma, &output_obj, 0, &output_handle);
-   if (output == MAP_FAILED) {
+   if (!output) {
       printf("output mmap failed\n");
+      release_memhandles(fd, &handles);
       return (struct MemHandles){0};
    }
+   handles.output = output;
+   handles.output_size = output_size;
+   handles.output_dma = output_dma;
+   handles.output_obj = output_obj;
+   handles.output_handle = output_handle;
 
    uint32_t tasks_flink, input_flink, weights_flink, output_flink;
 
@@ -4463,8 +4553,6 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    }
    printf("Created flink names: tasks=%u, input=%u, weights=%u, output=%u\n",
       tasks_flink, input_flink, weights_flink, output_flink);
-   npu_reset(fd);
-
    if (regs.data == NULL || regs.capacity == 0) {
       initArray(&regs, 256);
    }
@@ -4542,26 +4630,6 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
          reg_task_offsets[i], reg_task_lengths[i]);
    }
 
-   struct MemHandles handles = {0};
-   handles.input = input;
-   handles.weights = weights;
-   handles.output = output;
-   handles.tasks = tasks;
-   handles.input_dma = input_dma;
-   handles.input_obj = input_obj;
-   handles.weights_dma = weights_dma;
-   handles.weights_obj = weights_obj;
-   handles.output_dma = output_dma;
-   handles.output_obj = output_obj;
-   handles.input_handle = input_handle;
-   handles.weights_handle = weights_handle;
-   handles.output_handle = output_handle;
-   handles.tasks_handle = tasks_handle;
-   handles.input_size = input_size;
-   handles.weights_alloc_size = weights_alloc_size;
-   handles.output_size = output_size;
-   handles.tasks_size = tasks_size;
-   handles.tasks_obj = tasks_obj;
    handles.task_count = total_tasks;
    return handles;
 }
@@ -4577,10 +4645,10 @@ int submitTask(int fd, uint64_t tasks_obj, size_t task_count){
       .task_counter = 0,
       .priority = 0,
       .task_obj_addr = tasks_obj,
-      .regcfg_obj_addr = 0,
+      .iommu_domain_id = 0,
+      .reserved = 0,
       .task_base_addr = 0,
-      .user_data = 0,
-      // .core_mask = 1,
+      .hw_elapse_time = 0, 
       .core_mask = 0,
       .fence_fd = -1,
       .subcore_task = {
@@ -4675,12 +4743,15 @@ Float16ConvResult float16_conv(__fp16* input, __fp16* kernel, uint32_t alu_algor
    pack_nc1hwc2_fp16(input_fp16, input,
       1, in_channels, 1, input_size, data_in_channel, input_width_aligned);
 
+   mem_sync(fd, handles.weights_obj, 0, handles.weights_alloc_size, RKNPU_MEM_SYNC_TO_DEVICE);
+   mem_sync(fd, handles.input_obj, 0, handles.input_size, RKNPU_MEM_SYNC_TO_DEVICE);
    int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
    if(ret < 0) {
       printf("RKNPU_SUBMIT failed %d\n",ret);
       release_conv_result(&result);
       return result;
    }
+   mem_sync(fd, handles.output_obj, 0, handles.output_size, RKNPU_MEM_SYNC_FROM_DEVICE);
    return result;
 }
 
@@ -4742,6 +4813,12 @@ __fp16* float16_conv2d(__fp16* input, __fp16* kernel, uint32_t alu_algorithm, in
    }
 
    struct MemHandles handles = createRegCmd(fd, input_bytes, kernel_bytes, output_bytes, alu_algorithm);
+   __fp16 *output_copy = NULL;
+   if (!handles.input || !handles.weights || !handles.output || !handles.tasks) {
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
    __fp16 *kernel_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *input_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
@@ -4760,16 +4837,30 @@ __fp16* float16_conv2d(__fp16* input, __fp16* kernel, uint32_t alu_algorithm, in
       memcpy(input_fp16, input, input_bytes);
    }
 
+   mem_sync(fd, handles.weights_obj, 0, handles.weights_alloc_size, RKNPU_MEM_SYNC_TO_DEVICE);
+   mem_sync(fd, handles.input_obj, 0, handles.input_size, RKNPU_MEM_SYNC_TO_DEVICE);
    printf("task_count %zu\n", handles.task_count);
    int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
    if(ret < 0) {
       printf("RKNPU_SUBMIT failed %d\n",ret);
+      release_memhandles(fd, &handles);
+      close(fd);
       return NULL;
    }
+   mem_sync(fd, handles.output_obj, 0, handles.output_size, RKNPU_MEM_SYNC_FROM_DEVICE);
 
-   mem_destroy(fd, handles.input_handle, handles.input_dma);
+   output_copy = (__fp16*)malloc(output_bytes);
+   if (!output_copy) {
+      printf("failed to allocate conv2d output copy\n");
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
+   memcpy(output_copy, output_data, output_bytes);
 
-   return output_data;
+   release_memhandles(fd, &handles);
+   close(fd);
+   return output_copy;
 }
 
 float* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int N, int K)
@@ -4787,6 +4878,10 @@ float* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int N
    size_t output_size  = output_elems * sizeof(float);
 
    struct MemHandles handles = createRegCmd(fd, input_size, weights_size, output_size, alu_algorithm);
+   float *output_copy = NULL;
+   if (!handles.input || !handles.weights || !handles.output || !handles.tasks) {
+      goto matmul_cleanup;
+   }
    __fp16 *weights_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    float *output_data = (float*)(handles.output);
@@ -4816,12 +4911,51 @@ float* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int N
       }
    }
 
+   mem_sync(fd, handles.weights_obj, 0, handles.weights_alloc_size, RKNPU_MEM_SYNC_TO_DEVICE);
+   mem_sync(fd, handles.input_obj, 0, handles.input_size, RKNPU_MEM_SYNC_TO_DEVICE);
    int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
    if(ret < 0) {
       printf("RKNPU_SUBMIT failed %d\n",ret);
-      return NULL;
+      goto matmul_cleanup;
    }
-   return output_data;
+   mem_sync(fd, handles.output_obj, 0, handles.output_size, RKNPU_MEM_SYNC_FROM_DEVICE);
+
+   output_copy = (float*)malloc(output_size);
+   if (!output_copy) {
+      printf("failed to allocate matmul output copy\n");
+      goto matmul_cleanup;
+   }
+   memcpy(output_copy, output_data, output_size);
+
+matmul_cleanup:
+   if (handles.tasks && handles.tasks_size > 0) {
+      munmap(handles.tasks, handles.tasks_size);
+   }
+   if (handles.tasks_handle) {
+      mem_destroy(fd, handles.tasks_handle, handles.tasks_obj);
+   }
+   if (handles.input && handles.input_size > 0) {
+      munmap(handles.input, handles.input_size);
+   }
+   if (handles.input_handle) {
+      mem_destroy(fd, handles.input_handle, handles.input_dma);
+   }
+   if (handles.weights && handles.weights_alloc_size > 0) {
+      munmap(handles.weights, handles.weights_alloc_size);
+   }
+   if (handles.weights_handle) {
+      mem_destroy(fd, handles.weights_handle, handles.weights_obj);
+   }
+   if (handles.output && handles.output_size > 0) {
+      munmap(handles.output, handles.output_size);
+   }
+   if (handles.output_handle) {
+      mem_destroy(fd, handles.output_handle, handles.output_obj);
+   }
+   if (fd >= 0) {
+      close(fd);
+   }
+   return output_copy;
 }
 
 __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
@@ -4836,6 +4970,12 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
    size_t packed_output_bytes = packed_input_bytes;
    struct MemHandles handles = createRegCmd(fd, packed_input_bytes, packed_weight_bytes,
       packed_output_bytes, alu_algorithm);
+   __fp16 *output_copy = NULL;
+   if (!handles.input || !handles.weights || !handles.output || !handles.tasks) {
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
    __fp16 *weights_fp16 = (__fp16*)((char*)handles.weights + REGCMD_RESERVED);
    __fp16 *feature_data_fp16 = (__fp16*)(handles.input);
    __fp16 *output_data = (__fp16*)(handles.output);
@@ -4859,11 +4999,16 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
       }
    }
 
+   mem_sync(fd, handles.weights_obj, 0, handles.weights_alloc_size, RKNPU_MEM_SYNC_TO_DEVICE);
+   mem_sync(fd, handles.input_obj, 0, handles.input_size, RKNPU_MEM_SYNC_TO_DEVICE);
    int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
    if(ret < 0) {
       printf("RKNPU_SUBMIT failed %d\n",ret);
+      release_memhandles(fd, &handles);
+      close(fd);
       return NULL;
    }
+   mem_sync(fd, handles.output_obj, 0, handles.output_size, RKNPU_MEM_SYNC_FROM_DEVICE);
 
    // __fp16 *output_data_fp16 = (__fp16*)(handles.output);
    // printf("\nMethod 1 - Correct fp16 casting: fp16=%f fp32=%f\n", 
@@ -4874,7 +5019,17 @@ __fp16* float16_alu_op(__fp16* a, __fp16* b, uint32_t alu_algorithm, int size)
    printf("\nMethod 2 - float casting: fp16=%f fp32=%f\n", 
           output_fp16[0], (float)output_fp16[0]);
 
-   return output_data;
+   output_copy = (__fp16*)malloc(packed_output_bytes);
+   if (!output_copy) {
+      printf("failed to allocate alu output copy\n");
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
+   memcpy(output_copy, output_data, packed_output_bytes);
+   release_memhandles(fd, &handles);
+   close(fd);
+   return output_copy;
 }
 
 int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)
@@ -4885,6 +5040,12 @@ int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)
 
    size_t bytes = get_type_size(dtype);
    struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
+   int16_t *output_copy = NULL;
+   if (!handles.input || !handles.weights || !handles.output || !handles.tasks) {
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
    int16_t *weights_int16 = (int16_t*)((char*)handles.weights + REGCMD_RESERVED);
    int16_t *feature_data_int16 = (int16_t*)(handles.input);
    int16_t *output_data = (int16_t*)(handles.output);
@@ -4892,12 +5053,27 @@ int16_t* int16_alu_op(int16_t* a, int16_t* b, uint32_t alu_algorithm)
    memcpy(weights_int16, a, bytes);
    memcpy(feature_data_int16, b, bytes);
 
+   mem_sync(fd, handles.weights_obj, 0, handles.weights_alloc_size, RKNPU_MEM_SYNC_TO_DEVICE);
+   mem_sync(fd, handles.input_obj, 0, handles.input_size, RKNPU_MEM_SYNC_TO_DEVICE);
    int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
    if(ret < 0) {
          printf("RKNPU_SUBMIT failed %d\n",ret);
+         release_memhandles(fd, &handles);
+         close(fd);
          return NULL;
    }
-   return output_data;
+   mem_sync(fd, handles.output_obj, 0, handles.output_size, RKNPU_MEM_SYNC_FROM_DEVICE);
+   output_copy = (int16_t*)malloc(bytes);
+   if (!output_copy) {
+      printf("failed to allocate int16 output copy\n");
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
+   memcpy(output_copy, output_data, bytes);
+   release_memhandles(fd, &handles);
+   close(fd);
+   return output_copy;
 }
 
 int8_t* int8_alu_op(int8_t* a, int8_t* b, uint32_t alu_algorithm)
@@ -4909,6 +5085,12 @@ int8_t* int8_alu_op(int8_t* a, int8_t* b, uint32_t alu_algorithm)
 
    size_t bytes = get_type_size(dtype);
    struct MemHandles handles = createRegCmd(fd, bytes, bytes, bytes, alu_algorithm);
+   int8_t *output_copy = NULL;
+   if (!handles.input || !handles.weights || !handles.output || !handles.tasks) {
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
    int8_t *weights_int8 = (int8_t*)((char*)handles.weights + REGCMD_RESERVED);
    int8_t *feature_data_int8 = (int8_t*)(handles.input);
    int8_t *output_data = (int8_t*)(handles.output);
@@ -4916,12 +5098,27 @@ int8_t* int8_alu_op(int8_t* a, int8_t* b, uint32_t alu_algorithm)
    memcpy(weights_int8, a, bytes);
    memcpy(feature_data_int8, b, bytes);
 
+   mem_sync(fd, handles.weights_obj, 0, handles.weights_alloc_size, RKNPU_MEM_SYNC_TO_DEVICE);
+   mem_sync(fd, handles.input_obj, 0, handles.input_size, RKNPU_MEM_SYNC_TO_DEVICE);
    int ret = submitTask(fd, handles.tasks_obj, handles.task_count);
    if(ret < 0) {
          printf("RKNPU_SUBMIT failed %d\n",ret);
+         release_memhandles(fd, &handles);
+         close(fd);
          return NULL;
    }
-   return output_data;
+   mem_sync(fd, handles.output_obj, 0, handles.output_size, RKNPU_MEM_SYNC_FROM_DEVICE);
+   output_copy = (int8_t*)malloc(bytes);
+   if (!output_copy) {
+      printf("failed to allocate int8 output copy\n");
+      release_memhandles(fd, &handles);
+      close(fd);
+      return NULL;
+   }
+   memcpy(output_copy, output_data, bytes);
+   release_memhandles(fd, &handles);
+   close(fd);
+   return output_copy;
 }
 
 #ifdef __cplusplus

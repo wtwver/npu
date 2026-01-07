@@ -567,7 +567,7 @@ DRM_IOCTL_RKNPU_MEM_MAP = _IOWR('d', DRM_COMMAND_BASE + 0x03, rknpu_mem_map)
 
 def mask(l, h): return ((0xffffffffffffffff >> (64 - (h + 1 - l))) << l)
 
-def dump_gem(fd, flink):
+def dump_gem(fd, flink, max_size=None):
     print(f"\n{'='*50}\nProcessing GEM Flink {flink}\n{'='*50}")
     raw_map = None
     try:
@@ -575,6 +575,7 @@ def dump_gem(fd, flink):
         g.name = flink
         fcntl.ioctl(fd, DRM_IOCTL_GEM_OPEN, g)
         print(Colors.highlight(f"gem flink {flink}: ret=0 handle={g.handle} size={g.size}"))
+        dump_size = g.size if max_size is None else min(g.size, max_size)
 
         m = rknpu_mem_map()
         m.handle = g.handle
@@ -586,12 +587,12 @@ def dump_gem(fd, flink):
 
         os.makedirs("dump", exist_ok=True)
         with open(f"dump/gem{flink}-dump", "wb") as f:
-            f.write(raw_map)
+            f.write(raw_map[:dump_size])
 
         # Process blocks, grouping consecutive zero blocks together
         instr = raw_map
         i = 0
-        while i < g.size:
+        while i < dump_size:
             block = instr[i : i + 16]
             here = struct.unpack("<4I", block)
             
@@ -603,7 +604,7 @@ def dump_gem(fd, flink):
                 
                 # Count all consecutive zero blocks
                 j = i
-                while j < g.size:
+                while j < dump_size:
                     block = instr[j : j + 16]
                     here = struct.unpack("<4I", block)
                     if all(x == 0 for x in here):
@@ -629,7 +630,7 @@ def dump_gem(fd, flink):
                 i += 16
 
         if flink == 1:
-            tasks = decode_tasks_from_buffer(raw_map, g.size, flink=flink)
+            tasks = decode_tasks_from_buffer(raw_map, dump_size, flink=flink)
             emit_task_report(tasks, flink)
             return
     except Exception as ex:
@@ -657,6 +658,7 @@ def dump_gem(fd, flink):
         phys_base = m.offset
         instr = mmap.mmap(fd, g.size, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=phys_base)
         print(f"mmap returned {instr}", phys_base)
+        dump_size = g.size if max_size is None else min(g.size, max_size)
 
         # Initialize parser for XML register definitions
         regs, domains = {}, {}
@@ -676,7 +678,7 @@ def dump_gem(fd, flink):
                 pass
 
         commands = []
-        for i in range(g.size // 8):
+        for i in range(dump_size // 8):
             v = struct.unpack("<Q", instr[i*8:(i+1)*8])[0]
             if v == 0:
                 continue
@@ -879,22 +881,23 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Dump GEM objects from RKNNPU device")
     p.add_argument('gems', nargs='*', type=int, help="GEM flink names to dump (default: 1 2)")
     p.add_argument('--vmem', metavar='ADDR', help="Dump virtual memory at hex address (e.g., 0x100000)")
-    p.add_argument('--size', type=int, default=4096, help="Size in bytes for virtual memory dump (default: 4096)")
+    p.add_argument('--size', type=int, default=None, help="Limit bytes for GEM dump; for --vmem sets dump size")
     a = p.parse_args()
 
     # Handle virtual memory dump from arguments
     if a.vmem:
         try:
             address = int(a.vmem, 16)
+            size = a.size if a.size is not None else 4096
             # Try to open DRM device
             try: 
                 fd = os.open("/dev/dri/card1", os.O_RDWR)
-                dump_virtual_memory(fd, address, a.size)
+                dump_virtual_memory(fd, address, size)
                 os.close(fd)
             except Exception as e:
                 print(Colors.highlight(f"Failed to open DRM device: {e}"))
                 # Still try to dump with mock data
-                dump_virtual_memory(None, address, a.size)
+                dump_virtual_memory(None, address, size)
         except ValueError:
             print(Colors.highlight("Invalid virtual memory address format. Use 0x<hex_address>"))
         sys.exit(0)
@@ -937,6 +940,6 @@ if __name__ == "__main__":
     for g in (a.gems or [1, 2]):
         if g > 0:
             print(Colors.highlight(f"\n=== Processing GEM {g} ==="))
-            dump_gem(fd, g)
+            dump_gem(fd, g, max_size=a.size)
 
     os.close(fd)
