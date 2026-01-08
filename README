@@ -1,12 +1,12 @@
 # Know issues
 
 matmul failed at
-- 1x8179x8179, limit not reached, blocked by mem issue above
+- 1x8193x8193, rknn splited
 - 394x394x394, rknn splited
 
 # How to do matmul in RK3588
 
-1x1x1 to 1x8178x8178 works
+1x1x1 to 1x8192x8192 works
 1x1x1 to 384x384x384 works
 
 ## Input and output dimension 

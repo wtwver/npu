@@ -11,12 +11,12 @@ commands
     printf "\n[matmul gem2 task]\n"
     shell python3 dump.py 2 
 
-    printf "\n[matmul gem3 weight]\n"
-    shell python3 dump.py 3 | head 
+    # printf "\n[matmul gem3 weight]\n"
+    # shell python3 dump.py 3 | head 
     #shell python3 dump.py 3  > /tmp/ops_rknn_matmul_weight 
     
-    printf "\n[matmul gem4 input]\n"
-    shell python3 dump.py 4 | head 
+    # printf "\n[matmul gem4 input]\n"
+    # `shell python3 dump.py 4 | head 
     #shell python3 dump.py 4 > /tmp/ops_rknn_matmul_input  
     printf "rknn_matmul_run============\n"
     continue
@@ -28,7 +28,7 @@ commands
     #shell python3 dump.py 3
     #shell python3 dump.py 4
     #shell python3 dump.py 5
-    shell python3 dump.py 6
+    # shell python3 dump.py 6
     printf "rknn_destroy_mem============\n"
     continue
 end
