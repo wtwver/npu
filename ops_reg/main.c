@@ -3920,6 +3920,68 @@ static int validate_matmul_pack(const __fp16 *b, const MatmulTestConfig *config)
   return 0;
 }
 
+static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N) {
+  if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
+  const int max_n = 8192;
+  const int min_tail = 544;
+  if (N <= max_n) return -1;
+
+  __fp16 *b_tile = (__fp16*)malloc((size_t)K * (size_t)max_n * sizeof(__fp16));
+  float *tile_out = (float*)malloc((size_t)M * (size_t)max_n * sizeof(float));
+  if (!b_tile || !tile_out) {
+    free(b_tile);
+    free(tile_out);
+    printf("failed to allocate matmul N-split buffers\n");
+    return -1;
+  }
+
+  int full_tiles = N / max_n;
+  int tail = N % max_n;
+  int borrow = 0;
+  if (tail > 0 && tail < min_tail && full_tiles > 0) {
+    borrow = min_tail - tail;
+    tail = min_tail;
+  }
+  int tile_count = full_tiles + (tail > 0 ? 1 : 0);
+  int n_offset = 0;
+  for (int tile = 0; tile < tile_count; tile++) {
+    int tile_n = max_n;
+    if (tile == full_tiles && tail > 0) {
+      tile_n = tail;
+    } else if (borrow > 0 && tile == full_tiles - 1) {
+      tile_n = max_n - borrow;
+    }
+    for (int k = 0; k < K; k++) {
+      __fp16 *dst_row = b_tile + (size_t)k * (size_t)tile_n;
+      memcpy(dst_row,
+          b + (size_t)k * (size_t)N + (size_t)n_offset,
+          (size_t)tile_n * sizeof(__fp16));
+    }
+    float *npu_output = float16_matmul((__fp16*)a, b_tile, 11, M, tile_n, K);
+    if (!npu_output) {
+      printf("float16_matmul failed for N tile offset=%d size=%d\n",
+          n_offset, tile_n);
+      free(b_tile);
+      free(tile_out);
+      return -1;
+    }
+    unpack_matmul_output_fp32(npu_output, tile_out, M, tile_n);
+    free(npu_output);
+    for (int m = 0; m < M; m++) {
+      memcpy(dst + (size_t)m * (size_t)N + (size_t)n_offset,
+          tile_out + (size_t)m * (size_t)tile_n,
+          (size_t)tile_n * sizeof(float));
+    }
+    n_offset += tile_n;
+  }
+
+  matmul_params = make_matmul_params(M, N, K);
+  free(b_tile);
+  free(tile_out);
+  return 0;
+}
+
 static int run_matmul_case(const MatmulTestConfig *config) {
   if (!config) return -1;
   const int M = config->M;
@@ -3968,9 +4030,18 @@ static int run_matmul_case(const MatmulTestConfig *config) {
   printf("\n=== matmul test: %s (M=%d, K=%d, N=%d) ===\n",
       config->name ? config->name : "matmul", M, K, N);
 
-  float *cpu = (float*)malloc((size_t)M * N * sizeof(float));
+  const char *validate_env = getenv("MATMUL_VALIDATE");
+  bool do_validate = true;
+  if (validate_env &&
+      (strcmp(validate_env, "0") == 0 ||
+       strcmp(validate_env, "false") == 0 ||
+       strcmp(validate_env, "no") == 0)) {
+    do_validate = false;
+  }
+
+  float *cpu = do_validate ? (float*)malloc((size_t)M * N * sizeof(float)) : NULL;
   float *actual = (float*)malloc((size_t)M * N * sizeof(float));
-  if (!cpu || !actual) {
+  if ((do_validate && !cpu) || !actual) {
     printf("failed to allocate output buffers for %s\n",
         config->name ? config->name : "matmul");
     free(a);
@@ -3980,24 +4051,48 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     return -1;
   }
 
-  for (int m = 0; m < M; m++) {
-    for (int n = 0; n < N; n++) {
-      float acc = 0.0f;
-      for (int k = 0; k < K; k++) {
-        acc += (float)a[m * K + k] * (float)b[k * N + n];
+  if (do_validate) {
+    for (int m = 0; m < M; m++) {
+      for (int n = 0; n < N; n++) {
+        float acc = 0.0f;
+        for (int k = 0; k < K; k++) {
+          acc += (float)a[m * K + k] * (float)b[k * N + n];
+        }
+        cpu[m * N + n] = acc;
       }
-      cpu[m * N + n] = acc;
     }
   }
 
   if (should_print_matmul(config)) {
     print_fp16_matrix("Input A", a, M, K);
     print_fp16_matrix("Input B", b, N, K);
-    print_float_matrix("Expected (CPU)", cpu, M, N);
+    if (do_validate) {
+      print_float_matrix("Expected (CPU)", cpu, M, N);
+    } else {
+      printf("Expected (CPU) skipped (MATMUL_VALIDATE=0)\n");
+    }
   }
 
   float *npu_output = NULL;
-  if (use_prepacked_small) {
+  bool used_split = false;
+  if (N > 8192) {
+    if (K > 8192) {
+      printf("matmul: N=%d and K=%d exceed 8192; N-split alone is unsupported\n", N, K);
+      free(a);
+      free(b);
+      free(cpu);
+      free(actual);
+      return -1;
+    }
+    if (matmul_split_n(a, b, actual, M, K, N) != 0) {
+      free(a);
+      free(b);
+      free(cpu);
+      free(actual);
+      return -1;
+    }
+    used_split = true;
+  } else if (use_prepacked_small) {
     MatmulParams layout = make_matmul_params(M, N, K);
     size_t packed_input_elems =
         (size_t)layout.align_in * (size_t)layout.out_width_stride * (size_t)layout.out_height;
@@ -4039,7 +4134,7 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     npu_output = float16_matmul(a, b, 11, M, N, K);
   }
 
-  if (!npu_output) {
+  if (!used_split && !npu_output) {
     printf("float16_matmul failed for %s\n",
         config->name ? config->name : "matmul");
     free(a);
@@ -4049,81 +4144,88 @@ static int run_matmul_case(const MatmulTestConfig *config) {
     return -1;
   }
 
-  unpack_matmul_output_fp32(npu_output, actual, M, N);
+  if (!used_split) {
+    unpack_matmul_output_fp32(npu_output, actual, M, N);
+  }
   if (should_print_matmul(config)) {
     print_float_matrix("Result (NPU, fp16->fp32)", actual, M, N);
   }
 
   float max_diff = 0.0f;
   int mismatch_count = 0;
-  const float tol = 1e-2f;
-  int *mismatch_by_row = (int *)calloc((size_t)M, sizeof(int));
-  int *mismatch_by_col = (int *)calloc((size_t)N, sizeof(int));
-  if (!mismatch_by_row || !mismatch_by_col) {
+  if (do_validate) {
+    const float tol = 1e-2f;
+    int *mismatch_by_row = (int *)calloc((size_t)M, sizeof(int));
+    int *mismatch_by_col = (int *)calloc((size_t)N, sizeof(int));
+    if (!mismatch_by_row || !mismatch_by_col) {
+      free(mismatch_by_row);
+      free(mismatch_by_col);
+      printf("failed to allocate mismatch counters for %s\n",
+          config->name ? config->name : "matmul");
+      free(a);
+      free(b);
+      free(cpu);
+      free(actual);
+      free(npu_output);
+      return -1;
+    }
+    for (int m = 0; m < M; m++) {
+      for (int n = 0; n < N; n++) {
+        size_t idx = (size_t)m * (size_t)N + (size_t)n;
+        float diff = fabsf(cpu[idx] - actual[idx]);
+        if (diff > max_diff) max_diff = diff;
+        if (diff > tol) {
+          mismatch_count++;
+          mismatch_by_row[m]++;
+          mismatch_by_col[n]++;
+        }
+      }
+    }
+    printf("Max abs diff: %.6f\n", max_diff);
+    printf("%s: matches CPU -> %s (mismatches=%d)\n",
+        config->name ? config->name : "matmul",
+        max_diff <= 1e-2f ? "YES" : "NO",
+        mismatch_count);
+    if (mismatch_count > 0 && !used_split) {
+      report_matmul_unpack_alt(config->name, npu_output, cpu, M, N, 32, tol);
+      if (N != 32) {
+        report_matmul_unpack_alt(config->name, npu_output, cpu, M, N, N, tol);
+      }
+    }
+    if (mismatch_count > 0) {
+      int worst_row = 0;
+      int worst_row_count = mismatch_by_row[0];
+      for (int m = 1; m < M; m++) {
+        if (mismatch_by_row[m] > worst_row_count) {
+          worst_row = m;
+          worst_row_count = mismatch_by_row[m];
+        }
+      }
+      int worst_col = 0;
+      int worst_col_count = mismatch_by_col[0];
+      for (int n = 1; n < N; n++) {
+        if (mismatch_by_col[n] > worst_col_count) {
+          worst_col = n;
+          worst_col_count = mismatch_by_col[n];
+        }
+      }
+      printf("%s: worst mismatch row=%d count=%d, col=%d count=%d\n",
+          config->name ? config->name : "matmul",
+          worst_row, worst_row_count,
+          worst_col, worst_col_count);
+    }
     free(mismatch_by_row);
     free(mismatch_by_col);
-    printf("failed to allocate mismatch counters for %s\n",
+  } else {
+    printf("%s: CPU validation disabled (MATMUL_VALIDATE=0)\n",
         config->name ? config->name : "matmul");
-    free(a);
-    free(b);
-    free(cpu);
-    free(actual);
-    free(npu_output);
-    return -1;
   }
-  for (int m = 0; m < M; m++) {
-    for (int n = 0; n < N; n++) {
-      size_t idx = (size_t)m * (size_t)N + (size_t)n;
-      float diff = fabsf(cpu[idx] - actual[idx]);
-      if (diff > max_diff) max_diff = diff;
-      if (diff > tol) {
-        mismatch_count++;
-        mismatch_by_row[m]++;
-        mismatch_by_col[n]++;
-      }
-    }
-  }
-  printf("Max abs diff: %.6f\n", max_diff);
-  printf("%s: matches CPU -> %s (mismatches=%d)\n",
-      config->name ? config->name : "matmul",
-      max_diff <= 1e-2f ? "YES" : "NO",
-      mismatch_count);
-  if (mismatch_count > 0) {
-    report_matmul_unpack_alt(config->name, npu_output, cpu, M, N, 32, tol);
-    if (N != 32) {
-      report_matmul_unpack_alt(config->name, npu_output, cpu, M, N, N, tol);
-    }
-  }
-  if (mismatch_count > 0) {
-    int worst_row = 0;
-    int worst_row_count = mismatch_by_row[0];
-    for (int m = 1; m < M; m++) {
-      if (mismatch_by_row[m] > worst_row_count) {
-        worst_row = m;
-        worst_row_count = mismatch_by_row[m];
-      }
-    }
-    int worst_col = 0;
-    int worst_col_count = mismatch_by_col[0];
-    for (int n = 1; n < N; n++) {
-      if (mismatch_by_col[n] > worst_col_count) {
-        worst_col = n;
-        worst_col_count = mismatch_by_col[n];
-      }
-    }
-    printf("%s: worst mismatch row=%d count=%d, col=%d count=%d\n",
-        config->name ? config->name : "matmul",
-        worst_row, worst_row_count,
-        worst_col, worst_col_count);
-  }
-
-  free(mismatch_by_row);
-  free(mismatch_by_col);
   free(a);
   free(b);
   free(cpu);
   free(actual);
   free(npu_output);
+  if (!do_validate) return 0;
   return (max_diff <= 1e-2f) ? 0 : -1;
 }
 
@@ -4166,7 +4268,7 @@ int test_matmul(int argc, char **argv) {
     // {"matmul", 1, 8104, 8104}, //passed
     // {"matmul", 1, 8105, 8105}, //passed
     // {"matmul", 1, 8136, 8136}, //passed
-    {"matmul", 1, 5000, 5000}, 
+    {"matmul", 1, 8192, 8193}, 
   };
 
   int status = 0;

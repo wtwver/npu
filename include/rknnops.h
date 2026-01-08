@@ -579,15 +579,26 @@ static void release_memhandles(int fd, struct MemHandles *handles) {
 
 static void mem_sync(int fd, uint64_t obj_addr, uint64_t offset, uint64_t size, uint32_t flags) {
    if (size == 0) return;
+   const size_t orig_size = size;
+   const size_t aligned_size = page_align_size(size);
    struct rknpu_mem_sync sync = {
       .flags = flags,
       .obj_addr = obj_addr,
       .offset = offset,
-      .size = size,
+      .size = orig_size,
    };
    int ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_SYNC, &sync);
+   if (ret < 0 && aligned_size != orig_size) {
+      sync.size = aligned_size;
+      ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_SYNC, &sync);
+   }
    if (ret < 0) {
-      printf("RKNPU_MEM_SYNC failed %d\n", ret);
+      printf("RKNPU_MEM_SYNC failed %d errno=%d (%s) obj=0x%llx offset=%llu size=%llu flags=0x%x\n",
+         ret, errno, strerror(errno),
+         (unsigned long long)obj_addr,
+         (unsigned long long)offset,
+         (unsigned long long)sync.size,
+         flags);
    }
 }
 
@@ -4527,7 +4538,7 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    handles.weights_obj = weights_obj;
    handles.weights_handle = weights_handle;
    
-   void *input = mem_allocate(fd, input_size, &input_dma, &input_obj, 0, &input_handle);
+   void *input = mem_allocate(fd, input_size, &input_dma, &input_obj, RKNPU_MEM_CACHEABLE, &input_handle);
    if (!input) {
       printf("input mmap failed\n");
       release_memhandles(fd, &handles);
@@ -4539,7 +4550,7 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    handles.input_obj = input_obj;
    handles.input_handle = input_handle;
 
-   void *output = mem_allocate(fd, output_size, &output_dma, &output_obj, 0, &output_handle);
+   void *output = mem_allocate(fd, output_size, &output_dma, &output_obj, RKNPU_MEM_CACHEABLE, &output_handle);
    if (!output) {
       printf("output mmap failed\n");
       release_memhandles(fd, &handles);
@@ -4648,7 +4659,7 @@ int submitTask(int fd, uint64_t tasks_obj, size_t task_count){
    printf("submitTask flags %d\n", RKNPU_JOB_PC | RKNPU_JOB_BLOCK | RKNPU_JOB_PINGPONG) ;
    struct rknpu_submit submit = {
       .flags = RKNPU_JOB_PC | RKNPU_JOB_BLOCK | RKNPU_JOB_PINGPONG,
-      .timeout = 6000,
+      .timeout = 10000,
       .task_start = 0,
       .task_number = (uint32_t)task_count,
       .task_counter = 0,

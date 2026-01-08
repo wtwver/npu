@@ -2,13 +2,17 @@
 
 matmul failed at
 - 1x8193x8193, rknn splited
+- 1x10305x8192
 - 394x394x394, rknn splited
 
-# How to do matmul in RK3588
+# What works
 
-1x1x1 to 1x8192x8192 works
 1x1x1 to 384x384x384 works
+1x1x1 to 1x8192x8192 works
+1x8192x8192 to 1x8192x15000 works
+1x8192x8192 to 1x10304x8192 works
 
+# How to do matmul in RK3588
 ## Input and output dimension 
 
 In matmul, we have C(M,N) = A(M,K) * B(K,N)
