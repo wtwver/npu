@@ -3920,6 +3920,77 @@ static int validate_matmul_pack(const __fp16 *b, const MatmulTestConfig *config)
   return 0;
 }
 
+static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N) {
+  if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
+  const int max_k = 8192;
+  const int min_tail = 544;
+  if (K <= max_k) return -1;
+
+  __fp16 *a_tile = (__fp16*)malloc((size_t)M * (size_t)max_k * sizeof(__fp16));
+  __fp16 *b_tile = (__fp16*)malloc((size_t)max_k * (size_t)N * sizeof(__fp16));
+  float *tile_out = (float*)malloc((size_t)M * (size_t)N * sizeof(float));
+  if (!a_tile || !b_tile || !tile_out) {
+    free(a_tile);
+    free(b_tile);
+    free(tile_out);
+    printf("failed to allocate matmul K-split buffers\n");
+    return -1;
+  }
+
+  const size_t out_elems = (size_t)M * (size_t)N;
+  memset(dst, 0, out_elems * sizeof(float));
+
+  int full_tiles = K / max_k;
+  int tail = K % max_k;
+  int borrow = 0;
+  if (tail > 0 && tail < min_tail && full_tiles > 0) {
+    borrow = min_tail - tail;
+    tail = min_tail;
+  }
+  int tile_count = full_tiles + (tail > 0 ? 1 : 0);
+  int k_offset = 0;
+  for (int tile = 0; tile < tile_count; tile++) {
+    int tile_k = max_k;
+    if (tile == full_tiles && tail > 0) {
+      tile_k = tail;
+    } else if (borrow > 0 && tile == full_tiles - 1) {
+      tile_k = max_k - borrow;
+    }
+    for (int m = 0; m < M; m++) {
+      memcpy(a_tile + (size_t)m * (size_t)tile_k,
+          a + (size_t)m * (size_t)K + (size_t)k_offset,
+          (size_t)tile_k * sizeof(__fp16));
+    }
+    for (int k = 0; k < tile_k; k++) {
+      memcpy(b_tile + (size_t)k * (size_t)N,
+          b + (size_t)(k_offset + k) * (size_t)N,
+          (size_t)N * sizeof(__fp16));
+    }
+    float *npu_output = float16_matmul(a_tile, b_tile, 11, M, N, tile_k);
+    if (!npu_output) {
+      printf("float16_matmul failed for K tile offset=%d size=%d\n",
+          k_offset, tile_k);
+      free(a_tile);
+      free(b_tile);
+      free(tile_out);
+      return -1;
+    }
+    unpack_matmul_output_fp32(npu_output, tile_out, M, N);
+    free(npu_output);
+    for (size_t i = 0; i < out_elems; i++) {
+      dst[i] += tile_out[i];
+    }
+    k_offset += tile_k;
+  }
+
+  matmul_params = make_matmul_params(M, N, K);
+  free(a_tile);
+  free(b_tile);
+  free(tile_out);
+  return 0;
+}
+
 static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
     int M, int K, int N) {
   if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
@@ -3958,16 +4029,24 @@ static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
           b + (size_t)k * (size_t)N + (size_t)n_offset,
           (size_t)tile_n * sizeof(__fp16));
     }
-    float *npu_output = float16_matmul((__fp16*)a, b_tile, 11, M, tile_n, K);
-    if (!npu_output) {
-      printf("float16_matmul failed for N tile offset=%d size=%d\n",
-          n_offset, tile_n);
-      free(b_tile);
-      free(tile_out);
-      return -1;
+    if (K > max_n) {
+      if (matmul_split_k(a, b_tile, tile_out, M, K, tile_n) != 0) {
+        free(b_tile);
+        free(tile_out);
+        return -1;
+      }
+    } else {
+      float *npu_output = float16_matmul((__fp16*)a, b_tile, 11, M, tile_n, K);
+      if (!npu_output) {
+        printf("float16_matmul failed for N tile offset=%d size=%d\n",
+            n_offset, tile_n);
+        free(b_tile);
+        free(tile_out);
+        return -1;
+      }
+      unpack_matmul_output_fp32(npu_output, tile_out, M, tile_n);
+      free(npu_output);
     }
-    unpack_matmul_output_fp32(npu_output, tile_out, M, tile_n);
-    free(npu_output);
     for (int m = 0; m < M; m++) {
       memcpy(dst + (size_t)m * (size_t)N + (size_t)n_offset,
           tile_out + (size_t)m * (size_t)tile_n,
@@ -4076,15 +4155,16 @@ static int run_matmul_case(const MatmulTestConfig *config) {
   float *npu_output = NULL;
   bool used_split = false;
   if (N > 8192) {
-    if (K > 8192) {
-      printf("matmul: N=%d and K=%d exceed 8192; N-split alone is unsupported\n", N, K);
+    if (matmul_split_n(a, b, actual, M, K, N) != 0) {
       free(a);
       free(b);
       free(cpu);
       free(actual);
       return -1;
     }
-    if (matmul_split_n(a, b, actual, M, K, N) != 0) {
+    used_split = true;
+  } else if (K > 8192) {
+    if (matmul_split_k(a, b, actual, M, K, N) != 0) {
       free(a);
       free(b);
       free(cpu);
