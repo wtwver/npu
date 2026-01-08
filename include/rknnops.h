@@ -138,6 +138,17 @@ static inline int align_up_int(int value, int align) {
    return ((value + align - 1) / align) * align;
 }
 
+static inline size_t align_up_size(size_t value, size_t align) {
+   if (align == 0) return value;
+   return ((value + align - 1) / align) * align;
+}
+
+static inline size_t page_align_size(size_t value) {
+   long page = sysconf(_SC_PAGESIZE);
+   if (page <= 0) return value;
+   return align_up_size(value, (size_t)page);
+}
+
 static MatmulParams make_matmul_params(int M, int N, int K) {
    MatmulParams params = {0};
    params.M = (M > 0) ? M : 1;
@@ -480,27 +491,28 @@ void mem_destroy(int fd, uint32_t handle, uint64_t obj_addr);
 
 void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint32_t flags, uint32_t *handle) {
    int ret;
+   const size_t alloc_size = page_align_size(size);
    struct rknpu_mem_create mem_create = {
       .flags = flags | RKNPU_MEM_NON_CACHEABLE,
-      .size = size,
+      .size = alloc_size,
    };
 
    ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_CREATE, &mem_create);
    if(ret < 0)  {
-      printf("RKNPU_MEM_CREATE failed %d\n",ret);
+      printf("RKNPU_MEM_CREATE failed %d errno=%d (%s)\n", ret, errno, strerror(errno));
       return NULL;
    }
 
    struct rknpu_mem_map mem_map = { .handle = mem_create.handle, .offset=0 };
    ret = ioctl(fd, DRM_IOCTL_RKNPU_MEM_MAP, &mem_map);
    if(ret < 0) {
-      printf("RKNPU_MEM_MAP failed %d\n",ret);
+      printf("RKNPU_MEM_MAP failed %d errno=%d (%s)\n", ret, errno, strerror(errno));
       mem_destroy(fd, mem_create.handle, mem_create.obj_addr);
       return NULL;
    }	
-   void *map = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mem_map.offset);
+   void *map = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mem_map.offset);
    if (map == MAP_FAILED) {
-      printf("mmap failed\n");
+      printf("mmap failed errno=%d (%s)\n", errno, strerror(errno));
       mem_destroy(fd, mem_create.handle, mem_create.obj_addr);
       return NULL;
    }
@@ -512,7 +524,7 @@ void* mem_allocate(int fd, size_t size, uint64_t *dma_addr, uint64_t *obj, uint3
    log_rknpu_info("ALLOC handle=%u dma=0x%llx size=%zu obj=0x%llx flags=0x%x\n",
       mem_create.handle,
       (unsigned long long)mem_create.dma_addr,
-      size,
+      alloc_size,
       (unsigned long long)mem_create.obj_addr,
       mem_create.flags);
    return map;
@@ -535,28 +547,28 @@ static void release_memhandles(int fd, struct MemHandles *handles) {
    if (!handles) return;
 
    if (handles->tasks && handles->tasks_size > 0) {
-      munmap(handles->tasks, handles->tasks_size);
+      munmap(handles->tasks, page_align_size(handles->tasks_size));
    }
    if (handles->tasks_handle) {
       mem_destroy(fd, handles->tasks_handle, handles->tasks_obj);
    }
 
    if (handles->input && handles->input_size > 0) {
-      munmap(handles->input, handles->input_size);
+      munmap(handles->input, page_align_size(handles->input_size));
    }
    if (handles->input_handle) {
-      mem_destroy(fd, handles->input_handle, handles->input_dma);
+      mem_destroy(fd, handles->input_handle, handles->input_obj);
    }
 
    if (handles->weights && handles->weights_alloc_size > 0) {
-      munmap(handles->weights, handles->weights_alloc_size);
+      munmap(handles->weights, page_align_size(handles->weights_alloc_size));
    }
    if (handles->weights_handle) {
       mem_destroy(fd, handles->weights_handle, handles->weights_obj);
    }
 
    if (handles->output && handles->output_size > 0) {
-      munmap(handles->output, handles->output_size);
+      munmap(handles->output, page_align_size(handles->output_size));
    }
    if (handles->output_handle) {
       mem_destroy(fd, handles->output_handle, handles->output_obj);
@@ -583,28 +595,28 @@ void release_conv_result(Float16ConvResult *result) {
    if (!result || result->fd < 0) return;
 
    if (result->handles.tasks && result->handles.tasks_size > 0) {
-      munmap(result->handles.tasks, result->handles.tasks_size);
+      munmap(result->handles.tasks, page_align_size(result->handles.tasks_size));
    }
    if (result->handles.tasks_handle) {
       mem_destroy(result->fd, result->handles.tasks_handle, result->handles.tasks_obj);
    }
 
    if (result->handles.input && result->input_bytes > 0) {
-      munmap(result->handles.input, result->input_bytes);
+      munmap(result->handles.input, page_align_size(result->input_bytes));
    }
    if (result->handles.input_handle) {
-      mem_destroy(result->fd, result->handles.input_handle, result->handles.input_dma);
+      mem_destroy(result->fd, result->handles.input_handle, result->handles.input_obj);
    }
 
    if (result->handles.weights && result->weights_alloc_size > 0) {
-      munmap(result->handles.weights, result->weights_alloc_size);
+      munmap(result->handles.weights, page_align_size(result->weights_alloc_size));
    }
    if (result->handles.weights_handle) {
       mem_destroy(result->fd, result->handles.weights_handle, result->handles.weights_obj);
    }
 
    if (result->handles.output && result->output_bytes > 0) {
-      munmap(result->handles.output, result->output_bytes);
+      munmap(result->handles.output, page_align_size(result->output_bytes));
    }
    if (result->handles.output_handle) {
       mem_destroy(result->fd, result->handles.output_handle, result->handles.output_obj);
@@ -4501,16 +4513,13 @@ struct MemHandles createRegCmd(int fd, size_t input_size, size_t weights_size, s
    const size_t regcmd_offset = 0;
    const size_t weights_offset = regcmd_reserved;
    const size_t weights_alloc_size = regcmd_reserved + weights_aligned;
-   void *weights = mem_allocate(fd, weights_alloc_size, &weights_dma, &weights_obj, 0, &weights_handle);
+   void *weights = mem_allocate(fd, weights_alloc_size, &weights_dma, &weights_obj,
+      RKNPU_MEM_NON_CONTIGUOUS | RKNPU_MEM_CACHEABLE | RKNPU_MEM_IOMMU_LIMIT_IOVA_ALIGNMENT,
+      &weights_handle);
    if (!weights) {
       printf("weights mmap failed (size=%zu, aligned=%zu)\n", weights_alloc_size, weights_aligned);
-      printf("retrying with flags 403 RKNPU_MEM_NON_CONTIGUOUS | RKNPU_MEM_CACHEABLE | RKNPU_MEM_IOMMU_LIMIT_IOVA_ALIGNMENT" );
-      weights = mem_allocate(fd, weights_alloc_size, &weights_dma, &weights_obj, RKNPU_MEM_NON_CONTIGUOUS | RKNPU_MEM_CACHEABLE | RKNPU_MEM_IOMMU_LIMIT_IOVA_ALIGNMENT, &weights_handle);
-      if (!weights) {
-         printf("retry weights mmap failed (size=%zu, aligned=%zu)\n", weights_alloc_size, weights_aligned);
-         release_memhandles(fd, &handles);
-         return (struct MemHandles){0};
-      }
+      release_memhandles(fd, &handles);
+      return (struct MemHandles){0};
    }
    handles.weights = weights;
    handles.weights_alloc_size = weights_alloc_size;
@@ -4929,25 +4938,25 @@ float* float16_matmul(__fp16* a, __fp16* b, uint32_t alu_algorithm, int M, int N
 
 matmul_cleanup:
    if (handles.tasks && handles.tasks_size > 0) {
-      munmap(handles.tasks, handles.tasks_size);
+      munmap(handles.tasks, page_align_size(handles.tasks_size));
    }
    if (handles.tasks_handle) {
       mem_destroy(fd, handles.tasks_handle, handles.tasks_obj);
    }
    if (handles.input && handles.input_size > 0) {
-      munmap(handles.input, handles.input_size);
+      munmap(handles.input, page_align_size(handles.input_size));
    }
    if (handles.input_handle) {
-      mem_destroy(fd, handles.input_handle, handles.input_dma);
+      mem_destroy(fd, handles.input_handle, handles.input_obj);
    }
    if (handles.weights && handles.weights_alloc_size > 0) {
-      munmap(handles.weights, handles.weights_alloc_size);
+      munmap(handles.weights, page_align_size(handles.weights_alloc_size));
    }
    if (handles.weights_handle) {
       mem_destroy(fd, handles.weights_handle, handles.weights_obj);
    }
    if (handles.output && handles.output_size > 0) {
-      munmap(handles.output, handles.output_size);
+      munmap(handles.output, page_align_size(handles.output_size));
    }
    if (handles.output_handle) {
       mem_destroy(fd, handles.output_handle, handles.output_obj);

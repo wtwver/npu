@@ -1,15 +1,12 @@
 # Know issues
 
-failed to allocate handle, ret: -1, errno: 14, errstr: Bad address
-- need reboot after a few tests
-
 matmul failed at
-- 1x8156x8156, limit not reached
+- 1x8179x8179, limit not reached, blocked by mem issue above
 - 394x394x394, rknn splited
 
 # How to do matmul in RK3588
 
-1x1x1 to 1x8155x8155 works
+1x1x1 to 1x8178x8178 works
 1x1x1 to 384x384x384 works
 
 ## Input and output dimension 
@@ -303,6 +300,10 @@ How to convert onnx to rknn
 How to build matmul / alu
 - cd ops_reg/matmul/ && gcc -o matmul matmul.c -I ../../include -ldrm && ./matmul 32 32 32
 
+failed to allocate handle, ret: -1, errno: 14, errstr: Bad address and need reboot after 32 times mem_create and destroy for 8165x8165
+- 100 times on rknn no problem
+- mem_destroy was called with input_dma instead of the required input_obj, so the input buffer never got destroyed.
+- munmap was given non‑page‑aligned sizes (e.g., 133,350,848 bytes), which typically fails silently and leaves VMAs mapped; over many loops this leaks address space/resources. mem_create/mmap also used unaligned sizes.
 
 # Reference
 https://github.com/nvdla/sw

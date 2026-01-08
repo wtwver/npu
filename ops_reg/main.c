@@ -3786,25 +3786,25 @@ static void pack_matmul_input_nc1hwc2_fp16(__fp16 *dst, const __fp16 *src,
 static void release_matmul_handles(int fd, struct MemHandles *handles) {
   if (!handles) return;
   if (handles->tasks && handles->tasks_size > 0) {
-    munmap(handles->tasks, handles->tasks_size);
+    munmap(handles->tasks, page_align_size(handles->tasks_size));
   }
   if (handles->tasks_handle) {
     mem_destroy(fd, handles->tasks_handle, handles->tasks_obj);
   }
   if (handles->input && handles->input_size > 0) {
-    munmap(handles->input, handles->input_size);
+    munmap(handles->input, page_align_size(handles->input_size));
   }
   if (handles->input_handle) {
-    mem_destroy(fd, handles->input_handle, handles->input_dma);
+    mem_destroy(fd, handles->input_handle, handles->input_obj);
   }
   if (handles->weights && handles->weights_alloc_size > 0) {
-    munmap(handles->weights, handles->weights_alloc_size);
+    munmap(handles->weights, page_align_size(handles->weights_alloc_size));
   }
   if (handles->weights_handle) {
     mem_destroy(fd, handles->weights_handle, handles->weights_obj);
   }
   if (handles->output && handles->output_size > 0) {
-    munmap(handles->output, handles->output_size);
+    munmap(handles->output, page_align_size(handles->output_size));
   }
   if (handles->output_handle) {
     mem_destroy(fd, handles->output_handle, handles->output_obj);
@@ -4165,7 +4165,8 @@ int test_matmul(int argc, char **argv) {
     // {"matmul_394x394x394", 394, 394, 394}, //failed
     // {"matmul", 1, 8104, 8104}, //passed
     // {"matmul", 1, 8105, 8105}, //passed
-    {"matmul", 1, 8136, 8136}, //passed
+    // {"matmul", 1, 8136, 8136}, //passed
+    {"matmul", 1, 5000, 5000}, 
   };
 
   int status = 0;

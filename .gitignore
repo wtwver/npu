@@ -33,3 +33,5 @@ ops_rknn/run_output.txt
 ops_rknn/models/*
 main
 ops_rknn/matmul_api
+ops_rknn/alloc_weight_loop_rknn
+ops_reg/alloc_weight_loop
