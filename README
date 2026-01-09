@@ -1,11 +1,11 @@
 # Know issues
 
 matmul failed at
-- 394x394x394, rknn splited
+- 424x424x424
 
 # What works
 
-1x1x1 to 384x384x384 works
+1x1x1 to 414x414x414 works
 1x1x1 to 1x8192x8192 works
 1x8192x8192 to 1x8192x15000 works
 1x8192x8192 to 1x18605x8192 works

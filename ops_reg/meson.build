@@ -8,15 +8,15 @@ ops_reg_exe = executable('ops_reg', 'main.c',
 )
 
 matmul_cases = [
-  ['394', '394', '394'], # failed
-  ['1', '8192', '8192'], 
-  ['1', '8192', '8193'], 
-  ['1', '8193', '8192'], 
-  ['1', '8193', '8193'], 
   ['32', '32', '32'],
   ['64', '64', '64'],
   ['128', '128', '128'],
   ['256', '256', '256'],
+  ['394', '394', '394'], 
+  ['1', '8192', '8192'], 
+  ['1', '8192', '8193'], 
+  ['1', '8193', '8192'], 
+  ['1', '8193', '8193'], 
   ['1', '32', '16'],
   ['1', '394', '394'],
   ['1', '768', '768'],
@@ -33,14 +33,14 @@ foreach dims : matmul_cases
    args: ['matmul', dims[0], dims[1], dims[2]])
 endforeach
 
-# foreach n : range(18605, 20000, 1000)
-#   test('matmul 1x@0@x8192'.format(n),
-#     ops_reg_exe,
-#     is_parallel: false,
-#     suite: 'matmul',
-#     timeout: 180,
-#     args: ['matmul', '1', n.to_string(), '8192'])
-# endforeach
+foreach n : range(394, 10000, 10)
+  test('matmul @0@x@0@x@0@'.format(n),
+    ops_reg_exe,
+    is_parallel: false,
+    suite: 'matmul',
+    timeout: 180,
+    args: ['matmul', n.to_string(), n.to_string(), n.to_string()])
+endforeach
 
 # llm_linear_cases = [
 #   ['1', '1024', '2048', 'attn_q_proj'],

@@ -3920,6 +3920,82 @@ static int validate_matmul_pack(const __fp16 *b, const MatmulTestConfig *config)
   return 0;
 }
 
+static int matmul_max_m_tile(int K) {
+  const int max_k = 8192;
+  const int min_weight_banks = 2;
+  int effective_k = (K > max_k) ? max_k : K;
+  MatmulParams params = make_matmul_params(1, 1, effective_k);
+  size_t row_bytes = (size_t)params.align_in * sizeof(__fp16);
+  int max_data_banks = NPU_CBUF_BANKS - min_weight_banks;
+  if (max_data_banks < 1) max_data_banks = 1;
+  if (row_bytes == 0) return 1;
+  int max_m = (int)(((size_t)max_data_banks * NPU_CBUF_BANK_SIZE) / row_bytes);
+  if (max_m < 1) max_m = 1;
+  return max_m;
+}
+
+static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N);
+static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N);
+
+static int matmul_split_m(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N) {
+  if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
+  int max_m = matmul_max_m_tile(K);
+  if (M <= max_m) return -1;
+
+  float *tile_out = NULL;
+  if (N <= 8192 && K <= 8192) {
+    tile_out = (float*)malloc((size_t)max_m * (size_t)N * sizeof(float));
+    if (!tile_out) {
+      printf("failed to allocate matmul M-split buffers\n");
+      return -1;
+    }
+  }
+
+  int full_tiles = M / max_m;
+  int tail = M % max_m;
+  int tile_count = full_tiles + (tail > 0 ? 1 : 0);
+  int m_offset = 0;
+  for (int tile = 0; tile < tile_count; tile++) {
+    int tile_m = (tile == full_tiles && tail > 0) ? tail : max_m;
+    const __fp16 *a_tile = a + (size_t)m_offset * (size_t)K;
+    float *dst_tile = dst + (size_t)m_offset * (size_t)N;
+    if (N > 8192) {
+      if (matmul_split_n(a_tile, b, dst_tile, tile_m, K, N) != 0) {
+        free(tile_out);
+        return -1;
+      }
+    } else if (K > 8192) {
+      if (matmul_split_k(a_tile, b, dst_tile, tile_m, K, N) != 0) {
+        free(tile_out);
+        return -1;
+      }
+    } else {
+      float *npu_output = float16_matmul((__fp16*)a_tile, (__fp16*)b, 11, tile_m, N, K);
+      if (!npu_output) {
+        printf("float16_matmul failed for M tile offset=%d size=%d\n",
+            m_offset, tile_m);
+        free(tile_out);
+        return -1;
+      }
+      unpack_matmul_output_fp32(npu_output, tile_out, tile_m, N);
+      free(npu_output);
+      for (int m = 0; m < tile_m; m++) {
+        memcpy(dst_tile + (size_t)m * (size_t)N,
+            tile_out + (size_t)m * (size_t)N,
+            (size_t)N * sizeof(float));
+      }
+    }
+    m_offset += tile_m;
+  }
+
+  matmul_params = make_matmul_params(M, N, K);
+  free(tile_out);
+  return 0;
+}
+
 static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
     int M, int K, int N) {
   if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
@@ -4154,7 +4230,17 @@ static int run_matmul_case(const MatmulTestConfig *config) {
 
   float *npu_output = NULL;
   bool used_split = false;
-  if (N > 8192) {
+  int max_m = matmul_max_m_tile(K);
+  if (M > max_m) {
+    if (matmul_split_m(a, b, actual, M, K, N) != 0) {
+      free(a);
+      free(b);
+      free(cpu);
+      free(actual);
+      return -1;
+    }
+    used_split = true;
+  } else if (N > 8192) {
     if (matmul_split_n(a, b, actual, M, K, N) != 0) {
       free(a);
       free(b);
@@ -4316,38 +4402,6 @@ int test_matmul(int argc, char **argv) {
   }
 
   static const MatmulTestConfig configs[] = {
-    // {"matmul_8x8x8", 8, 8, 8},
-    // {"matmul_9x9x9", 9, 9, 9}, //need surf_stride =0
-    // {"matmul_32x32x32", 32, 32, 32}, //need surf_stride =0
-    // {"matmul_64x64x64", 64, 64, 64}, // need surf_stride = 60
-    // {"matmul_256x256x256", 256, 256, 256}, // need surf_stride = 252
-
-    // {"matmul_1x32x16", 1, 32, 16},
-    // {"matmul_1x768x768", 1, 768, 768}, 
-    // {"matmul_1x768x2048", 1, 768, 2048}, 
-    // {"matmul_1x2048x2048", 1, 2048, 2048}, 
-    // {"matmul_33x33x33", 33, 33, 33}, 
-    // {"matmul_34x34x34", 34, 34, 34}, 
-    // {"matmul_65x65x65", 65, 65, 65}, 
-    // {"matmul_97x97x97", 97, 97, 97}, 
-    // {"matmul_128x128x128", 128, 128, 128}, 
-    // {"matmul_129x129x129", 129, 129, 129}, 
-    // {"matmul_130x130x130", 130, 130, 130}, 
-    // {"matmul_171x171x171", 171, 171, 171}, 
-    // {"matmul_193x193x193", 193, 193, 193}, 
-    // {"matmul_220x220x220", 220, 220, 220}, 
-    // {"matmul_225x225x225", 225, 225, 225}, 
-    // {"matmul_257x257x257", 257, 257, 257}, 
-    // {"matmul_285x285x285", 285, 285, 285}, 
-    // {"matmul_289x289x289", 289, 289, 289}, 
-    // {"matmul_308x308x308", 308, 308, 308}, 
-    // {"matmul_321x321x321", 321, 321, 321}, 
-    // {"matmul_326x326x326", 326, 326, 326}, 
-    // {"matmul_385x385x385", 385, 385, 385}, 
-    // {"matmul_394x394x394", 394, 394, 394}, //failed
-    // {"matmul", 1, 8104, 8104}, //passed
-    // {"matmul", 1, 8105, 8105}, //passed
-    // {"matmul", 1, 8136, 8136}, //passed
     {"matmul", 1, 8192, 8193}, 
   };
 
