@@ -3934,6 +3934,31 @@ static int matmul_max_m_tile(int K) {
   return max_m;
 }
 
+static int matmul_needs_pad_align(int K, int N) {
+  if (K <= 0 || N <= 0) return 0;
+  int align_k = align_up_int(K, 32);
+  int align_n = align_up_int(N, 32);
+  if (align_k != align_n) return 1;
+  if (align_k > 416 || align_n > 416) return 1;
+  return 0;
+}
+
+static int matmul_pad_align(int K, int N) {
+  int align_k = align_up_int(K, 32);
+  int align_n = align_up_int(N, 32);
+  int pad = (align_k > align_n) ? align_k : align_n;
+  if (pad > 416) pad = 416;
+  if (pad < 32) pad = 32;
+  return pad;
+}
+
+static int matmul_split_k_limit(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N, int max_k, int min_tail);
+static int matmul_split_n_limit(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N, int max_n, int min_tail, int split_k_max, int split_k_min_tail);
+static int matmul_split_pad_align(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N, int pad_align);
+
 static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
     int M, int K, int N);
 static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
@@ -3945,8 +3970,12 @@ static int matmul_split_m(const __fp16 *a, const __fp16 *b, float *dst,
   int max_m = matmul_max_m_tile(K);
   if (M <= max_m) return -1;
 
+  const int needs_pad = matmul_needs_pad_align(K, N);
+  const int pad_align = needs_pad ? matmul_pad_align(K, N) : 0;
+  const int use_direct = !(needs_pad || N > 8192 || K > 8192);
+
   float *tile_out = NULL;
-  if (N <= 8192 && K <= 8192) {
+  if (use_direct) {
     tile_out = (float*)malloc((size_t)max_m * (size_t)N * sizeof(float));
     if (!tile_out) {
       printf("failed to allocate matmul M-split buffers\n");
@@ -3962,13 +3991,19 @@ static int matmul_split_m(const __fp16 *a, const __fp16 *b, float *dst,
     int tile_m = (tile == full_tiles && tail > 0) ? tail : max_m;
     const __fp16 *a_tile = a + (size_t)m_offset * (size_t)K;
     float *dst_tile = dst + (size_t)m_offset * (size_t)N;
-    if (N > 8192) {
+    if (needs_pad) {
+      if (matmul_split_pad_align(a_tile, b, dst_tile, tile_m, K, N, pad_align) != 0) {
+        free(tile_out);
+        return -1;
+      }
+    } else if (N > 8192) {
       if (matmul_split_n(a_tile, b, dst_tile, tile_m, K, N) != 0) {
         free(tile_out);
         return -1;
       }
     } else if (K > 8192) {
-      if (matmul_split_k(a_tile, b, dst_tile, tile_m, K, N) != 0) {
+      if (matmul_split_k_limit(a_tile, b, dst_tile, tile_m, K, N,
+          8192, 544) != 0) {
         free(tile_out);
         return -1;
       }
@@ -3996,11 +4031,91 @@ static int matmul_split_m(const __fp16 *a, const __fp16 *b, float *dst,
   return 0;
 }
 
-static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
-    int M, int K, int N) {
+static int matmul_split_pad_align(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N, int pad_align) {
   if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
-  const int max_k = 8192;
-  const int min_tail = 544;
+  if (pad_align <= 0) return -1;
+  if (pad_align < 32) pad_align = 32;
+
+  const size_t pad_elems = (size_t)pad_align;
+  __fp16 *a_pad = (__fp16*)malloc((size_t)M * pad_elems * sizeof(__fp16));
+  __fp16 *b_pad = (__fp16*)malloc(pad_elems * pad_elems * sizeof(__fp16));
+  float *tile_out = (float*)malloc((size_t)M * pad_elems * sizeof(float));
+  float *acc_tile = (float*)malloc((size_t)M * pad_elems * sizeof(float));
+  if (!a_pad || !b_pad || !tile_out || !acc_tile) {
+    free(a_pad);
+    free(b_pad);
+    free(tile_out);
+    free(acc_tile);
+    printf("failed to allocate matmul pad-align buffers\n");
+    return -1;
+  }
+
+  int n_offset = 0;
+  while (n_offset < N) {
+    int tile_n = N - n_offset;
+    if (tile_n > pad_align) tile_n = pad_align;
+    memset(acc_tile, 0, (size_t)M * pad_elems * sizeof(float));
+
+    int k_offset = 0;
+    while (k_offset < K) {
+      int tile_k = K - k_offset;
+      if (tile_k > pad_align) tile_k = pad_align;
+
+      memset(a_pad, 0, (size_t)M * pad_elems * sizeof(__fp16));
+      memset(b_pad, 0, pad_elems * pad_elems * sizeof(__fp16));
+
+      for (int m = 0; m < M; m++) {
+        memcpy(a_pad + (size_t)m * pad_elems,
+            a + (size_t)m * (size_t)K + (size_t)k_offset,
+            (size_t)tile_k * sizeof(__fp16));
+      }
+      for (int k = 0; k < tile_k; k++) {
+        memcpy(b_pad + (size_t)k * pad_elems,
+            b + (size_t)(k_offset + k) * (size_t)N + (size_t)n_offset,
+            (size_t)tile_n * sizeof(__fp16));
+      }
+
+      float *npu_output = float16_matmul(a_pad, b_pad, 11, M, pad_align, pad_align);
+      if (!npu_output) {
+        printf("float16_matmul failed for pad tile N offset=%d K offset=%d size=%d\n",
+            n_offset, k_offset, pad_align);
+        free(a_pad);
+        free(b_pad);
+        free(tile_out);
+        free(acc_tile);
+        return -1;
+      }
+      unpack_matmul_output_fp32(npu_output, tile_out, M, pad_align);
+      free(npu_output);
+      size_t out_elems = (size_t)M * pad_elems;
+      for (size_t i = 0; i < out_elems; i++) {
+        acc_tile[i] += tile_out[i];
+      }
+
+      k_offset += tile_k;
+    }
+
+    for (int m = 0; m < M; m++) {
+      memcpy(dst + (size_t)m * (size_t)N + (size_t)n_offset,
+          acc_tile + (size_t)m * pad_elems,
+          (size_t)tile_n * sizeof(float));
+    }
+    n_offset += tile_n;
+  }
+
+  matmul_params = make_matmul_params(M, N, K);
+  free(a_pad);
+  free(b_pad);
+  free(tile_out);
+  free(acc_tile);
+  return 0;
+}
+
+static int matmul_split_k_limit(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N, int max_k, int min_tail) {
+  if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
+  if (max_k <= 0) return -1;
   if (K <= max_k) return -1;
 
   __fp16 *a_tile = (__fp16*)malloc((size_t)M * (size_t)max_k * sizeof(__fp16));
@@ -4020,7 +4135,7 @@ static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
   int full_tiles = K / max_k;
   int tail = K % max_k;
   int borrow = 0;
-  if (tail > 0 && tail < min_tail && full_tiles > 0) {
+  if (min_tail > 0 && tail > 0 && tail < min_tail && full_tiles > 0) {
     borrow = min_tail - tail;
     tail = min_tail;
   }
@@ -4067,11 +4182,17 @@ static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
   return 0;
 }
 
-static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
+static int matmul_split_k(const __fp16 *a, const __fp16 *b, float *dst,
     int M, int K, int N) {
+  return matmul_split_k_limit(a, b, dst, M, K, N, 8192, 544);
+}
+
+static int matmul_split_n_limit(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N, int max_n, int min_tail, int split_k_max, int split_k_min_tail) {
   if (!a || !b || !dst || M <= 0 || K <= 0 || N <= 0) return -1;
-  const int max_n = 8192;
-  const int min_tail = 544;
+  if (max_n <= 0) return -1;
+  if (split_k_max <= 0) split_k_max = max_n;
+  if (split_k_min_tail < 0) split_k_min_tail = 0;
   if (N <= max_n) return -1;
 
   __fp16 *b_tile = (__fp16*)malloc((size_t)K * (size_t)max_n * sizeof(__fp16));
@@ -4086,7 +4207,7 @@ static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
   int full_tiles = N / max_n;
   int tail = N % max_n;
   int borrow = 0;
-  if (tail > 0 && tail < min_tail && full_tiles > 0) {
+  if (min_tail > 0 && tail > 0 && tail < min_tail && full_tiles > 0) {
     borrow = min_tail - tail;
     tail = min_tail;
   }
@@ -4105,8 +4226,9 @@ static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
           b + (size_t)k * (size_t)N + (size_t)n_offset,
           (size_t)tile_n * sizeof(__fp16));
     }
-    if (K > max_n) {
-      if (matmul_split_k(a, b_tile, tile_out, M, K, tile_n) != 0) {
+    if (K > split_k_max) {
+      if (matmul_split_k_limit(a, b_tile, tile_out, M, K, tile_n,
+          split_k_max, split_k_min_tail) != 0) {
         free(b_tile);
         free(tile_out);
         return -1;
@@ -4135,6 +4257,11 @@ static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
   free(b_tile);
   free(tile_out);
   return 0;
+}
+
+static int matmul_split_n(const __fp16 *a, const __fp16 *b, float *dst,
+    int M, int K, int N) {
+  return matmul_split_n_limit(a, b, dst, M, K, N, 8192, 544, 8192, 544);
 }
 
 static int run_matmul_case(const MatmulTestConfig *config) {
@@ -4231,8 +4358,19 @@ static int run_matmul_case(const MatmulTestConfig *config) {
   float *npu_output = NULL;
   bool used_split = false;
   int max_m = matmul_max_m_tile(K);
+  const int needs_pad = matmul_needs_pad_align(K, N);
+  const int pad_align = needs_pad ? matmul_pad_align(K, N) : 0;
   if (M > max_m) {
     if (matmul_split_m(a, b, actual, M, K, N) != 0) {
+      free(a);
+      free(b);
+      free(cpu);
+      free(actual);
+      return -1;
+    }
+    used_split = true;
+  } else if (needs_pad) {
+    if (matmul_split_pad_align(a, b, actual, M, K, N, pad_align) != 0) {
       free(a);
       free(b);
       free(cpu);
